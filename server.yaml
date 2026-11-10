@@ -18,6 +18,10 @@ timezone: America/Chicago
 # relative order). Set to false to leave category order alone.
 managed_categories_first: true
 
+# Discord allows 5 tags per post. Status tags always win; at most this many
+# genre tags fill the remaining slots.
+max_genre_tags: 3
+
 # Reusable permission sets.
 presets:
   read_only:

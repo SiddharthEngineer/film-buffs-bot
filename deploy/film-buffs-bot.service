@@ -1,0 +1,24 @@
+[Unit]
+Description=Film Buffs Discord bot
+After=network-online.target
+Wants=network-online.target
+# Stop restart loops if something is persistently broken (e.g. bad token).
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=dev
+Group=dev
+WorkingDirectory=/home/dev/film-buffs-bot
+ExecStart=/home/dev/film-buffs-bot/.venv/bin/python -m filmbuffs
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/dev/film-buffs-bot/data /home/dev/film-buffs-bot/backups
+
+[Install]
+WantedBy=multi-user.target
