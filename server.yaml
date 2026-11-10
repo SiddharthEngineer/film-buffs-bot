@@ -1,0 +1,144 @@
+# Declared state of the Film Buffs server.
+# Edit this file, then run:  python setup_server.py --plan   (then --apply)
+#
+# Every category, channel, tag and message has a stable `key`. The setup
+# script tracks the Discord ID behind each key, so renaming something here
+# renames it in Discord instead of creating a duplicate. Never change a key.
+#
+# Permission targets in `overwrites`:
+#   "@everyone"  the default role
+#   "@bot"       this bot's own role
+#   any other    a role name (must already exist; roles are not managed)
+# Only the targets listed are managed. Other overwrites on a channel are
+# reported and left alone.
+
+timezone: America/Chicago
+
+# Put managed categories above any unmanaged ones (unmanaged keep their
+# relative order). Set to false to leave category order alone.
+managed_categories_first: true
+
+# Reusable permission sets.
+presets:
+  read_only:
+    "@everyone":
+      deny: [send_messages, send_messages_in_threads, create_public_threads, create_private_threads]
+    "@bot":
+      allow: [view_channel, send_messages, embed_links]
+  admin_only:
+    "@everyone":
+      deny: [view_channel]
+    "@bot":
+      allow: [view_channel, send_messages, embed_links]
+
+categories:
+  - key: info
+    name: "📢 Info"
+    channels:
+      - key: welcome
+        name: welcome-and-rules
+        topic: "Start here: how this server works."
+        preset: read_only
+      - key: announcements
+        name: announcements
+        topic: "Watch-week announcements and server news."
+        preset: read_only
+
+  - key: chat
+    name: "💬 Chat"
+    channels:
+      - key: general
+        name: general
+        adopt: general          # take over the existing #general instead of creating one
+      - key: trailers
+        name: trailers-and-news
+        topic: "Trailers, release news, festival buzz."
+
+  - key: movies
+    name: "🎬 Movies"
+    channels:
+      - key: movies
+        name: movies
+        type: forum
+        default_sort: latest_activity
+        topic: |
+          One post per movie. Posts are created by the bot. Use /addmovie in any channel to add a film (pick it from the autocomplete list).
+          👍 the first message of a post to vote for it in the weekly pick.
+          Chat freely inside any post. Each post has one ⚠️ SPOILER LINE: everything above it is spoiler-free. Wrap spoilers in ||double bars||, or use /spoiler, or right-click a message → Apps → Mark as spoiler.
+        overwrites:
+          "@everyone":
+            allow: [send_messages_in_threads]
+            deny: [send_messages]          # "Create Posts" in a forum
+          "@bot":
+            allow: [view_channel, send_messages, send_messages_in_threads, embed_links, manage_threads]
+        tags:
+          # Status tags: moderated = only members with Manage Threads (the bot) can apply them.
+          - {key: backlog,     name: "Backlog",        emoji: "📋", moderated: true}
+          - {key: up_next,     name: "Up Next",        emoji: "⏭️", moderated: true}
+          - {key: watched,     name: "Watched",        emoji: "✅", moderated: true}
+          - {key: watched_solo, name: "Watched (solo)", emoji: "👤", moderated: true}
+          - {key: spoilers,    name: "Spoilers",       emoji: "⚠️", moderated: true}
+          - {key: in_theaters, name: "In Theaters",    emoji: "🎟️", moderated: true}
+          - {key: streaming,   name: "Streaming",      emoji: "📺", moderated: true}
+          # Genre tags. tmdb_genres = TMDB genre names that map to this tag.
+          - {key: g_action,    name: "Action",      tmdb_genres: [Action, War, Western]}
+          - {key: g_adventure, name: "Adventure",   tmdb_genres: [Adventure]}
+          - {key: g_animation, name: "Animation",   tmdb_genres: [Animation]}
+          - {key: g_comedy,    name: "Comedy",      tmdb_genres: [Comedy]}
+          - {key: g_crime,     name: "Crime",       tmdb_genres: [Crime, Mystery]}
+          - {key: g_doc,       name: "Documentary", tmdb_genres: [Documentary]}
+          - {key: g_drama,     name: "Drama",       tmdb_genres: [Drama, History]}
+          - {key: g_fantasy,   name: "Fantasy",     tmdb_genres: [Fantasy, Family]}
+          - {key: g_horror,    name: "Horror",      tmdb_genres: [Horror]}
+          - {key: g_romance,   name: "Romance",     tmdb_genres: [Romance, Music]}
+          - {key: g_scifi,     name: "Sci-Fi",      tmdb_genres: [Science Fiction]}
+          - {key: g_thriller,  name: "Thriller",    tmdb_genres: [Thriller]}
+          # 19 of Discord's 20-tag limit used.
+
+  - key: planning
+    name: "📅 Planning"
+    channels:
+      - key: watch_planning
+        name: watch-planning
+        topic: "Weekly movie poll opens Monday 12:00 AM CT and closes Sunday 11:59 PM CT. Chat welcome."
+      - key: watch_log
+        name: watch-log
+        topic: "One line per weekly pick."
+        preset: read_only
+      - key: letterboxd_feed
+        name: letterboxd-feed
+        topic: "New Letterboxd reviews from linked members (full reviews are in each movie's post)."
+        preset: read_only
+
+  - key: admin
+    name: "🔧 Admin"
+    channels:
+      - key: bot_logs
+        name: bot-logs
+        topic: "Bot errors and health notices. Admins only."
+        preset: admin_only
+
+# Messages the bot posts and keeps up to date. {#key} becomes a channel link.
+messages:
+  - key: welcome_rules
+    channel: welcome
+    title: "🎬 Welcome to Film Buffs"
+    description: |
+      A place to pick, watch and talk about movies together.
+
+      **How it works**
+      • Every movie gets its own post in {#movies}. Add one with **/addmovie** from any channel: start typing a title and pick it from the list. Add a pitch if you want to sell it.
+      • 👍 the first message of a post to vote for it. Every Monday a poll in {#watch-planning} picks next week's movie from the most-liked posts.
+      • Winners are logged in {#watch-log}. Watch-week dates show up as server events.
+
+      **Spoiler policy**
+      • Each movie post has one **⚠️ SPOILER LINE**. Everything above it is spoiler-free; below it, anything goes.
+      • Wrap spoilers in `||double bars||`, or run **/spoiler** inside a post before you go into details. Either one sets the line.
+      • Someone else slipped? Right-click (long-press on mobile) their message → **Apps → Mark as spoiler**. The bot reposts it hidden and moves the line back.
+      • Outside movie posts, always use `||spoiler bars||`.
+
+      **Letterboxd**
+      • Run **/letterboxd** with your username to link your account. New diary entries and reviews show up in the movie's post (spoiler-hidden) and in {#letterboxd-feed}. **/letterboxd-unlink** to stop.
+
+      **Be nice.** Disagree about movies, not about people.
+    color: 0xE5A00D
