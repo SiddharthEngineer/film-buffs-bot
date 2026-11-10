@@ -110,6 +110,18 @@ categories:
         topic: "New Letterboxd reviews from linked members (full reviews are in each movie's post)."
         preset: read_only
 
+  - key: voice
+    name: "🔊 Voice"
+    channels:
+      - key: watch_party
+        name: Watch Party
+        type: voice
+        adopt: Stream Room      # existing voice channel, renamed
+      - key: discussions
+        name: Discussions
+        type: voice
+        adopt: Lounge           # existing voice channel, renamed
+
   - key: admin
     name: "🔧 Admin"
     channels:
@@ -142,3 +154,13 @@ messages:
 
       **Be nice.** Disagree about movies, not about people.
     color: 0xE5A00D
+
+# Unmanaged channels to delete, by ID. The name must still match, text
+# channels with messages are refused unless allow_messages: true, and a
+# category is only deleted once it is empty. Entries for channels that are
+# already gone are ignored, so these can stay here as a record.
+retire:
+  - {id: 1569765385744425052, name: games}            # empty
+  - {id: 1569765385744425053, name: music}            # empty
+  - {id: 1569765385744425050, name: Text Channels}    # empty once #general moves
+  - {id: 1569765385744425054, name: Voice Channels}   # empty once voice channels move

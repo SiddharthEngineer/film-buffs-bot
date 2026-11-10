@@ -6,7 +6,8 @@
 
 Safe to re-run. Objects are tracked by key -> Discord ID in data/filmbuffs.db,
 so renames in server.yaml rename in Discord instead of creating duplicates.
-Nothing unmanaged is ever modified or deleted; it is only reported.
+Unmanaged channels are only reported. The one exception is the `retire:` list
+in server.yaml: channels named there by ID are deleted, with safety checks.
 """
 from __future__ import annotations
 
@@ -40,7 +41,7 @@ def color(text: str, code: str) -> str:
     return f"\033[{code}m{text}\033[0m" if TTY else text
 
 
-OP_STYLE = {"+": "32", "~": "33", ">": "36", "!": "35"}
+OP_STYLE = {"+": "32", "~": "33", ">": "36", "-": "31", "!": "35"}
 
 
 class ConfigError(Exception):
@@ -66,8 +67,10 @@ def load_config(path) -> dict:
         for ch in cat["channels"]:
             unique(f"channel:{ch['key']}")
             ch.setdefault("type", "text")
-            if ch["type"] not in ("text", "forum"):
-                raise ConfigError(f"{ch['key']}: type must be text or forum")
+            if ch["type"] not in ("text", "forum", "voice"):
+                raise ConfigError(f"{ch['key']}: type must be text, forum or voice")
+            if ch["type"] == "voice" and "topic" in ch:
+                raise ConfigError(f"{ch['key']}: voice channels have no topic")
             ows = copy.deepcopy(presets[ch["preset"]]) if "preset" in ch else {}
             ows.update(ch.get("overwrites") or {})
             for target, spec in ows.items():
@@ -97,6 +100,9 @@ def load_config(path) -> dict:
         for ref in re.findall(r"\{#(\w+)\}", m.get("description", "")):
             if ref not in channel_keys:
                 raise ConfigError(f"message {m['key']}: unknown channel ref {{#{ref}}}")
+    for r in cfg.get("retire", []):
+        if not isinstance(r.get("id"), int) or not r.get("name"):
+            raise ConfigError(f"retire entries need an integer id and a name: {r}")
     return cfg
 
 
@@ -140,7 +146,7 @@ def first_line(text: str, n: int = 70) -> str:
 
 @dataclass
 class Change:
-    op: str                 # + create, ~ update, > adopt
+    op: str                 # + create, ~ update, > adopt, - delete (retire only)
     what: str
     details: list[str] = field(default_factory=list)
     run: Callable[[], Awaitable[None]] | None = None
@@ -234,7 +240,8 @@ class Reconciler:
     def plan_channel(self, cat: dict, ch: dict) -> None:
         key = f"channel:{ch['key']}"
         is_forum = ch["type"] == "forum"
-        kind = discord.ForumChannel if is_forum else discord.TextChannel
+        kind = {"text": discord.TextChannel, "forum": discord.ForumChannel,
+                "voice": discord.VoiceChannel}[ch["type"]]
         cat_key = f"category:{cat['key']}"
         desired_ows = {self.target(t): build_overwrite(s) for t, s in ch["_overwrites"].items()}
         target_ids = [t.id for t in desired_ows]
@@ -275,6 +282,8 @@ class Reconciler:
                         for t in ch.get("tags", [])]
                     c = await self.guild.create_forum(**kwargs)
                     self._record_tags(ch, c)
+                elif ch["type"] == "voice":
+                    c = await self.guild.create_voice_channel(**kwargs)
                 else:
                     c = await self.guild.create_text_channel(**kwargs)
                 self.state.set(key, "channel", c.id, {"targets": target_ids})
@@ -425,15 +434,17 @@ class Reconciler:
             cat_id = self.state.get(f"category:{cat['key']}")
             if cat_id not in by_id:
                 continue
-            inside = sorted((c for c in channels if getattr(c, "category_id", None) == cat_id
-                             and c.type in TEXTLIKE), key=key_of)
-            managed = [by_id[i] for i in
-                       (self.state.get(f"channel:{c['key']}") for c in cat["channels"])
-                       if i in by_id and by_id[i] in inside]
-            want = managed + [c for c in inside if c not in managed]
-            if [c.id for c in want] != [c.id for c in inside]:
-                payload += [{"id": c.id, "position": i} for i, c in enumerate(want)]
-                desc.append(f"{cat['name']}: " + ", ".join(f"#{c.name}" for c in want))
+            # Discord sorts text-like and voice channels as separate groups.
+            for group in (TEXTLIKE, (discord.ChannelType.voice, discord.ChannelType.stage_voice)):
+                inside = sorted((c for c in channels if getattr(c, "category_id", None) == cat_id
+                                 and c.type in group), key=key_of)
+                managed = [by_id[i] for i in
+                           (self.state.get(f"channel:{c['key']}") for c in cat["channels"])
+                           if i in by_id and by_id[i] in inside]
+                want = managed + [c for c in inside if c not in managed]
+                if [c.id for c in want] != [c.id for c in inside]:
+                    payload += [{"id": c.id, "position": i} for i, c in enumerate(want)]
+                    desc.append(f"{cat['name']}: " + ", ".join(c.name for c in want))
         return payload, desc
 
     def plan_positions(self) -> None:
@@ -504,6 +515,51 @@ class Reconciler:
             self.add("~", f'message "{m.get("title", m["key"])}" in #{ch_name}',
                      ["content changed; edit in place"], run)
 
+    # retire ----------------------------------------------------------------
+    async def plan_retire(self) -> None:
+        """Delete channels listed by ID under `retire:`. Runs after everything else."""
+        managed = self.state.all_ids() | self.adopted
+        retiring = {r["id"] for r in self.cfg.get("retire", [])}
+        # Channels first, then categories, so categories are empty when deleted.
+        entries = sorted(self.cfg.get("retire", []), key=lambda r: isinstance(
+            self.guild.get_channel(r["id"]), discord.CategoryChannel))
+        for r in entries:
+            obj = self.guild.get_channel(r["id"])
+            if obj is None:
+                continue  # already gone
+            if obj.name != r["name"]:
+                raise ConfigError(f"retire {r['id']}: name is {obj.name!r}, not {r['name']!r}; "
+                                  "refusing to delete")
+            if obj.id in managed:
+                raise ConfigError(f"retire {obj.name!r}: it is managed; remove it from the "
+                                  "layout first")
+            details = []
+            if isinstance(obj, discord.CategoryChannel):
+                staying = [c.name for c in obj.channels
+                           if c.id not in managed and c.id not in retiring]
+                if staying:
+                    raise ConfigError(f"retire category {obj.name!r}: still holds {staying}")
+                label = f'category "{obj.name}"'
+                details.append("empty once the moves and deletes above are done")
+            else:
+                label = f"{obj.type.name} channel {obj.name!r}"
+                if isinstance(obj, discord.abc.Messageable):
+                    has = [m async for m in obj.history(limit=1)]
+                    if has and not r.get("allow_messages"):
+                        raise ConfigError(f"retire {obj.name!r}: it has messages; add "
+                                          "allow_messages: true to delete it anyway")
+                    details.append("has messages (allowed)" if has else "no messages")
+
+            async def run(cid=obj.id):
+                fresh = await self.guild.fetch_channel(cid)
+                if isinstance(fresh, discord.CategoryChannel):
+                    children = [c for c in await self.guild.fetch_channels()
+                                if getattr(c, "category_id", None) == cid]
+                    if children:
+                        raise RuntimeError(f"category still holds {[c.name for c in children]}")
+                await fresh.delete(reason=REASON)
+            self.add("-", label, details, run)
+
     # ---------------------------------------------------------------------
     async def build(self) -> None:
         for cat in self.cfg["categories"]:
@@ -514,8 +570,10 @@ class Reconciler:
         self.plan_positions()
         for m in self.cfg.get("messages", []):
             await self.plan_message(m)
+        await self.plan_retire()
 
-        managed = self.state.all_ids() | self.adopted
+        managed = (self.state.all_ids() | self.adopted
+                   | {r["id"] for r in self.cfg.get("retire", [])})
         for c in sorted(self.guild.channels, key=lambda c: (c.position, c.id)):
             if c.id not in managed:
                 where = f" in {c.category.name}" if getattr(c, "category", None) else ""
@@ -539,10 +597,10 @@ def print_plan(guild: discord.Guild, r: Reconciler) -> None:
         print(color("Not managed / notes:", "1"))
         for n in r.notes:
             print(color(f"  ! {n}", OP_STYLE["!"]))
-    counts = {op: sum(1 for c in r.changes if c.op == op) for op in "+~>"}
+    counts = {op: sum(1 for c in r.changes if c.op == op) for op in "+~>-"}
     print()
     print(f"Plan: {counts['+']} to create, {counts['~']} to change, "
-          f"{counts['>']} to adopt/record. Nothing will be deleted.")
+          f"{counts['>']} to adopt/record, {counts['-']} to delete (retire list only).")
 
 
 async def apply_plan(r: Reconciler) -> int:
@@ -551,7 +609,7 @@ async def apply_plan(r: Reconciler) -> int:
               flush=True)
         try:
             await c.run()
-        except discord.HTTPException as e:
+        except (discord.HTTPException, RuntimeError) as e:
             print(color(f"    FAILED: {e}", "31"))
             print("Stopped. Everything done so far is recorded; fix the problem and re-run.")
             return 1
