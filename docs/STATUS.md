@@ -1,6 +1,6 @@
 # Status (as of 2026-11-11)
 
-> **Channel names (2026-11-11):** `#movies` is now **`#pre-watch-discussion`** and `#movie-spoilers` is **`#post-watch-discussion`** (keys `movies` / `movie_spoilers` unchanged). Older sections below use the old names.
+> **Channel names (2026-11-11):** `#movies` (key `movies`; was briefly `#pre-watch-discussion`) and **`#post-watch-discussion`** (key `movie_spoilers`, was `#movie-spoilers`). Older sections below use the names of their time.
 
 ## Done and live
 
@@ -111,6 +111,24 @@ Deployed 2026-11-11: clean restart, startup notice seen in `#bot-logs`, first ba
   - `/admin resync [post]`: `update_card` + `retag`, and refreshes the post-watch post. Works from the pre- or post-watch post.
   - `/admin letterboxd-unlink member:` unlinks a member's account (entries stay).
 - README has an admin cheat sheet (commands, what lands in `#bot-logs`, backups and how to restore). The README command table was also brought up to date.
+
+## Phase 5: weekly pick, votes, watchlists ✅ (deployed 2026-11-11, awaiting owner test)
+Bot version 0.6.1, schema 7. 90 unit tests pass. Design and owner decisions are in ROADMAP.md (Phase 5).
+
+- **Rename:** `#pre-watch-discussion` → **`#movies`** via `server.yaml` (applied; `--plan` clean). Bot wording says "#movies post" / "spoiler-free post". The 105 post-watch starters were rewritten once to link back to "#movies" (tracked by `bot_meta.post_watch_starter_version`). `#watch-planning` topic and the welcome message describe the weekly pick and `/watchlist`.
+- **Votes** (`filmbuffs/votes.py`): 👍 (any skin tone) on a movie's first message, kept in `votes` from reaction events. Every startup re-reads all cards' reactions in the background (~0.3 s apart) to catch missed events; that pass also removed the bot's own 👍 from old posts. New posts no longer get one.
+- **Interest** = distinct members with a 👍 or the film on their uploaded watchlist (each counts once). Ranking: interest, then 👍, then earliest added.
+- **Leaderboard:** a pinned bot message "🏆 Top 25 most wanted" in `#watch-planning`: top 25 not yet watched together (Up Next marked ⏭️), plus the top 3 per genre. Refreshed every minute if anything changed; reposted (and pinned) if deleted (`bot_meta.leaderboard_planning_message_id`). It started as a pinned `#movies` post, but a forum allows only one pinned post, and that pin now goes to the week's movie; the bot deleted the old post.
+- **Scores** read `👍 3` when only votes count, or `**4** want it (👍 3 · 📋 2)` when watchlists are involved (one member with both counts once, so the parts can add up to more than the total).
+- **`/top [genre] [include_watched]`**: ephemeral top 25.
+- **`/watchlist import file:`** takes the Letterboxd export zip or its `watchlist.csv`, matches titles with the backfill's TMDB rules (cached), and replaces the member's stored watchlist. Films without a `#movies` post get one (Backlog, added by that member, source `watchlist`), one every ~3 s, with an ephemeral "done" note if it finishes within Discord's 15-minute reply window. `/watchlist show`, `/watchlist clear`. The owner's watchlist (from the backfill) was seeded by migration 6.
+- **Weekly pick** (`filmbuffs/weekly.py`, `filmbuffs/cogs/weekly.py`, `server.yaml` → `weekly`): rows in `weeks` move ballot → ballot_closed → poll → picked → done (or skipped) on a 30 s tick, so restarts resume. First watch week **Nov 23–29** (`weekly.first_watch_week`): its ballot opened at deploy and closes **Sun Nov 15, 11:59 PM CT**; poll Nov 16–22.
+  - `/nominate [title]` (autocomplete, or the post you're in; creates the post if it has none), `/unnominate`, `/schedule`.
+  - Ballot message in `#watch-planning` updates live (every 30 s if changed). Poll answers are `Title (Year)` (≤ 55 chars); the poll message lists the posts. Poll duration is set an hour past Sunday 11:59 PM so it never ends early; the bot ends it at 11:59 PM, waits up to a minute for the final tally, stores counts and voters.
+  - Winner: Up Next tag, external event "🎬 Watch week: Title" (location = the post link), announcement in `#announcements`, result line in `#watch-planning`. Watch week end: Watched tag + `#watch-log` line. Skipped weeks also get a notice and a log line.
+  - **Pins:** when a watch week starts (Mon 12:00 AM), its movie's `#movies` post and its post-watch discussion (created if needed) are pinned in their forums. A forum has one pin, so each new week replaces the last; a skipped week leaves the previous pin.
+  - **`/admin pick week:<This week|Next week> title:`** sets that week's movie: ends an open poll early (votes kept), puts a replaced winner back to its old status, edits or creates the event, announces "picked by an admin", and pins right away if the week has started. `#watch-log` says "picked by an admin". Migration 7: `override_by`, `winner_prev_status`, `pinned_at` on `weeks`.
+  - Stored for stats: `weeks`, `nominations`, `week_options` (interest at close, poll votes), `poll_voters`.
 
 ## Tooling
 - uv 0.12 manages the environment (2026-11-11): `pyproject.toml` + `uv.lock` replaced `requirements*.txt`; `.python-version` is 3.14. The systemd unit still runs `.venv/bin/python` (uv builds that venv), so no service change was needed.

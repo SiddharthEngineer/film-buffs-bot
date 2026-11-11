@@ -2,8 +2,8 @@
 
 Each new entry produces three messages, in this order:
   1. #post-watch-discussion post: an embed with rating, ♥, rewatch, watched date, review.
-  2. #pre-watch-discussion post: a neutral one-liner ("X logged this") linking to (1). No rating.
-  3. #letterboxd-feed: one line linking the #pre-watch-discussion post. No rating, no review.
+  2. #movies post: a neutral one-liner ("X logged this") linking to (1). No rating.
+  3. #letterboxd-feed: one line linking the #movies post. No rating, no review.
 Every entry is stored before anything is posted, and each message ID is saved as
 soon as it is sent, so a crash or Discord error resumes without duplicates.
 """

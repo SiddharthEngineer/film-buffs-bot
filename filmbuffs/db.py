@@ -110,6 +110,104 @@ MIGRATIONS = [
     UPDATE movies SET flags = (SELECT json_group_array(value) FROM json_each(movies.flags)
                                WHERE value != 'spoilers');
     """,
+    # Phase 5: votes, watchlists, weekly pick.
+    #   votes: one row per member who 👍'd a movie's info card (bot excluded).
+    #   watchlist_items: films on a member's uploaded Letterboxd watchlist (replaced
+    #     on each /watchlist import; seeded from backfilled watchlist rows).
+    #   Interest in a film = distinct members with a vote or a watchlist row.
+    #   weeks: one row per watch week (week_start = its Monday, America/Chicago).
+    #     state: ballot -> ballot_closed -> poll -> picked -> done, or skipped.
+    #   nominations: one per member per ballot. week_options: the frozen ballot
+    #     (poll answers), with interest at close and poll votes. poll_voters: who
+    #     voted for what (stats). bot_meta: small key/value store.
+    """
+    CREATE INDEX movies_starter ON movies(starter_message_id);
+    CREATE TABLE votes (
+        tmdb_id   INTEGER NOT NULL,
+        user_id   INTEGER NOT NULL,
+        voted_at  TEXT NOT NULL,
+        PRIMARY KEY (tmdb_id, user_id)
+    );
+    CREATE TABLE watchlist_items (
+        user_id      INTEGER NOT NULL,
+        tmdb_id      INTEGER NOT NULL,
+        title        TEXT,
+        year         INTEGER,
+        imported_at  TEXT NOT NULL,
+        PRIMARY KEY (user_id, tmdb_id)
+    );
+    CREATE INDEX watchlist_items_tmdb ON watchlist_items(tmdb_id);
+    CREATE TABLE watchlist_imports (
+        user_id      INTEGER PRIMARY KEY,
+        imported_at  TEXT NOT NULL,
+        source       TEXT NOT NULL,          -- import | backfill
+        rows         INTEGER NOT NULL,
+        matched      INTEGER NOT NULL,
+        unmatched    TEXT NOT NULL DEFAULT '[]'   -- JSON: ["Title (Year)", ...]
+    );
+    INSERT OR IGNORE INTO watchlist_items(user_id, tmdb_id, title, year, imported_at)
+        SELECT discord_user_id, tmdb_id, film_title, film_year, seen_at
+        FROM letterboxd_entries WHERE kind = 'watchlist' AND tmdb_id IS NOT NULL;
+    INSERT OR IGNORE INTO watchlist_imports(user_id, imported_at, source, rows, matched)
+        SELECT discord_user_id, MAX(seen_at), 'backfill', COUNT(*), COUNT(tmdb_id)
+        FROM letterboxd_entries WHERE kind = 'watchlist' GROUP BY discord_user_id;
+    CREATE TABLE weeks (
+        week_start          TEXT PRIMARY KEY,     -- YYYY-MM-DD, a Monday
+        state               TEXT NOT NULL,
+        ballot_message_id   INTEGER,
+        ballot_opened_at    TEXT,
+        ballot_closed_at    TEXT,
+        poll_message_id     INTEGER,
+        poll_opened_at      TEXT,
+        poll_closed_at      TEXT,
+        winner_tmdb_id      INTEGER,
+        winner_votes        INTEGER,
+        runner_up_votes     INTEGER,
+        total_votes         INTEGER,
+        event_id            INTEGER,
+        announcement_id     INTEGER,
+        log_message_id      INTEGER,
+        skip_reason         TEXT,
+        ended_at            TEXT
+    );
+    CREATE TABLE nominations (
+        week_start    TEXT NOT NULL,
+        user_id       INTEGER NOT NULL,
+        tmdb_id       INTEGER NOT NULL,
+        nominated_at  TEXT NOT NULL,
+        PRIMARY KEY (week_start, user_id),
+        UNIQUE (week_start, tmdb_id)
+    );
+    CREATE TABLE week_options (
+        week_start    TEXT NOT NULL,
+        position      INTEGER NOT NULL,       -- 1-based, = poll answer id
+        tmdb_id       INTEGER NOT NULL,
+        source        TEXT NOT NULL,          -- nomination | top
+        nominated_by  INTEGER,
+        interest      INTEGER NOT NULL,       -- at ballot close
+        thumbs        INTEGER NOT NULL,
+        poll_votes    INTEGER,
+        PRIMARY KEY (week_start, position)
+    );
+    CREATE TABLE poll_voters (
+        week_start  TEXT NOT NULL,
+        tmdb_id     INTEGER NOT NULL,
+        user_id     INTEGER NOT NULL,
+        PRIMARY KEY (week_start, tmdb_id, user_id)
+    );
+    CREATE TABLE bot_meta (
+        key    TEXT PRIMARY KEY,
+        value  TEXT
+    );
+    """,
+    # Phase 5 follow-ups: admin override of a week's movie, pinning the week's
+    # movie at watch start, and remembering the winner's status so an override
+    # can put it back.
+    """
+    ALTER TABLE weeks ADD COLUMN override_by INTEGER;
+    ALTER TABLE weeks ADD COLUMN winner_prev_status TEXT;
+    ALTER TABLE weeks ADD COLUMN pinned_at TEXT;
+    """,
 ]
 
 
@@ -302,4 +400,214 @@ class Database:
             "VALUES (?,?,?,?) ON CONFLICT(title_key) DO UPDATE SET tmdb_id=excluded.tmdb_id, "
             "how=excluded.how, resolved_at=excluded.resolved_at",
             (key, tmdb_id, how, utcnow()))
+        await self.conn.commit()
+
+    # bot_meta --------------------------------------------------------------
+    async def get_meta(self, key: str) -> str | None:
+        cur = await self.conn.execute("SELECT value FROM bot_meta WHERE key=?", (key,))
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+    async def set_meta(self, key: str, value: str | None) -> None:
+        await self.conn.execute(
+            "INSERT INTO bot_meta(key, value) VALUES (?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+        await self.conn.commit()
+
+    # votes and interest ----------------------------------------------------
+    async def get_movie_by_starter(self, message_id: int) -> aiosqlite.Row | None:
+        cur = await self.conn.execute("SELECT * FROM movies WHERE starter_message_id=?",
+                                      (message_id,))
+        return await cur.fetchone()
+
+    async def add_vote(self, tmdb_id: int, user_id: int) -> None:
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO votes(tmdb_id, user_id, voted_at) VALUES (?,?,?)",
+            (tmdb_id, user_id, utcnow()))
+        await self.conn.commit()
+
+    async def remove_vote(self, tmdb_id: int, user_id: int | None = None) -> None:
+        """Remove one member's vote, or all votes for the movie (user_id None)."""
+        if user_id is None:
+            await self.conn.execute("DELETE FROM votes WHERE tmdb_id=?", (tmdb_id,))
+        else:
+            await self.conn.execute("DELETE FROM votes WHERE tmdb_id=? AND user_id=?",
+                                    (tmdb_id, user_id))
+        await self.conn.commit()
+
+    async def set_votes(self, tmdb_id: int, user_ids: set[int]) -> None:
+        """Make the stored votes match `user_ids` (keeps existing vote times)."""
+        cur = await self.conn.execute("SELECT user_id FROM votes WHERE tmdb_id=?", (tmdb_id,))
+        have = {r[0] for r in await cur.fetchall()}
+        now = utcnow()
+        await self.conn.executemany("DELETE FROM votes WHERE tmdb_id=? AND user_id=?",
+                                    [(tmdb_id, u) for u in have - user_ids])
+        await self.conn.executemany("INSERT INTO votes(tmdb_id, user_id, voted_at) VALUES (?,?,?)",
+                                    [(tmdb_id, u, now) for u in user_ids - have])
+        await self.conn.commit()
+
+    # Interest = distinct members who 👍'd the post or have the film on their
+    # uploaded watchlist. Ranked by interest, then 👍, then earliest added.
+    _RANKED = """
+        WITH interest AS (
+            SELECT tmdb_id, user_id, 1 AS thumb, 0 AS listed FROM votes
+            UNION ALL
+            SELECT tmdb_id, user_id, 0, 1 FROM watchlist_items)
+        SELECT m.*, COUNT(DISTINCT i.user_id) AS interest,
+               COALESCE(SUM(i.thumb), 0) AS thumbs, COALESCE(SUM(i.listed), 0) AS listed
+        FROM movies m LEFT JOIN interest i ON i.tmdb_id = m.tmdb_id
+        {where}
+        GROUP BY m.tmdb_id
+        ORDER BY interest DESC, thumbs DESC, m.added_at ASC, m.tmdb_id ASC
+    """
+
+    async def ranked_movies(self, statuses: tuple[str, ...] | None = None,
+                            genre: str | None = None, limit: int | None = None,
+                            min_interest: int = 0) -> list[aiosqlite.Row]:
+        conds, params = [], []
+        if statuses:
+            conds.append(f"m.status IN ({','.join('?' * len(statuses))})")
+            params += statuses
+        if genre:
+            conds.append("EXISTS (SELECT 1 FROM json_each(m.genre_tags) WHERE value = ?)")
+            params.append(genre)
+        sql = self._RANKED.format(where=("WHERE " + " AND ".join(conds)) if conds else "")
+        if min_interest:
+            sql = f"SELECT * FROM ({sql}) WHERE interest >= ?"
+            params.append(min_interest)
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
+        cur = await self.conn.execute(sql, params)
+        return list(await cur.fetchall())
+
+    async def movie_interest(self, tmdb_id: int) -> tuple[int, int, int]:
+        """(interest, thumbs, listed) for one movie."""
+        cur = await self.conn.execute(
+            f"SELECT interest, thumbs, listed FROM ({self._RANKED.format(where='WHERE m.tmdb_id = ?')})",
+            (tmdb_id,))
+        row = await cur.fetchone()
+        return (row[0], row[1], row[2]) if row else (0, 0, 0)
+
+    # watchlists ------------------------------------------------------------
+    async def replace_watchlist(self, user_id: int, items: list[tuple[int, str, int | None]],
+                                rows: int, unmatched: list[str]) -> None:
+        now = utcnow()
+        await self.conn.execute("DELETE FROM watchlist_items WHERE user_id=?", (user_id,))
+        await self.conn.executemany(
+            "INSERT OR IGNORE INTO watchlist_items(user_id, tmdb_id, title, year, imported_at) "
+            "VALUES (?,?,?,?,?)", [(user_id, t, title, year, now) for t, title, year in items])
+        await self.conn.execute(
+            "INSERT INTO watchlist_imports(user_id, imported_at, source, rows, matched, unmatched) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET "
+            "imported_at=excluded.imported_at, source=excluded.source, rows=excluded.rows, "
+            "matched=excluded.matched, unmatched=excluded.unmatched",
+            (user_id, now, "import", rows, len({i[0] for i in items}), json.dumps(unmatched)))
+        await self.conn.commit()
+
+    async def watchlist_without_posts(self, user_id: int) -> list[int]:
+        cur = await self.conn.execute(
+            "SELECT w.tmdb_id FROM watchlist_items w LEFT JOIN movies m ON m.tmdb_id = w.tmdb_id "
+            "WHERE w.user_id=? AND m.tmdb_id IS NULL ORDER BY w.rowid", (user_id,))
+        return [r[0] for r in await cur.fetchall()]
+
+    async def clear_watchlist(self, user_id: int) -> int:
+        cur = await self.conn.execute("DELETE FROM watchlist_items WHERE user_id=?", (user_id,))
+        await self.conn.execute("DELETE FROM watchlist_imports WHERE user_id=?", (user_id,))
+        await self.conn.commit()
+        return cur.rowcount
+
+    async def watchlist_summary(self, user_id: int) -> tuple[aiosqlite.Row | None, int, int]:
+        """(import row, films stored, films that have a #movies post)."""
+        cur = await self.conn.execute("SELECT * FROM watchlist_imports WHERE user_id=?", (user_id,))
+        imp = await cur.fetchone()
+        cur = await self.conn.execute(
+            "SELECT COUNT(*), COUNT(m.tmdb_id) FROM watchlist_items w "
+            "LEFT JOIN movies m ON m.tmdb_id = w.tmdb_id WHERE w.user_id=?", (user_id,))
+        n, posted = await cur.fetchone()
+        return imp, n, posted
+
+    # weekly pick -----------------------------------------------------------
+    async def get_week(self, week_start: str) -> aiosqlite.Row | None:
+        cur = await self.conn.execute("SELECT * FROM weeks WHERE week_start=?", (week_start,))
+        return await cur.fetchone()
+
+    async def weeks_in_state(self, *states: str) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            f"SELECT * FROM weeks WHERE state IN ({','.join('?' * len(states))}) "
+            "ORDER BY week_start", states)
+        return list(await cur.fetchall())
+
+    async def create_week(self, week_start: str) -> None:
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO weeks(week_start, state) VALUES (?, 'ballot')", (week_start,))
+        await self.conn.commit()
+
+    _WEEK_UPDATABLE = {"state", "ballot_message_id", "ballot_opened_at", "ballot_closed_at",
+                       "poll_message_id", "poll_opened_at", "poll_closed_at", "winner_tmdb_id",
+                       "winner_votes", "runner_up_votes", "total_votes", "event_id",
+                       "announcement_id", "log_message_id", "skip_reason", "ended_at",
+                       "override_by", "winner_prev_status", "pinned_at"}
+
+    async def update_week(self, week_start: str, **fields) -> None:
+        bad = set(fields) - self._WEEK_UPDATABLE
+        if bad:
+            raise ValueError(f"not updatable: {bad}")
+        sets = ", ".join(f"{k}=?" for k in fields)
+        await self.conn.execute(f"UPDATE weeks SET {sets} WHERE week_start=?",
+                                (*fields.values(), week_start))
+        await self.conn.commit()
+
+    async def nominations(self, week_start: str) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT n.*, m.title, m.year, m.status, m.thread_id FROM nominations n "
+            "LEFT JOIN movies m ON m.tmdb_id = n.tmdb_id WHERE n.week_start=? "
+            "ORDER BY n.nominated_at, n.rowid", (week_start,))
+        return list(await cur.fetchall())
+
+    async def nominate(self, week_start: str, user_id: int, tmdb_id: int) -> None:
+        """Add or swap a member's nomination. Swapping keeps their place in line."""
+        await self.conn.execute(
+            "INSERT INTO nominations(week_start, user_id, tmdb_id, nominated_at) VALUES (?,?,?,?) "
+            "ON CONFLICT(week_start, user_id) DO UPDATE SET tmdb_id=excluded.tmdb_id",
+            (week_start, user_id, tmdb_id, utcnow()))
+        await self.conn.commit()
+
+    async def withdraw_nomination(self, week_start: str, user_id: int) -> bool:
+        cur = await self.conn.execute(
+            "DELETE FROM nominations WHERE week_start=? AND user_id=?", (week_start, user_id))
+        await self.conn.commit()
+        return cur.rowcount > 0
+
+    async def set_options(self, week_start: str, options: list[dict]) -> None:
+        await self.conn.execute("DELETE FROM week_options WHERE week_start=?", (week_start,))
+        await self.conn.executemany(
+            "INSERT INTO week_options(week_start, position, tmdb_id, source, nominated_by, "
+            "interest, thumbs) VALUES (?,?,?,?,?,?,?)",
+            [(week_start, i, o["tmdb_id"], o["source"], o.get("nominated_by"), o["interest"],
+              o["thumbs"]) for i, o in enumerate(options, start=1)])
+        await self.conn.commit()
+
+    async def options(self, week_start: str) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT o.*, m.title, m.year, m.status, m.thread_id, m.added_at FROM week_options o "
+            "LEFT JOIN movies m ON m.tmdb_id = o.tmdb_id WHERE o.week_start=? "
+            "ORDER BY o.position", (week_start,))
+        return list(await cur.fetchall())
+
+    async def record_poll_results(self, week_start: str, votes: dict[int, int],
+                                  voters: dict[int, list[int]]) -> None:
+        """votes/voters keyed by option position."""
+        opts = {r["position"]: r["tmdb_id"] for r in await self.options(week_start)}
+        await self.conn.executemany(
+            "UPDATE week_options SET poll_votes=? WHERE week_start=? AND position=?",
+            [(votes.get(p, 0), week_start, p) for p in opts])
+        await self.conn.execute("DELETE FROM poll_voters WHERE week_start=?", (week_start,))
+        await self.conn.executemany(
+            "INSERT OR IGNORE INTO poll_voters(week_start, tmdb_id, user_id) VALUES (?,?,?)",
+            [(week_start, opts[p], u) for p, us in voters.items() if p in opts for u in us])
+        await self.conn.commit()
+
+    async def set_status(self, tmdb_id: int, status: str) -> None:
+        await self.conn.execute("UPDATE movies SET status=? WHERE tmdb_id=?", (status, tmdb_id))
         await self.conn.commit()

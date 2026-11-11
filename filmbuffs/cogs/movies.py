@@ -1,4 +1,4 @@
-"""/addmovie: add a movie to the backlog as a post in #pre-watch-discussion."""
+"""/addmovie: add a movie to the backlog as a post in #movies."""
 from __future__ import annotations
 
 import logging
@@ -20,7 +20,7 @@ class Movies(commands.Cog):
     def __init__(self, bot: "FilmBuffsBot"):
         self.bot = bot
 
-    @app_commands.command(name="addmovie", description="Add a movie to the backlog (creates its post in #pre-watch-discussion)")
+    @app_commands.command(name="addmovie", description="Add a movie to the backlog (creates its post in #movies)")
     @app_commands.describe(title="Start typing, then pick the movie from the list",
                            pitch="Why we should watch it (optional)")
     @app_commands.guild_only()

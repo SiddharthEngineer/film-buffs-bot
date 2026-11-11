@@ -19,13 +19,15 @@ from .letterboxd import LetterboxdService
 from .movies import MovieService
 from .spoilers import SpoilerService
 from .tmdb import TMDB
+from .votes import VoteService
+from .weekly import WeeklyService
 
 log = logging.getLogger("filmbuffs")
 
-VERSION = "0.5"
+VERSION = "0.6.1"
 USER_AGENT = f"FilmBuffsBot/{VERSION} (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd",
-              "filmbuffs.cogs.ops", "filmbuffs.cogs.admin"]
+              "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly"]
 
 
 def git_commit() -> str:
@@ -50,6 +52,8 @@ class FilmBuffsBot(commands.Bot):
         self.movies = MovieService(self)
         self.spoilers = SpoilerService(self)
         self.letterboxd = LetterboxdService(self)
+        self.votes = VoteService(self)
+        self.weekly = WeeklyService(self)
         self.botlogs = DiscordLogHandler(self)
         self._announced = False
 

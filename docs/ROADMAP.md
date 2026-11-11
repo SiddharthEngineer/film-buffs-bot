@@ -2,11 +2,11 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–2, 3R, 4, 6 and 7 are done (see [STATUS.md](STATUS.md)). Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–7 are built (see [STATUS.md](STATUS.md)); Phase 5 is awaiting the owner's test. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 ## Guiding decisions (agreed with the owner)
 
-1. **The pre-watch forum is always spoiler-free.** Spoilers live in a companion post per movie in the post-watch forum. No in-post spoiler line, no dividers. (Renamed 2026-11-11: `#movies` → `#pre-watch-discussion`, `#movie-spoilers` → `#post-watch-discussion`; the 🍿 Post-watch tag was retired. Phase notes below keep the old names.)
+1. **`#movies` is always spoiler-free.** Spoilers live in a companion post per movie in the post-watch forum. No in-post spoiler line, no dividers. (2026-11-11: `#movie-spoilers` → `#post-watch-discussion`, the 🍿 Post-watch tag retired; `#movies` was briefly `#pre-watch-discussion` and is `#movies` again.)
 2. **Never reorder messages inside a post.** No repost-at-the-bottom tricks.
 3. **Star ratings are spoilers.** So are liked ♥, rewatch flags and review text. The spoiler-free side may only say *that* someone logged a film ("Siddharth logged this on Letterboxd"), never how they rated it.
 4. **Letterboxd is the source of truth for who watched what.** Nobody logs watches in Discord; the bot pulls from Letterboxd.
@@ -60,17 +60,22 @@ Replace the in-post spoiler line with a separate spoiler post per movie.
 - **Edit tracking:** don't build it unless editing an old entry moves it back to the top of the RSS feed (owner thinks it doesn't). Check once the owner has linked their account.
 - **Watch → review:** check whether adding a review to an already-logged entry keeps its RSS GUID. If it gets a new one, the poller would post the film twice; fix if so.
 
-## Phase 5: weekly pick, events, history
+## Phase 5: weekly pick, votes, watchlists (built; see STATUS.md)
 
-Unchanged from the original spec except where noted. Times are America/Chicago.
-- **Mon 12:00 AM:** native poll in `#watch-planning` for next week's movie. Options = top backlog posts by 👍 on the starter message, excluding `Watched`/`Up Next`, up to the poll answer limit (10; re-verify). Labels `Title (Year)`; the poll message also links each post.
-- **Sun 11:59 PM:** end the poll explicitly via the API. Tie-break (configurable in `server.yaml`): higher 👍, then earliest added. Retag winner `Up Next` (remove `Backlog`). Create scheduled event "🎬 Watch week: <Title>" (EXTERNAL; needs `entity_metadata.location` and `scheduled_end_time`) spanning the next Mon 12:00 AM → Sun 11:59 PM, linking the post; announce in `#announcements`.
-- **When a watch week ends:** retag `Watched`, append to `#watch-log`: `Wk <ISO week> · <date range> · <Title (Year)> · won <votes>–<runner-up votes>`.
-- Sunday night does both (current week ends + next poll closes) in one job, in a safe order.
-- Zero votes or empty backlog → post a notice and skip the week.
-- `/schedule` (ephemeral): current poll, this week's movie, next week's movie.
-- `.ics` calendar of all watch weeks. **Ask the owner for domain/port and whether there's a reverse proxy before exposing anything.**
-- Store polls, options, vote counts and results in SQLite (stats).
+Redesigned with the owner on 2026-11-11 (replaces the original "Monday poll from the top 10").
+- **Three-week pipeline**, every stage a full Mon 12:00 AM → Sun 11:59 PM week (America/Chicago). For watch week T: ballot in week T-2, poll in week T-1, watching in week T. Every week runs one of each.
+- **Ballot** (live bot message in `#watch-planning`): `/nominate` one film per member (swap by re-running, `/unnominate`), first come first served up to 10. The rest of the 10 slots are the most-wanted eligible films. Discord polls can't be edited, so the ballot is frozen at Sun 11:59 PM and becomes the poll.
+- **Poll**: native, 10 answers, ended by the bot at Sun 11:59 PM. Winner by votes, then interest, then 👍, then earliest added (`weekly.tie_break`). Winner → Up Next, external server event for its watch week, announcement. Zero votes or fewer than 2 options → skip, with a notice and a `#watch-log` line.
+- **Watch week end**: Watched tag, `#watch-log` line `Wk <ISO> · <range> · <Title (Year)> · won X–Y`.
+- **Interest** = distinct members who 👍'd the info card or have the film on their uploaded watchlist. The bot no longer adds its own 👍 (removed from old posts).
+- **Sorting by 👍**: Discord forums can't sort by reactions, so a pinned 🏆 leaderboard message in `#watch-planning` plus `/top [genre]`.
+- **Pins** (owner, 2026-11-11): a forum allows one pinned post, so `#movies` pins the current week's movie and `#post-watch-discussion` pins its post-watch discussion, both from the start of the watch week until the next one.
+- **Admin override:** `/admin pick` sets this or next week's movie, ending an open poll early.
+- **Watchlists**: `/watchlist import` of the Letterboxd export (the bot can't read lists or watchlists from Letterboxd). Optional; `/addmovie` and 👍 are the main way. The earlier "link one public list" idea was dropped. Films without a post get one, tagged Backlog (owner, 2026-11-11).
+- **No `.ics` feed** (owner: Discord is the single place for this).
+- Watched (solo) films can be nominated and picked.
+- `/schedule` shows this week's movie, next week's poll and the open ballot.
+- If Letterboxd grants API access (owner emailed them 2026-11-11), `/watchlist import` would be replaced by account linking.
 
 ## Phase 6: Letterboxd backfill script (built; see STATUS.md)
 
@@ -96,7 +101,6 @@ Possible later: off-machine backup copies (needs a destination from the owner); 
 - In Theaters / Streaming tags: the original spec listed them but gave no rule. Option: set them from TMDB release dates and US watch providers. **Ask the owner** before building.
 
 ## Open questions for the owner
-Answered 2026-11-11: Mark as spoiler moves the message; a solo Letterboxd log keeps an existing post's tags; channels renamed to pre-/post-watch discussion and the Post-watch tag retired.
+Answered 2026-11-11: no `.ics` feed; Mark as spoiler moves the message; a solo Letterboxd log keeps an existing post's tags; channels renamed to pre-/post-watch discussion and the Post-watch tag retired.
 
-1. Phase 5: domain/port/reverse proxy for the `.ics` feed.
-2. In Theaters / Streaming: automate from TMDB, or leave manual/unused?
+1. In Theaters / Streaming: automate from TMDB, or leave manual/unused?

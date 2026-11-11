@@ -1,10 +1,10 @@
 """Post-watch discussions: one companion post per movie in #post-watch-discussion.
 
-#pre-watch-discussion posts stay spoiler-free. A movie's post-watch post is
+#movies posts stay spoiler-free. A movie's post-watch post is
 created lazily (the info card button, /spoiler, Mark as spoiler, or a Letterboxd
 entry) and never more than once. "Mark as spoiler" moves a message out of a
-pre-watch post into the post-watch post: it is re-sent there via webhook as its
-author, then the original is deleted. Nothing is ever reposted in the pre-watch
+#movies post into the post-watch post: it is re-sent there via webhook as its
+author, then the original is deleted. Nothing is ever reposted in the #movies
 post, so the order there never changes.
 
 Internal names (channel key movie_spoilers, "spoiler post", spoilers:<id>
@@ -41,10 +41,14 @@ def spoiler_post_name(display: str) -> str:
     return truncate(f"{display} — Post-watch", 100)
 
 
+# Bump when starter_text changes; existing post-watch starters are rewritten once.
+STARTER_VERSION = "2"   # 2: links back to "#movies" (was "pre-watch discussion")
+
+
 def starter_text(display: str, movies_url: str) -> str:
     return (f"⚠️ **Post-watch discussion for {display}. Spoilers allowed.** "
             f"Everything here may spoil the film, so only read on once you've seen it.\n"
-            f"← Back to the spoiler-free pre-watch discussion: {movies_url}")
+            f"← Back to the spoiler-free post in #movies: {movies_url}")
 
 
 def split_text(text: str, first_room: int, room: int = MESSAGE_LIMIT) -> list[str]:
@@ -160,7 +164,7 @@ class SpoilerService:
     async def open(self, tmdb_id: int) -> tuple[discord.Thread, bool]:
         """Return (spoiler post, created). Creates it at most once per movie.
 
-        Raises LookupError if the movie (or its #pre-watch-discussion post) no longer exists.
+        Raises LookupError if the movie (or its #movies post) no longer exists.
         """
         async with self._open_locks[tmdb_id]:
             movies_post = await self.bot.movies.find_post(tmdb_id)
@@ -201,7 +205,26 @@ class SpoilerService:
             except discord.NotFound:
                 return
             if starter.content != text:
+                if getattr(thread, "archived", False):
+                    await thread.edit(archived=False, reason="Updating the starter message")
                 await starter.edit(content=text, allowed_mentions=discord.AllowedMentions.none())
+
+    async def refresh_starters(self) -> None:
+        """Once per STARTER_VERSION: rewrite existing post-watch starters and titles."""
+        db = self.bot.db
+        if await db.get_meta("post_watch_starter_version") == STARTER_VERSION:
+            return
+        cur = await db.conn.execute(
+            "SELECT * FROM movies WHERE spoiler_thread_id IS NOT NULL ORDER BY added_at")
+        rows = list(await cur.fetchall())
+        log.info("Refreshing %d post-watch starter message(s)", len(rows))
+        for row in rows:
+            try:
+                await self.refresh_post(row)
+            except discord.HTTPException:
+                log.exception("Could not refresh post-watch post for TMDB %s", row["tmdb_id"])
+            await asyncio.sleep(1)
+        await db.set_meta("post_watch_starter_version", STARTER_VERSION)
 
     async def _create_post(self, display: str, movies_url: str):
         created = await self.forum.create_thread(
@@ -228,7 +251,7 @@ class SpoilerService:
 
     async def move(self, message: discord.Message, actor: discord.abc.User,
                    tmdb_id: int) -> discord.Message:
-        """Move a message from a #pre-watch-discussion post into the movie's spoiler post.
+        """Move a message from a #movies post into the movie's spoiler post.
 
         Returns the first moved copy. Raises AlreadyMoved if the original is gone,
         ValueError if it can't be moved (nothing is changed then).
@@ -246,7 +269,7 @@ class SpoilerService:
 
             spoiler_post, _ = await self.open(tmdb_id)
 
-            header = [f"-# moved from the pre-watch discussion by {actor.mention}"]
+            header = [f"-# moved from the spoiler-free #movies post by {actor.mention}"]
             ref = message.reference
             if ref and ref.message_id:
                 # DeletedReferencedMessage (reply to a deleted message) has no author.

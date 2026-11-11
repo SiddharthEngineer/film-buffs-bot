@@ -28,6 +28,23 @@ letterboxd:
   poll_minutes: 15
   jitter_seconds: [3, 12]
 
+# Weekly pick (Phase 5), America/Chicago. For each watch week (Mon 12:00 AM to
+# Sun 11:59 PM) the ballot runs two weeks before it and the poll the week before,
+# so every week has one watch, one poll and one ballot going at once.
+#   first_watch_week: Monday of the first watch week (its ballot opens two weeks
+#     earlier, or right away if that's already past). Nothing runs before it.
+#   poll_options: films on each poll (Discord allows at most 10). Nominations
+#     come first, the most-wanted films fill the rest.
+#   min_options: fewer than this on a ballot skips the week.
+#   tie_break: after poll votes: interest (members who 👍'd or have it on their
+#     uploaded watchlist), thumbs (👍 only), added (earliest post first).
+weekly:
+  first_watch_week: 2026-11-23
+  poll_options: 10
+  min_options: 2
+  tie_break: [interest, thumbs, added]
+  leaderboard_size: 25
+
 # Ops (Phase 7). Nightly SQLite backup into backups/ at backup_time (local time,
 # see `timezone`), keeping backup_keep_days of them. /admin commands are for
 # members with Manage Server or the admin_role.
@@ -76,12 +93,12 @@ categories:
     name: "🎬 Movies"
     channels:
       - key: movies
-        name: pre-watch-discussion
+        name: movies
         type: forum
         default_sort: latest_activity
         topic: |
           🚫 NO SPOILERS in this channel. Talk about trailers, hype and first impressions only.
-          One post per movie, created by the bot. Use /addmovie in any channel to add a film (pick it from the autocomplete list). 👍 the first message of a post to vote for it in the weekly pick.
+          One post per movie, created by the bot. Use /addmovie in any channel to add a film (pick it from the autocomplete list). 👍 the first message of a post if you want to watch it: the pinned 🏆 Most wanted message in #watch-planning (and /top) ranks every film by 👍, and the weekly ballot fills up from the top. This week's movie is pinned at the top of this channel.
           Seen it? Every movie has a post-watch discussion in #post-watch-discussion where spoilers are allowed: click 🔓 Post-watch discussion on the movie's info card (or run /spoiler inside the post).
           Slipped up? Right-click (long-press on mobile) a message → Apps → Mark as spoiler moves it to the post-watch discussion. Nothing else in the post moves.
         overwrites:
@@ -121,7 +138,7 @@ categories:
         default_sort: latest_activity
         topic: |
           ⚠️ SPOILERS ALLOWED. Only open a movie's post once you've seen it.
-          One post per movie, created by the bot when someone first opens a movie's post-watch discussion. Each post links back to the movie's spoiler-free post in #pre-watch-discussion. Vote with 👍 there, not here.
+          One post per movie, created by the bot when someone first opens a movie's post-watch discussion. Each post links back to the movie's spoiler-free post in #movies. Vote with 👍 there, not here.
         overwrites:
           "@everyone":
             allow: [send_messages_in_threads]
@@ -134,7 +151,7 @@ categories:
     channels:
       - key: watch_planning
         name: watch-planning
-        topic: "Weekly movie poll opens Monday 12:00 AM CT and closes Sunday 11:59 PM CT. Chat welcome."
+        topic: "Weekly pick. Each week (Mon 12:00 AM to Sun 11:59 PM CT): the ballot for the week after next (/nominate), the poll for next week, and this week's movie. /schedule shows all three. Chat welcome."
       - key: watch_log
         name: watch-log
         topic: "One line per weekly pick."
@@ -174,8 +191,12 @@ messages:
 
       **How it works**
       • Every movie gets its own post in {#movies}. Add one with **/addmovie** from any channel: start typing a title and pick it from the list. Add a pitch if you want to sell it.
-      • 👍 the first message of a post to vote for it. Every Monday a poll in {#watch-planning} picks next week's movie from the most-liked posts.
-      • Winners are logged in {#watch-log}. Watch-week dates show up as server events.
+      • 👍 the first message of a post if you want to watch it. The pinned **🏆 Most wanted** message in {#watch-planning} (and **/top**) ranks every film by 👍.
+
+      **Weekly pick** (weeks run Mon 12:00 AM to Sun 11:59 PM CT)
+      • **Ballot:** two weeks ahead, a ballot in {#watch-planning} collects 10 films. **/nominate** one film (run it again to swap); nominations go on first, the most-wanted films fill the rest.
+      • **Poll:** the week before, a poll in {#watch-planning} picks the winner from those 10.
+      • **Watch week:** the winner is tagged Up Next, gets a server event and an announcement in {#announcements}, and is pinned at the top of {#movies} and {#movie_spoilers} for its week. It's logged in {#watch-log} at the end. **/schedule** shows what's on.
 
       **Spoiler policy**
       • {#movies} is spoiler-free: trailers, hype and first impressions only.
@@ -185,6 +206,7 @@ messages:
 
       **Letterboxd**
       • Run **/letterboxd** with your username to link your account. New diary entries show up in {#letterboxd-feed} and the movie's post; ratings and reviews go in its post-watch discussion. **/letterboxd-unlink** to stop.
+      • Optional: **/watchlist import** your Letterboxd export zip. Films on your watchlist count like a 👍 in the rankings (the bot can't read your live watchlist, so upload again to update it).
 
       **Be nice.** Disagree about movies, not about people.
     color: 0xE5A00D

@@ -2,10 +2,10 @@
 
 A custom Discord bot plus an infrastructure-as-code setup script for **Film Buffs**, a private Discord server where a group of friends picks, watches and talks about movies.
 
-- **Movies** live as posts in the `#pre-watch-discussion` forum, one per film, created by the bot from TMDB data.
+- **Movies** live as posts in the `#movies` forum, one per film, created by the bot from TMDB data.
 - **Letterboxd** is where people log what they watch. The bot pulls those logs in and keeps everything in SQLite, so we can build engagement stats later.
-- **Spoilers** are kept out of `#pre-watch-discussion` entirely; each film gets a companion post in `#post-watch-discussion` (created the first time someone opens it).
-- **Weekly pick**: a Monday poll picks next week's movie from the most-👍'd backlog posts (planned).
+- **Spoilers** are kept out of `#movies` entirely; each film gets a companion post in `#post-watch-discussion` (created the first time someone opens it).
+- **Weekly pick**: a ballot (`/nominate` + the most-👍'd films) two weeks ahead, a native poll the week before, then the watch week with a server event. A pinned leaderboard ranks every film by 👍.
 
 | Doc | What's in it |
 |---|---|
@@ -26,7 +26,10 @@ filmbuffs/            the bot package (python -m filmbuffs)
   config.py           .env + server.yaml + IDs from the state DB
   db.py               SQLite schema + migrations (data/filmbuffs.db)
   tmdb.py             TMDB client: search, details, autocomplete
-  movies.py           movie posts in #pre-watch-discussion (create, embed, tags)
+  movies.py           movie posts in #movies (create, embed, tags)
+  votes.py            👍 vote tracking, the pinned leaderboard post
+  weekly.py           weekly pick: ballot, poll, watch week
+  watchlist.py        /watchlist import (Letterboxd export)
   tags.py             which forum tags a post carries (5-tag limit)
   spoilers.py         post-watch discussions (companion posts, Mark as spoiler)
   letterboxd.py       Letterboxd RSS: linking, polling, posting entries
@@ -54,7 +57,7 @@ cp .env.example .env && chmod 600 .env   # then fill in the three values
 
 `.env` needs `DISCORD_TOKEN`, `DISCORD_GUILD_ID` and `TMDB_API_KEY` (a TMDB v3 key or v4 read-access token both work).
 
-Discord application settings: **Message Content** intent on, **Server Members** and **Presence** off, Public Bot off. Invite with scopes `bot applications.commands` and permissions integer `580835002641488` (View Channels, Manage Channels, Manage Roles, Manage Threads, Send Messages, Send Messages in Threads, Manage Messages, Manage Webhooks, Embed Links, Add Reactions, Read Message History, Send Polls, Create Events). Manage Roles is only there because Discord requires it to set channel permission overwrites.
+Discord application settings: **Message Content** intent on, **Server Members** and **Presence** off, Public Bot off. Invite with scopes `bot applications.commands` and permissions integer `2832634816326736` (View Channels, Manage Channels, Manage Roles, Manage Threads, Send Messages, Send Messages in Threads, Manage Messages, Pin Messages, Manage Webhooks, Embed Links, Add Reactions, Read Message History, Send Polls, Create Events). Pin Messages (added in Phase 5, for the leaderboard) is a separate permission from Manage Messages now. Manage Roles is only there because Discord requires it to set channel permission overwrites.
 
 Check the connection (read-only):
 
@@ -89,13 +92,18 @@ Dependencies live in `pyproject.toml` (locked in `uv.lock`); add one with `uv ad
 The unit file is `deploy/film-buffs-bot.service`; install changes with
 `sudo install -m 644 deploy/film-buffs-bot.service /etc/systemd/system/ && sudo systemctl daemon-reload`.
 
-## Commands (live today)
+## Commands
 
 | Command | Where | What it does |
 |---|---|---|
-| `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#pre-watch-discussion` (or links the existing one). Free text is rejected; pick from the autocomplete. |
+| `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#movies` (or links the existing one). Free text is rejected; pick from the autocomplete. |
+| 👍 on a movie's first message | `#movies` | Says you want to watch it. Ranks it on the leaderboard and the ballot. |
+| `/nominate [title]` / `/unnominate` | any channel (no title: inside a movie post) | One nomination per member on the open ballot; run again to swap. |
+| `/schedule` | any channel | This week's movie, next week's poll, the open ballot. |
+| `/top [genre] [include_watched]` | any channel | The most-wanted films. |
+| `/watchlist import file:` · `show` · `clear` | any channel | Upload your Letterboxd export zip; your watchlist counts like a 👍, and films without a post get one (Backlog). |
 | `/spoiler` | inside a movie post | Links the movie's post-watch discussion (creates it if needed); inside a post-watch post, links back. |
-| Apps → **Mark as spoiler** | any message in a pre-watch post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
+| Apps → **Mark as spoiler** | any message in a `#movies` post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
 | `/letterboxd [username]` | any channel | Links your Letterboxd account, or shows which one is linked. `/letterboxd-unlink` stops posting. |
 
 ## Admin cheat sheet
@@ -104,7 +112,8 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 
 | Command | What it does |
 |---|---|
-| `/admin resync [post]` | Re-renders a movie's info card (button, no-spoilers reminder) and re-applies its tags from the database; also refreshes its post-watch post's title and starter. Run it inside the pre- or post-watch post, or pick the post. Use it after editing a movie row by hand, or if a card or its tags look wrong. |
+| `/admin resync [post]` | Re-renders a movie's info card (button, no-spoilers reminder) and re-applies its tags from the database; also refreshes its post-watch post's title and starter. Run it inside the `#movies` or post-watch post, or pick the post. Use it after editing a movie row by hand, or if a card or its tags look wrong. |
+| `/admin pick week:<This/Next week> title:` | Sets that week's movie. Ends an open poll early (its votes are kept), puts a previously picked film back to its old tag, updates the event and announces it. If the week has started, it's pinned right away. |
 | `/admin letterboxd-unlink member:<member>` | Unlinks someone's Letterboxd account (e.g. a wrong link or they asked). Their stored entries stay. |
 
 **#bot-logs** (admins only) gets:
@@ -129,6 +138,14 @@ sudo systemctl start film-buffs-bot
 ```
 
 Backups live on the same disk as the bot. For off-machine copies, pull `backups/` from another computer now and then (e.g. `scp` or `rsync`).
+
+**Weekly pick:** timings live in `server.yaml` → `weekly` (restart the bot after changing them). Each week's state is in the `weeks` table:
+
+```bash
+sqlite3 data/filmbuffs.db "SELECT week_start, state, winner_tmdb_id, skip_reason FROM weeks"
+```
+
+If a step fails (e.g. Discord was down), it's retried every 30 seconds and the error goes to `#bot-logs`. Deleting the ballot or the pinned leaderboard message in `#watch-planning` makes the bot post a new one.
 
 **Other handy checks:**
 

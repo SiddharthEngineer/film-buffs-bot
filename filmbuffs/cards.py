@@ -1,4 +1,4 @@
-"""The button row under a movie's info card in #pre-watch-discussion.
+"""The button row under a movie's info card in #movies.
 
 Before a post-watch discussion exists, the card has a persistent "Post-watch
 discussion" button (custom_id `spoilers:<tmdb_id>`, so it keeps working after

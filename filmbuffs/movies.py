@@ -1,4 +1,4 @@
-"""Movie posts in the #pre-watch-discussion forum. Shared by /addmovie, Letterboxd and backfill."""
+"""Movie posts in the #movies forum (spoiler-free). Shared by /addmovie, Letterboxd and backfill."""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +22,7 @@ EMBED_COLOR = 0xE5A00D
 VOTE_EMOJI = "👍"
 # Field added by the old (pre-3R) spoiler-line design; removed from cards on refresh.
 LEGACY_SPOILER_FIELD = "Spoiler line"
-# Last field on every info card: the pre-watch post's no-spoilers reminder.
+# Last field on every info card: the no-spoilers reminder.
 REMINDER_NAME = "🚫 No spoilers in this post"
 REMINDER_VALUE = ("Trailers, hype and first impressions only. Seen it? Spoilers go in the "
                   "**🔓 Post-watch discussion** (button below).")
@@ -77,7 +77,7 @@ class MovieService:
     def forum(self) -> discord.ForumChannel:
         ch = self.bot.get_channel(self.bot.config.channels["movies"])
         if not isinstance(ch, discord.ForumChannel):
-            raise RuntimeError("#pre-watch-discussion forum not found")
+            raise RuntimeError("#movies forum not found")
         return ch
 
     async def find_post(self, tmdb_id: int) -> discord.Thread | None:
@@ -133,10 +133,6 @@ class MovieService:
                 title=movie.title, year=movie.year, status=status, flags=flags,
                 genre_tags=genres, added_by=uid, pitch=pitch, source=source)
             await self.bot.db.set_card_version(movie.id, CARD_VERSION)
-            try:
-                await message.add_reaction(VOTE_EMOJI)
-            except discord.HTTPException:
-                log.exception("Could not add vote reaction to %s", thread.id)
             log.info("Created post %s for TMDB %s (%s) via %s",
                      thread.id, movie.id, movie.display, source)
             return thread, True

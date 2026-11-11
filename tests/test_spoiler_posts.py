@@ -274,7 +274,7 @@ def test_move_sends_as_author_then_deletes(tmp_path):
     m = svc.wh.sent[0]
     lines = m.content.split("\n")
     assert lines[0] == "-# ↪ replying to Alex: https://discord.com/channels/1/555/40"
-    assert lines[1] == "-# moved from the pre-watch discussion by <@7>"
+    assert lines[1] == "-# moved from the spoiler-free #movies post by <@7>"
     assert lines[2] == "the dad did it"
     assert m.files == ["file:a.png"]
     assert m.kw["username"] == "Sam" and m.kw["avatar_url"] == "https://a/sam.png"

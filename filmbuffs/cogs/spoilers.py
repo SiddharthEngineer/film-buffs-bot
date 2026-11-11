@@ -42,6 +42,7 @@ class Spoilers(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         await self.bot.movies.refresh_old_cards()
+        await self.svc.refresh_starters()
 
     # /spoiler ----------------------------------------------------------------
     @app_commands.command(name="spoiler",
@@ -52,14 +53,14 @@ class Spoilers(commands.Cog):
         row = await self.svc.movie_for_spoiler_post(channel)
         if row is not None:
             movies_post = await self.bot.movies.find_post(row["tmdb_id"])
-            back = f" The pre-watch post is {movies_post.jump_url}." if movies_post else ""
+            back = f" The spoiler-free post is {movies_post.jump_url}." if movies_post else ""
             await interaction.response.send_message(
                 f"You're already in the post-watch discussion.{back}", ephemeral=True)
             return
         row = await self.svc.movie_for_movies_post(channel)
         if row is None:
             await interaction.response.send_message(
-                "Use /spoiler inside a movie's post in #pre-watch-discussion.", ephemeral=True)
+                "Use /spoiler inside a movie's post in #movies.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         thread, created = await self.svc.open(row["tmdb_id"])
@@ -76,7 +77,7 @@ class Spoilers(commands.Cog):
         if row is None:
             text = ("This is already the post-watch discussion, so spoilers are fine here."
                     if await self.svc.movie_for_spoiler_post(thread) is not None else
-                    "Mark as spoiler only works inside movie posts in #pre-watch-discussion.")
+                    "Mark as spoiler only works inside movie posts in #movies.")
             await interaction.response.send_message(text, ephemeral=True)
             return
         refusal = None

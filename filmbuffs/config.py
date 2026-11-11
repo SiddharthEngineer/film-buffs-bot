@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
 
@@ -47,6 +48,22 @@ class Config:
         # Members with this role (or Manage Server) can use /admin commands.
         self.admin_role = str(ops.get("admin_role", "Moderator"))
 
+        # Weekly pick (Phase 5). Each watch week's ballot runs two weeks before it
+        # and its poll the week before. Nothing runs before first_watch_week.
+        wk = self.layout.get("weekly") or {}
+        first = wk.get("first_watch_week")
+        self.first_watch_week: date | None = (
+            first if isinstance(first, date) else date.fromisoformat(first) if first else None)
+        if self.first_watch_week and self.first_watch_week.weekday() != 0:
+            raise RuntimeError("weekly.first_watch_week in server.yaml must be a Monday")
+        self.poll_options = min(int(wk.get("poll_options", 10)), 10)   # Discord: max 10 answers
+        self.min_options = max(int(wk.get("min_options", 2)), 1)
+        self.tie_break: list[str] = list(wk.get("tie_break", ["interest", "thumbs", "added"]))
+        for k in self.tie_break:
+            if k not in ("interest", "thumbs", "added"):
+                raise RuntimeError(f"weekly.tie_break: unknown key {k!r}")
+        self.leaderboard_size = int(wk.get("leaderboard_size", 25))
+
         state = State()
         self.channels: dict[str, int] = {}
         forum_spec = None
@@ -58,7 +75,7 @@ class Config:
                 if ch["key"] == "movies":
                     forum_spec = ch
         if "movies" not in self.channels or forum_spec is None:
-            raise RuntimeError("The #pre-watch-discussion forum (key: movies) is not set up. Run setup_server.py --apply first.")
+            raise RuntimeError("The #movies forum (key: movies) is not set up. Run setup_server.py --apply first.")
         if "movie_spoilers" not in self.channels:
             raise RuntimeError("The #post-watch-discussion forum (key: movie_spoilers) is not set up. Run setup_server.py --apply first.")
 

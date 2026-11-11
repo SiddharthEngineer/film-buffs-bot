@@ -10,6 +10,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from ..tmdb import TMDBError, parse_choice
+
 if TYPE_CHECKING:
     from ..bot import FilmBuffsBot
 
@@ -45,7 +47,7 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
 
     @app_commands.command(name="resync",
                           description="Re-render a movie post's info card and re-apply its tags")
-    @app_commands.describe(post="The movie's pre- or post-watch post (default: this post)")
+    @app_commands.describe(post="The movie's #movies or post-watch post (default: this post)")
     @admin_only()
     async def resync(self, interaction: discord.Interaction,
                      post: discord.Thread | None = None) -> None:
@@ -63,7 +65,7 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
         movies = self.bot.movies
         if await movies.find_post(tmdb_id) is None:
             await interaction.followup.send(
-                f"The pre-watch post for TMDB {tmdb_id} was deleted, so the bot forgot it. "
+                f"The #movies post for TMDB {tmdb_id} was deleted, so the bot forgot it. "
                 "`/addmovie` will recreate it.", ephemeral=True)
             return
         await movies.update_card(tmdb_id)
@@ -76,6 +78,47 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
         await interaction.followup.send(
             f"✅ Resynced <#{row['thread_id']}>: info card re-rendered, tags "
             f"{', '.join(t.name for t in tags) or '(none)'}.", ephemeral=True)
+
+    @app_commands.command(name="pick", description="Set this or next week's movie (ends an open poll)")
+    @app_commands.describe(week="Which watch week", title="Start typing and pick the movie")
+    @app_commands.choices(week=[app_commands.Choice(name="This week", value="this"),
+                                app_commands.Choice(name="Next week", value="next")])
+    @admin_only()
+    async def pick(self, interaction: discord.Interaction, week: app_commands.Choice[str],
+                   title: str) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        tmdb_id = parse_choice(title)
+        if tmdb_id is None:
+            await interaction.followup.send("❌ Pick the movie from the autocomplete list.",
+                                            ephemeral=True)
+            return
+        if await self.bot.db.get_movie(tmdb_id) is None:
+            try:
+                movie = await self.bot.tmdb.movie(tmdb_id)
+            except TMDBError:
+                await interaction.followup.send("❌ Couldn't reach TMDB. Try again in a minute.",
+                                                ephemeral=True)
+                return
+            if movie is None:
+                await interaction.followup.send(f"❌ TMDB has no movie with ID {tmdb_id}.",
+                                                ephemeral=True)
+                return
+            await self.bot.movies.ensure_post(movie, added_by=interaction.user, pitch=None,
+                                              status="backlog", source="admin")
+        reply = await self.bot.weekly.admin_pick(interaction.user.id, week.value, tmdb_id)
+        await interaction.followup.send(reply, ephemeral=True,
+                                        allowed_mentions=discord.AllowedMentions.none())
+
+    @pick.autocomplete("title")
+    async def _pick_title(self, interaction: discord.Interaction, current: str):
+        query = current.strip()
+        if len(query) < 2:
+            return []
+        try:
+            pairs = await self.bot.tmdb.autocomplete(query)
+        except TMDBError:
+            return []
+        return [app_commands.Choice(name=label, value=value) for label, value in pairs[:25]]
 
     @app_commands.command(name="letterboxd-unlink",
                           description="Unlink a member's Letterboxd account")
