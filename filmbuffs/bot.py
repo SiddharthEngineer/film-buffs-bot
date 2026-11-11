@@ -11,12 +11,13 @@ from discord.ext import commands
 from .config import Config
 from .db import Database
 from .movies import MovieService
+from .spoilers import SpoilerService
 from .tmdb import TMDB
 
 log = logging.getLogger("filmbuffs")
 
 USER_AGENT = "FilmBuffsBot/0.2 (private Discord bot)"
-EXTENSIONS = ["filmbuffs.cogs.movies"]
+EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers"]
 
 
 class FilmBuffsBot(commands.Bot):
@@ -31,6 +32,7 @@ class FilmBuffsBot(commands.Bot):
         self.session: aiohttp.ClientSession | None = None
         self.tmdb: TMDB | None = None
         self.movies = MovieService(self)
+        self.spoilers = SpoilerService(self)
 
     async def setup_hook(self) -> None:
         await self.db.connect()

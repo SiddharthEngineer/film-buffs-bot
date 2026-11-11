@@ -82,6 +82,18 @@ class Database:
              json.dumps(genre_tags), added_by, utcnow(), pitch, source))
         await self.conn.commit()
 
+    async def set_flags(self, tmdb_id: int, flags: list[str]) -> None:
+        await self.conn.execute("UPDATE movies SET flags=? WHERE tmdb_id=?",
+                                (json.dumps(sorted(set(flags))), tmdb_id))
+        await self.conn.commit()
+
+    async def set_spoiler_marker(self, tmdb_id: int, *, marker_id: int, divider_id: int | None,
+                                 marked_at: str) -> None:
+        await self.conn.execute(
+            "UPDATE movies SET spoiler_marker_message_id=?, spoiler_divider_message_id=?, "
+            "spoiler_marked_at=? WHERE tmdb_id=?", (marker_id, divider_id, marked_at, tmdb_id))
+        await self.conn.commit()
+
     async def delete_movie(self, tmdb_id: int) -> None:
         await self.conn.execute("DELETE FROM movies WHERE tmdb_id=?", (tmdb_id,))
         await self.conn.commit()

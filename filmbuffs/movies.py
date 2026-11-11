@@ -134,4 +134,8 @@ class MovieService:
             return
         tags = self.applied_tags(row["status"], json.loads(row["flags"]),
                                  json.loads(row["genre_tags"]))
-        await thread.edit(applied_tags=tags, reason="Movie status change")
+        if {t.id for t in tags} == {t.id for t in thread.applied_tags}:
+            return
+        # Archived posts must be un-archived in the same edit, or Discord refuses it.
+        extra = {"archived": False} if thread.archived else {}
+        await thread.edit(applied_tags=tags, reason="Movie status change", **extra)
