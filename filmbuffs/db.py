@@ -86,6 +86,23 @@ MIGRATIONS = [
     CREATE INDEX letterboxd_entries_tmdb ON letterboxd_entries(tmdb_id);
     CREATE INDEX letterboxd_entries_state ON letterboxd_entries(state);
     """,
+    # Phase 6: backfill from a Letterboxd export zip. export_uri is the row's
+    # "Letterboxd URI" (a diary entry for diary/reviews, the film for watched/
+    # watchlist); RSS entries matched to an export row get it too, so re-runs
+    # never store or post the same thing twice. logged_date = the export's "Date".
+    # kind gains: watched (no diary entry), watchlist. state gains: imported.
+    # tmdb_title_matches caches title+year -> TMDB lookups (hits only).
+    """
+    ALTER TABLE letterboxd_entries ADD COLUMN export_uri TEXT;
+    ALTER TABLE letterboxd_entries ADD COLUMN logged_date TEXT;
+    CREATE INDEX letterboxd_entries_export ON letterboxd_entries(discord_user_id, export_uri);
+    CREATE TABLE tmdb_title_matches (
+        title_key    TEXT PRIMARY KEY,      -- normalized "title|year"
+        tmdb_id      INTEGER NOT NULL,
+        how          TEXT NOT NULL,         -- exact | exact±1 | only result | override
+        resolved_at  TEXT NOT NULL
+    );
+    """,
 ]
 
 
@@ -227,7 +244,8 @@ class Database:
         """Insert a feed entry; False if its GUID is already known."""
         cols = ("guid", "discord_user_id", "username", "kind", "tmdb_id", "film_title",
                 "film_year", "watched_date", "rating", "liked", "rewatch", "review_text",
-                "letterboxd_url", "published_at", "source", "state")
+                "letterboxd_url", "published_at", "source", "state", "export_uri",
+                "logged_date")
         cur = await self.conn.execute(
             f"INSERT OR IGNORE INTO letterboxd_entries({','.join(cols)}, seen_at) "
             f"VALUES ({','.join('?' * len(cols))}, ?)",
@@ -246,7 +264,8 @@ class Database:
         return list(await cur.fetchall())
 
     _ENTRY_UPDATABLE = {"tmdb_id", "state", "attempts", "error", "movies_message_id",
-                        "spoiler_message_id", "feed_message_id"}
+                        "spoiler_message_id", "feed_message_id", "export_uri",
+                        "review_text"}
 
     async def update_entry(self, guid: str, **fields) -> None:
         bad = set(fields) - self._ENTRY_UPDATABLE
@@ -255,4 +274,25 @@ class Database:
         sets = ", ".join(f"{k}=?" for k in fields)
         await self.conn.execute(f"UPDATE letterboxd_entries SET {sets} WHERE guid=?",
                                 (*fields.values(), guid))
+        await self.conn.commit()
+
+    async def user_entries(self, user_id: int) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT * FROM letterboxd_entries WHERE discord_user_id=? "
+            "ORDER BY published_at, guid", (user_id,))
+        return list(await cur.fetchall())
+
+    async def get_title_match(self, key: str) -> tuple[int, str] | None:
+        """(tmdb_id, how) for a cached title match."""
+        cur = await self.conn.execute(
+            "SELECT tmdb_id, how FROM tmdb_title_matches WHERE title_key=?", (key,))
+        row = await cur.fetchone()
+        return (row[0], row[1]) if row else None
+
+    async def set_title_match(self, key: str, tmdb_id: int, how: str) -> None:
+        await self.conn.execute(
+            "INSERT INTO tmdb_title_matches(title_key, tmdb_id, how, resolved_at) "
+            "VALUES (?,?,?,?) ON CONFLICT(title_key) DO UPDATE SET tmdb_id=excluded.tmdb_id, "
+            "how=excluded.how, resolved_at=excluded.resolved_at",
+            (key, tmdb_id, how, utcnow()))
         await self.conn.commit()

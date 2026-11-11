@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–2, 3R and 4 are done (see [STATUS.md](STATUS.md)). The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–2, 3R, 4 and 6 are done (see [STATUS.md](STATUS.md)). Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 ## Guiding decisions (agreed with the owner)
 
@@ -56,6 +56,10 @@ Replace the in-post spoiler line with a separate spoiler post per movie.
   - **`#letterboxd-feed`:** one line linking the `#movies` post, no rating and no review text.
 - A solo log never changes an existing post's tag (owner, 2026-11-11: Backlog stays Backlog). Only posts auto-created from a log start as `Watched (solo)`.
 
+### Phase 4 follow-ups (owner, 2026-11-11)
+- **Edit tracking:** don't build it unless editing an old entry moves it back to the top of the RSS feed (owner thinks it doesn't). Check once the owner has linked their account.
+- **Watch → review:** check whether adding a review to an already-logged entry keeps its RSS GUID. If it gets a new one, the poller would post the film twice; fix if so.
+
 ## Phase 5: weekly pick, events, history
 
 Unchanged from the original spec except where noted. Times are America/Chicago.
@@ -68,10 +72,10 @@ Unchanged from the original spec except where noted. Times are America/Chicago.
 - `.ics` calendar of all watch weeks. **Ask the owner for domain/port and whether there's a reverse proxy before exposing anything.**
 - Store polls, options, vote counts and results in SQLite (stats).
 
-## Phase 6: Letterboxd backfill script
+## Phase 6: Letterboxd backfill script (built; see STATUS.md)
 
 Standalone `backfill.py`, run by hand.
-- Input: a Letterboxd data export zip (`watched.csv`, `diary.csv`, `reviews.csv`, `ratings.csv`, `watchlist.csv`) + the Discord user it belongs to; or just a username to use RSS (recent entries only).
+- Input: a Letterboxd data export zip (`watched.csv`, `diary.csv`, `reviews.csv`, `ratings.csv`, `watchlist.csv`) + the Discord user it belongs to. (The username-only RSS mode was not built: the export covers everything, and a linked account's recent entries are already stored as baseline, which the backfill links to.)
 - Exports have title, year, Letterboxd URI, not TMDB IDs: resolve via TMDB search (title + year), cache results, and write `backfill_unmatched.csv` for anything ambiguous instead of guessing.
 - Watched/diary → ensure a post exists (new ones `Watched (solo)`). Watchlist → ensure a post exists tagged `Backlog` unless group-watched. Reviews → into the movie's **spoiler post**, deduped against what the RSS poller already posted. Everything goes into the SQLite entries table. Mark imported RSS GUIDs as seen.
 - `--dry-run` (default) reports counts by tag, reviews to post, unmatched, and estimated runtime under rate limits; `--apply` executes; resumable; throttled. Filters: `--only-watchlist`, `--min-rating`, `--since YYYY-MM-DD`.

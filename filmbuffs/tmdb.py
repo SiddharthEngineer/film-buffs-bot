@@ -119,11 +119,19 @@ class TMDB:
             raise TMDBError(f"TMDB {path} failed: {e!r}") from e
 
     async def search(self, query: str, year: int | None = None,
-                     timeout: float = 10) -> list[dict]:
+                     timeout: float = 10, any_release: bool = False) -> list[dict]:
+        """Movie search. `year` filters on the first release year, or with
+        any_release=True on any release in that year (e.g. a later streaming
+        release, or a festival year that differs from the theatrical one)."""
         params = {"query": query, "include_adult": "false"}
         if year:
-            params["primary_release_year"] = str(year)
+            params["year" if any_release else "primary_release_year"] = str(year)
         data = await self._get("/search/movie", timeout=timeout, **params)
+        return (data or {}).get("results", [])
+
+    async def search_tv(self, query: str, timeout: float = 10) -> list[dict]:
+        data = await self._get("/search/tv", timeout=timeout, query=query,
+                               include_adult="false")
         return (data or {}).get("results", [])
 
     async def movie(self, tmdb_id: int, timeout: float = 10) -> Movie | None:

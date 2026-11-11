@@ -11,7 +11,7 @@ Read `docs/STATUS.md` (what's live) and `docs/ROADMAP.md` (what's next, agreed d
 - Keep `docs/STATUS.md` and `docs/ROADMAP.md` current at the end of each phase.
 
 ## Conventions
-- Python 3.12+, discord.py 2.7, aiohttp, aiosqlite, PyYAML, feedparser. Venv in `.venv/`.
+- Python 3.12+ (server runs 3.14), discord.py 2.7, aiohttp, aiosqlite, PyYAML, feedparser. Managed with **uv**: deps in `pyproject.toml` + `uv.lock`, `uv sync` builds `.venv/`, `uv add <pkg>` to add one, `uv run <script>` to run things. No requirements.txt.
 - Secrets only in `.env` (chmod 600, gitignored). Never commit `data/` (SQLite: setup state + bot data).
 - Store UTC in the DB; display America/Chicago (`config.tz`).
 - Schema changes go in `filmbuffs/db.py` `MIGRATIONS` (append-only).
@@ -19,5 +19,5 @@ Read `docs/STATUS.md` (what's live) and `docs/ROADMAP.md` (what's next, agreed d
 - Movie post tags are always recomputed from the DB row via `MovieService.retag` (5-tag limit; status/flags beat genres).
 - External HTTP uses the honest User-Agent `FilmBuffsBot/<ver> (private Discord bot)`. Never spoof a browser.
 - Respect Discord rate limits (discord.py handles 429s; throttle bulk post creation explicitly).
-- After code changes: `.venv/bin/python -m pytest -q tests`, then `sudo systemctl restart film-buffs-bot` and check `journalctl -u film-buffs-bot`.
+- After code changes: `uv run pytest -q`, then `sudo systemctl restart film-buffs-bot` and check `journalctl -u film-buffs-bot`.
 - Commits: author is the owner (Siddharth); end messages with the Claude co-author line.

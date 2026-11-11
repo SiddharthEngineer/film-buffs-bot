@@ -212,7 +212,8 @@ def pick_tmdb_match(results: list[dict], title: str, year: int | None) -> int | 
     return hits[0] if len(hits) == 1 else None
 
 
-def spoiler_embed(row, member_name: str, avatar_url: str | None) -> discord.Embed:
+def spoiler_embed(row, member_name: str, avatar_url: str | None,
+                  imported: bool = False) -> discord.Embed:
     """The full entry, for the movie's spoiler post."""
     display = (f"{row['film_title']} ({row['film_year']})" if row["film_year"]
                else row["film_title"])
@@ -237,7 +238,10 @@ def spoiler_embed(row, member_name: str, avatar_url: str | None) -> discord.Embe
     e.set_author(name=f"{member_name} on Letterboxd",
                  url=PROFILE_URL.format(username=row["username"]), icon_url=avatar_url)
     watched = nice_date(row["watched_date"])
-    e.set_footer(text=f"Watched {watched}" if watched else "Logged on Letterboxd")
+    footer = f"Watched {watched}" if watched else "Logged on Letterboxd"
+    if imported:
+        footer += " · imported from Letterboxd history"
+    e.set_footer(text=footer)
     return e
 
 

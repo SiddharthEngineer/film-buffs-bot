@@ -43,8 +43,7 @@ tests/                pytest
 ```bash
 git clone git@github.com:SiddharthEngineer/film-buffs-bot.git ~/film-buffs-bot
 cd ~/film-buffs-bot
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+uv sync                                  # creates .venv from pyproject.toml + uv.lock
 cp .env.example .env && chmod 600 .env   # then fill in the three values
 ```
 
@@ -55,7 +54,7 @@ Discord application settings: **Message Content** intent on, **Server Members** 
 Check the connection (read-only):
 
 ```bash
-.venv/bin/python scripts/check_connection.py
+uv run scripts/check_connection.py
 ```
 
 ## Changing the server layout
@@ -63,8 +62,8 @@ Check the connection (read-only):
 Edit `server.yaml`, then:
 
 ```bash
-.venv/bin/python setup_server.py           # plan: show the diff, change nothing
-.venv/bin/python setup_server.py --apply   # apply (asks to confirm)
+uv run setup_server.py           # plan: show the diff, change nothing
+uv run setup_server.py --apply   # apply (asks to confirm)
 ```
 
 - Every object has a stable `key`; the script tracks key → Discord ID in `data/filmbuffs.db`, so renames in YAML rename in Discord rather than duplicating. Never change a key.
@@ -77,8 +76,10 @@ Edit `server.yaml`, then:
 ```bash
 sudo systemctl restart film-buffs-bot      # after pulling code changes
 journalctl -u film-buffs-bot -f            # live logs
-.venv/bin/python -m pytest -q tests        # unit tests
+uv run pytest -q                           # unit tests
 ```
+
+Dependencies live in `pyproject.toml` (locked in `uv.lock`); add one with `uv add <pkg>`. The service runs `.venv/bin/python` directly, so it doesn't need uv at runtime; run `uv sync` and restart after dependency changes.
 
 The unit file is `deploy/film-buffs-bot.service`; install changes with
 `sudo install -m 644 deploy/film-buffs-bot.service /etc/systemd/system/ && sudo systemctl daemon-reload`.
