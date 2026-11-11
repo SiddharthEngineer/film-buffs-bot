@@ -89,7 +89,7 @@ class FilmBuffsBot(commands.Bot):
         return (f"🟢 **Bot started** · v{VERSION} · commit `{git_commit()}` · "
                 f"schema {len(MIGRATIONS)} · {backup}\n"
                 f"-# Nightly backup at {hh:02d}:{mm:02d} {self.config.tz.key}, "
-                f"keeping {self.config.backup_keep_days} days.")
+                f"keeping the newest {self.config.backup_keep}.")
 
     async def on_app_command_error(self, interaction: discord.Interaction,
                                    error: app_commands.AppCommandError) -> None:

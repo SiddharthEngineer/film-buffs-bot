@@ -43,7 +43,7 @@ class Config:
         ops = self.layout.get("ops") or {}
         hh, mm = str(ops.get("backup_time", "04:00")).split(":")
         self.backup_time = (int(hh), int(mm))
-        self.backup_keep_days = int(ops.get("backup_keep_days", 14))
+        self.backup_keep = int(ops.get("backup_keep", 3))
         self.backups_dir = ROOT / "backups"
         # Members with this role (or Manage Server) can use /admin commands.
         self.admin_role = str(ops.get("admin_role", "Moderator"))

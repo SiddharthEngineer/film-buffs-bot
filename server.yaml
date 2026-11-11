@@ -46,11 +46,11 @@ weekly:
   leaderboard_size: 25
 
 # Ops (Phase 7). Nightly SQLite backup into backups/ at backup_time (local time,
-# see `timezone`), keeping backup_keep_days of them. /admin commands are for
+# see `timezone`), keeping the newest backup_keep of them. /admin commands are for
 # members with Manage Server or the admin_role.
 ops:
   backup_time: "04:00"
-  backup_keep_days: 14
+  backup_keep: 3
   admin_role: Moderator
 
 # Reusable permission sets.

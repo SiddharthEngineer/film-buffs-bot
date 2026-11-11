@@ -37,11 +37,11 @@ class Ops(commands.Cog):
         cfg = self.bot.config
         async with self._lock:
             path, pruned = await asyncio.to_thread(
-                run_backup, cfg.db_path, cfg.backups_dir, cfg.backup_keep_days)
+                run_backup, cfg.db_path, cfg.backups_dir, cfg.backup_keep)
         size = path.stat().st_size / 1024
         summary = f"{path.name} ({size:,.0f} KiB)"
         if pruned:
-            summary += f"; pruned {len(pruned)} older than {cfg.backup_keep_days} days"
+            summary += f"; pruned {len(pruned)} (keeping the newest {cfg.backup_keep})"
         log.info("Database backup written: %s", summary)
         return summary
 

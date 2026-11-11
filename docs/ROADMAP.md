@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–7 are built (see [STATUS.md](STATUS.md)); Phase 5 is awaiting the owner's test. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–7 are built (see [STATUS.md](STATUS.md)); Phases 8–10 below are planned and approved by the owner (2026-11-11), not started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 ## Guiding decisions (agreed with the owner)
 
@@ -57,8 +57,8 @@ Replace the in-post spoiler line with a separate spoiler post per movie.
 - A solo log never changes an existing post's tag (owner, 2026-11-11: Backlog stays Backlog). Only posts auto-created from a log start as `Watched (solo)`.
 
 ### Phase 4 follow-ups (owner, 2026-11-11)
-- **Edit tracking:** don't build it unless editing an old entry moves it back to the top of the RSS feed (owner thinks it doesn't). Check once the owner has linked their account.
-- **Watch → review:** check whether adding a review to an already-logged entry keeps its RSS GUID. If it gets a new one, the poller would post the film twice; fix if so.
+- **Edit tracking:** editing an old entry doesn't bring it back to the top of the RSS feed (owner, 2026-11-11), so the poller can't see edits. The export sync (Phase 8) covers them.
+- **Watch → review:** not confirmed yet. Letterboxd gives each feed item an ID (`letterboxd-watch-N` or `letterboxd-review-N`); if adding a review later swaps the ID, the poller would treat it as a new entry and post the film twice. To check: log a film with no review, wait for the bot to post it, then add a review. Phase 8 guards against it anyway (same number → update, not repost).
 
 ## Phase 5: weekly pick, votes, watchlists (built; see STATUS.md)
 
@@ -88,7 +88,7 @@ Standalone `backfill.py`, run by hand.
 
 ## Phase 7: ops & docs (built; see STATUS.md)
 
-- Nightly SQLite backup to `backups/` (keep 14 days) with SQLite's online backup API, run in the bot at 04:00 Chicago, with a catch-up at startup.
+- Nightly SQLite backup to `backups/` (keep the newest 3; was 14 days until 2026-11-11) with SQLite's online backup API, run in the bot at 04:00 Chicago, with a catch-up at startup.
 - Failures to `#bot-logs` (throttled logging handler + error hooks), plus a startup notice.
 - `/admin resync`, `/admin letterboxd-unlink`.
 - Tests: backup retention, log throttle/dedup, poller alerts, admin check. (TMDB matching, spoiler-post creation and RSS dedupe were already covered in earlier phases; schedule/tie-break tests belong to Phase 5.)
@@ -96,11 +96,40 @@ Standalone `backfill.py`, run by hand.
 
 Possible later: off-machine backup copies (needs a destination from the owner); more `/admin` commands if a need shows up.
 
+## Phase 8: full Letterboxd sync from the export (planned)
+
+Owner request (2026-11-11): each export upload is a full sync, so edits on Letterboxd (rating, review, liked, rewatch, date) reach Discord. The RSS feed can't do this; it never shows edits.
+- **One command for everyone:** `/letterboxd sync file:<export zip>` replaces `/watchlist import`, which is removed (owner, 2026-11-11). `/watchlist show` and `/watchlist clear` stay. It reuses the backfill's parsing and TMDB matching (`backfill.py` becomes a thin wrapper for the owner's use from the shell).
+- **Diff, then apply.** The upload is compared with what's stored for that member:
+  - **New** entries: stored; reviews get a post-watch embed; films with no `#movies` post get one (Watched (solo) / Backlog, same rules as the backfill), throttled.
+  - **Changed** entries: the stored row is updated and the bot's own post-watch embed is **edited in place** (no reordering, no reposting). RSS entries are matched to export rows by their `boxd.it` link, as the backfill does now.
+  - **Gone** entries (deleted on Letterboxd): the bot deletes its own post-watch embed for that entry and marks the entry `removed` (owner, 2026-11-11). The row is kept for stats history. Only stored export/RSS entries of that member are compared, never other members' messages.
+  - **Watchlist:** replaced, as today.
+- **Preview first:** the bot replies (ephemeral) with counts (new / changed / removed / posts to create / unmatched) and **Apply** / **Cancel** buttons; long runs report progress and a final note.
+- **Poller guard:** a `review-N` item whose `watch-N` is already stored updates that entry instead of posting the film again.
+- Tests: diff (new/changed/gone, RSS ↔ export matching), embed edit, preview counts.
+
+## Phase 9: In Theaters / Streaming tags from TMDB (planned)
+
+Owner (2026-11-11): set them automatically. Both tags already exist as bot-only flag tags.
+- Daily job: one TMDB call per movie (`append_to_response=release_dates,watch/providers`, region US), ~450 calls, well under TMDB's limits.
+- **In Theaters:** a US theatrical release in the last 60 days and no US digital release yet.
+- **Streaming:** on at least one US subscription service (TMDB's `flatrate`; rent/buy doesn't count).
+- Info card gets a line like "📺 Streaming on Netflix, Max" (TMDB's provider data comes from JustWatch, which must be credited, e.g. in the card footer). Tags change through `MovieService.retag`; only changed posts are edited.
+- Tags use up the 5-tag budget before genres, so a film In Theaters or Streaming shows one fewer genre.
+
+## Phase 10: engagement stats (planned)
+
+From the SQLite data already stored: who watched what, rating spreads (per member, per film, group vs. solo), most active posts, weekly-pick participation (nominations, poll voters, turnout). Shape (slash commands, a monthly post, or both) to be agreed with the owner first.
+
 ## Later ideas
-- Engagement stats from the SQLite data (who watched what, rating spreads, most-active posts, weekly-pick participation).
-- In Theaters / Streaming tags: the original spec listed them but gave no rule. Option: set them from TMDB release dates and US watch providers. **Ask the owner** before building.
+- Off-machine backup copies (needs a destination from the owner).
 
 ## Open questions for the owner
 Answered 2026-11-11: no `.ics` feed; Mark as spoiler moves the message; a solo Letterboxd log keeps an existing post's tags; channels renamed to pre-/post-watch discussion and the Post-watch tag retired.
 
-1. In Theaters / Streaming: automate from TMDB, or leave manual/unused?
+Answered 2026-11-11: In Theaters / Streaming are set automatically (Phase 9); backups keep the newest 3.
+
+Answered 2026-11-11 (Phase 8): entries deleted on Letterboxd have their post-watch embed deleted; `/watchlist import` is removed in favour of `/letterboxd sync`.
+
+No open questions right now. Phase 10 (stats) needs a short design talk before it's built.

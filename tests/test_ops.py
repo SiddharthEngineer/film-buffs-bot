@@ -31,18 +31,19 @@ def test_parse_ignores_other_files():
         assert parse_backup_time(n) is None
 
 
-def test_prune_keeps_14_days():
-    names = [backup_name(NOW - timedelta(days=d)) for d in range(20)]
-    pruned = backups_to_prune(names + ["notes.txt"], NOW, 14)
-    assert pruned == sorted(backup_name(NOW - timedelta(days=d)) for d in range(15, 20))
-    # Exactly 14 days old is kept (strictly older is pruned).
-    assert backup_name(NOW - timedelta(days=14)) not in pruned
+def test_prune_keeps_newest_n():
+    names = [backup_name(NOW - timedelta(days=d)) for d in range(10)]
+    pruned = backups_to_prune(names + ["notes.txt"], 3)
+    assert pruned == sorted(backup_name(NOW - timedelta(days=d)) for d in range(3, 10))
+    # Extra same-day backups (e.g. a startup catch-up) still count toward the limit.
+    same_day = [backup_name(NOW - timedelta(hours=h)) for h in range(5)]
+    assert len(backups_to_prune(same_day, 3)) == 2
 
 
-def test_prune_always_keeps_newest():
+def test_prune_always_keeps_one():
     old = [backup_name(NOW - timedelta(days=d)) for d in (30, 40, 50)]
-    assert backups_to_prune(old, NOW, 14) == sorted(old[1:])
-    assert backups_to_prune([], NOW, 14) == []
+    assert backups_to_prune(old, 0) == sorted(old[1:])
+    assert backups_to_prune([], 3) == []
 
 
 def test_run_backup_is_consistent_snapshot(tmp_path):
@@ -58,7 +59,7 @@ def test_run_backup_is_consistent_snapshot(tmp_path):
     (dest / stale).write_bytes(b"old")
     (dest / "filmbuffs-20261101T000000Z.db.partial").write_bytes(b"crashed")
 
-    path, pruned = run_backup(src, dest, 14, now=NOW)
+    path, pruned = run_backup(src, dest, 1, now=NOW)
     conn.close()
     assert pruned == [stale]
     assert sorted(p.name for p in dest.iterdir()) == [path.name]   # single file, no -wal

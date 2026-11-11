@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 PREFIX = "filmbuffs-"
@@ -30,13 +30,12 @@ def parse_backup_time(name: str) -> datetime | None:
     return datetime.strptime(m.group(1), _STAMP).replace(tzinfo=timezone.utc)
 
 
-def backups_to_prune(names: list[str], now: datetime, keep_days: int) -> list[str]:
-    """Backups older than keep_days. The newest backup is always kept, even if old
-    (e.g. after the bot was down for weeks). Files that aren't ours are ignored."""
+def backups_to_prune(names: list[str], keep: int) -> list[str]:
+    """Every backup except the newest `keep` (at least one is always kept).
+    Files that aren't ours are ignored."""
     dated = sorted(((t, n) for n in names if (t := parse_backup_time(n)) is not None),
                    reverse=True)
-    cutoff = now - timedelta(days=keep_days)
-    return sorted(n for t, n in dated[1:] if t < cutoff)
+    return sorted(n for _, n in dated[max(keep, 1):])
 
 
 def latest_backup(dest: Path) -> tuple[datetime, Path] | None:
@@ -46,7 +45,7 @@ def latest_backup(dest: Path) -> tuple[datetime, Path] | None:
     return max(dated) if dated else None
 
 
-def run_backup(src: Path, dest: Path, keep_days: int,
+def run_backup(src: Path, dest: Path, keep: int,
                now: datetime | None = None) -> tuple[Path, list[str]]:
     """Back up src into dest and prune old backups. Blocking; run it in a thread.
     Returns (new backup path, names pruned)."""
@@ -78,7 +77,7 @@ def run_backup(src: Path, dest: Path, keep_days: int,
     # Leftover .partial files from a crash mid-backup are ours to clean up.
     for p in dest.glob(f"{PREFIX}*.db.partial"):
         p.unlink(missing_ok=True)
-    pruned = backups_to_prune([p.name for p in dest.iterdir()], now, keep_days)
+    pruned = backups_to_prune([p.name for p in dest.iterdir()], keep)
     for name in pruned:
         (dest / name).unlink(missing_ok=True)
     return final, pruned

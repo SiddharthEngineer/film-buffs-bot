@@ -34,7 +34,7 @@ filmbuffs/            the bot package (python -m filmbuffs)
   spoilers.py         post-watch discussions (companion posts, Mark as spoiler)
   letterboxd.py       Letterboxd RSS: linking, polling, posting entries
   backfill.py         matching logic for backfill.py (Letterboxd export import)
-  backup.py           nightly SQLite backups + 14-day retention
+  backup.py           nightly SQLite backups, newest 3 kept
   botlogs.py          posts errors to #bot-logs (throttled)
   cogs/               slash commands, listeners, background loops
 backfill.py           imports a Letterboxd export (dry run by default)
@@ -121,7 +121,7 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 - 🔴 every ERROR from the bot, with the end of the traceback. The same error is posted at most once an hour (later posts say how many repeats were held back), and at most 5 messages go out per 10 minutes. Full tracebacks are always in `journalctl -u film-buffs-bot`.
 - Letterboxd: a single error when a feed fails 4 polls in a row (about an hour) or Letterboxd refuses 4 rounds in a row, and a 🟡 notice when it works again. One-off failures only go to the journal. An entry that fails to post 5 times is given up on and reported.
 
-**Backups:** every night at 04:00 America/Chicago (`server.yaml` → `ops`), the bot snapshots `data/filmbuffs.db` into `backups/filmbuffs-<UTC time>.db` with SQLite's online backup API, checks it, and deletes backups older than 14 days (the newest is always kept). If the newest backup is over a day old when the bot starts, it makes one right away. Each backup is a complete, ordinary SQLite file.
+**Backups:** every night at 04:00 America/Chicago (`server.yaml` → `ops`), the bot snapshots `data/filmbuffs.db` into `backups/filmbuffs-<UTC time>.db` with SQLite's online backup API, checks it, and keeps only the newest 3 (`ops.backup_keep`). If the newest backup is over a day old when the bot starts, it makes one right away. Each backup is a complete, ordinary SQLite file.
 
 ```bash
 ls -lh backups/                                              # what's there

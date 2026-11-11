@@ -49,8 +49,9 @@ Deployed 2026-11-11. Live-tested from a script on a throwaway post (since delete
 - Migration 2: `spoiler_thread_id`, `spoiler_starter_message_id`, `card_version`; it clears the old spoiler-line columns and the `spoilers` flag (Parasite). On startup the bot refreshes old info cards once (adds the button, drops the "Spoiler line" field, retags).
 - The bot no longer requests the Message Content intent.
 
-## Phase 4: Letterboxd integration ✅ (deployed, awaiting owner test)
-Deployed 2026-11-11. 39 unit tests pass. Not yet exercised end-to-end with a real linked account (no one is linked yet).
+## Phase 4: Letterboxd integration ✅ (live)
+Deployed 2026-11-11. 39 unit tests pass. The owner's account (wokewatcher29) is linked and polling cleanly. The 49 entries in the feed at link time are tied to the backfilled export entries (state `imported`); only Butterfly (2026 review) stays `baseline`, because the export's Butterfly (2024) was ambiguous on TMDB.
+- Owner checks (2026-11-11): editing an old entry doesn't move it back to the top of the feed, so edits are never seen by the poller (the export sync in ROADMAP Phase 8 handles them). Two reviews of the same film are two diary entries and both land in the same post-watch discussion (e.g. Everything Everywhere All at Once: 2.5★ in 2022, 4★ rewatch in 2026). That is intended.
 
 - `/letterboxd username:<name>` links an account (accepts `name`, `@name` or a profile/feed URL; checks the RSS feed exists). With no argument it shows the linked account and the last poll error, if any. `/letterboxd-unlink` stops posting. One Letterboxd account per member; entries stay in the DB after unlinking.
 - On link, everything already in the feed is stored as `baseline` and never posted (history comes from the Phase 6 backfill).
@@ -64,7 +65,7 @@ Deployed 2026-11-11. 39 unit tests pass. Not yet exercised end-to-end with a rea
 - Migration 3: `letterboxd_links` and `letterboxd_entries` (full detail: rating, liked, rewatch, review, dates, URLs, the three Discord message IDs, state). Each message ID is saved as it's sent, so a failure resumes without duplicates; after 5 failed attempts an entry is marked `failed`. Entries for members who left the server are `skipped`.
 - `#letterboxd-feed` topic updated via `server.yaml` (applied; `--plan` clean). User-Agent is now `FilmBuffsBot/0.4`.
 
-## Phase 6: Letterboxd backfill script ✅ (built, awaiting a real export)
+## Phase 6: Letterboxd backfill script ✅ (applied 2026-11-11)
 Built 2026-11-11, ahead of Phase 5 at the owner's request. 52 unit tests pass. Dry-run tested against live TMDB with a synthetic export; `--apply` was tested with fakes plus a read-only Discord connection check. The CSV format is confirmed by a dry run on the owner's real export (below); `--apply` hasn't been run yet.
 
 ```
@@ -84,6 +85,7 @@ uv run backfill.py data/imports/<export>.zip --apply      # asks to confirm
   - TV series (WandaVision, Chernobyl, …) are reported as "TV series (not supported)".
 - The dry run prints how each film matched, writes `data/backfill_matches-<username>.csv` (every non-exact match with TMDB title, year and director, for a quick check) and `data/backfill_unmatched-<username>.csv` (top candidates as `ID · Title (Year) · Director · votes`). Fill in `tmdb_id` (an ID or TMDB URL) and re-run with `--overrides`. Hits are cached in `tmdb_title_matches`.
 - The summary names the member by Discord display name and handle (looked up over the REST API, no gateway).
+- **Applied (owner's export, 2026-11-11):** all 451 `#movies` posts exist (359 Watched (solo), 91 Backlog, plus 1 from `/addmovie`), 415 export entries stored as `imported`, 104 reviews in post-watch discussions, 93 watchlist films seeded. The 8 unmatched titles (TV + Butterfly) are stored as `unmatched`.
 - **First real dry run (owner's export, wokewatcher29, 2026-11-11):** 451 of 459 films matched (422 exact, 23 by votes, 3 ±1 year, 3 title variants). Unmatched: 6 TV series, 1 TV episode, Butterfly (2024) (ambiguous). 451 posts to create (360 Watched (solo), 91 Backlog), 105 reviews (103 new spoiler posts), ~26 min. Not applied yet.
 - `--apply`: stores every row in `letterboxd_entries` (source `backfill`, state `imported` or `unmatched`). Diary rows matching an RSS entry (same film + watched date) are linked to it (`export_uri`) instead of stored twice. Creates missing `#movies` posts: Watched (solo) for watched films, Backlog for watchlist films. Existing posts are never retagged. Reviews go into spoiler discussions with an "imported from Letterboxd history" footer, skipping any already posted there. **Nothing is posted in `#movies` or `#letterboxd-feed`.**
 - Resumable: stopping and re-running skips finished work. The dry run after an apply should show nothing left to do.
@@ -99,9 +101,9 @@ Owner request, done before running the backfill so its new posts get the new tit
 - Checked live: Parasite shows Backlog + genres, the reminder field and new button; its post-watch post was renamed.
 
 ## Phase 7: ops & docs ✅ (live 2026-11-11)
-Deployed 2026-11-11: clean restart, startup notice seen in `#bot-logs`, first backups written (the latest after the backfill, with all 451 movies). `/admin` not yet tried by the owner. 68 unit tests pass (`uv run pytest -q`). Bot version 0.5 (`FilmBuffsBot/0.5` User-Agent). No schema change.
+Deployed 2026-11-11: clean restart, startup notice seen in `#bot-logs`, first backups written (the latest after the backfill, with all 451 movies). `/admin pick` used by the owner (see Phase 5). 68 unit tests pass (`uv run pytest -q`). Bot version 0.5 (`FilmBuffsBot/0.5` User-Agent). No schema change.
 
-- **Nightly backup** (`filmbuffs/backup.py`, `filmbuffs/cogs/ops.py`): a `discord.ext.tasks` loop at 04:00 America/Chicago (`server.yaml` → `ops.backup_time`) copies `data/filmbuffs.db` to `backups/filmbuffs-<UTC>Z.db` with SQLite's online backup API (consistent even while the bot or backfill writes), switches the copy to a single-file journal, runs `PRAGMA quick_check`, then renames it into place. Backups older than 14 days (`ops.backup_keep_days`) are deleted; the newest is always kept. If the newest backup is over 24 h old at startup, one runs immediately (so the first deploy makes one).
+- **Nightly backup** (`filmbuffs/backup.py`, `filmbuffs/cogs/ops.py`): a `discord.ext.tasks` loop at 04:00 America/Chicago (`server.yaml` → `ops.backup_time`) copies `data/filmbuffs.db` to `backups/filmbuffs-<UTC>Z.db` with SQLite's online backup API (consistent even while the bot or backfill writes), switches the copy to a single-file journal, runs `PRAGMA quick_check`, then renames it into place. Only the newest 3 backups are kept (`ops.backup_keep`, changed from 14 days on 2026-11-11 to save disk; each is ~0.5 MB); at least one is always kept. If the newest backup is over 24 h old at startup, one runs immediately (so the first deploy makes one).
   - **Why in the bot, not a systemd timer:** no extra unit for the owner to install with sudo, it already runs inside the service's sandbox (write access to `data/` and `backups/` only), and a failed backup reaches `#bot-logs` through the same handler. The trade-off (no backup while the bot is down) is covered by the startup catch-up.
 - **`#bot-logs`** (`filmbuffs/botlogs.py`): a root logging handler posts ERROR+ records (and anything logged with `extra={"botlogs": True}`) with the tail of the traceback, Chicago time. Throttle: the same error (logger + message template + exception type) at most once an hour, with a "repeated N×" note; at most 5 messages per 10 minutes, the rest counted in the next message. The handler never posts its own failures. Startup notice on first `on_ready`: version, git commit, schema, last backup.
   - Covered: app command errors (now with command, user and channel), unhandled errors in events, views and task loops (discord.py logs them at ERROR), backup failures, and the Letterboxd poller.
@@ -112,7 +114,8 @@ Deployed 2026-11-11: clean restart, startup notice seen in `#bot-logs`, first ba
   - `/admin letterboxd-unlink member:` unlinks a member's account (entries stay).
 - README has an admin cheat sheet (commands, what lands in `#bot-logs`, backups and how to restore). The README command table was also brought up to date.
 
-## Phase 5: weekly pick, votes, watchlists ✅ (deployed 2026-11-11, awaiting owner test)
+## Phase 5: weekly pick, votes, watchlists ✅ (live, owner-tested 2026-11-11)
+Owner tested `/nominate`, `/schedule`, `/top` and the pinned leaderboard. `/admin pick` used for real: **Wildwood (2026)** is this week's movie (week of Nov 9; Up Next, event created, both posts pinned).
 Bot version 0.6.1, schema 7. 90 unit tests pass. Design and owner decisions are in ROADMAP.md (Phase 5).
 
 - **Rename:** `#pre-watch-discussion` → **`#movies`** via `server.yaml` (applied; `--plan` clean). Bot wording says "#movies post" / "spoiler-free post". The 105 post-watch starters were rewritten once to link back to "#movies" (tracked by `bot_meta.post_watch_starter_version`). `#watch-planning` topic and the welcome message describe the weekly pick and `/watchlist`.
@@ -134,5 +137,5 @@ Bot version 0.6.1, schema 7. 90 unit tests pass. Design and owner decisions are 
 - uv 0.12 manages the environment (2026-11-11): `pyproject.toml` + `uv.lock` replaced `requirements*.txt`; `.python-version` is 3.14. The systemd unit still runs `.venv/bin/python` (uv builds that venv), so no service change was needed.
 
 ## Known state / cleanup
-- The old webhook "Film Buffs reposts" on `#movies` is unused now. It's harmless; delete it in Server Settings → Integrations → Webhooks if you like (the bot won't delete it without asking).
+- Webhooks: only "Film Buffs spoiler moves" on `#post-watch-discussion` remains (used by Mark as spoiler). The unused "Film Buffs reposts" on `#movies` (original Phase 3) was deleted at the owner's request on 2026-11-11. Server Settings → Integrations → Webhooks shows 0 because Discord's server-wide list leaves out webhooks on forum channels; the API lists them.
 - `data/filmbuffs.db` holds the setup-script state (key → Discord ID) as well as movies; losing it means `setup_server.py` would no longer recognize the channels it manages. It is backed up nightly to `backups/` (Phase 7), but only on this machine; copy `backups/` elsewhere now and then for an off-machine copy.
