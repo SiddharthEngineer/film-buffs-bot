@@ -17,10 +17,11 @@ MOVIES, SPOILERS = 100, 200
 # ------------------------------------------------------------------ pure helpers
 
 def test_post_name_and_starter():
-    assert spoiler_post_name("Parasite (2019)") == "Parasite (2019) — Spoilers"
+    assert spoiler_post_name("Parasite (2019)") == "Parasite (2019) — Post-watch"
     assert len(spoiler_post_name("x" * 300)) <= 100
     text = starter_text("Parasite (2019)", "https://discord.com/channels/1/2")
-    assert "Spoilers for Parasite (2019)" in text and "https://discord.com/channels/1/2" in text
+    assert "Post-watch discussion for Parasite (2019)" in text and "Spoilers allowed" in text
+    assert "https://discord.com/channels/1/2" in text
 
 
 def test_move_messages_short():
@@ -196,8 +197,8 @@ def test_concurrent_opens_create_one_post(tmp_path):
     assert len({t.id for t, _ in results}) == 1
     assert [c for _, c in results].count(True) == 1
     assert row["spoiler_thread_id"] == results[0][0].id
-    assert "spoilers" in json.loads(row["flags"])
-    assert svc.bot.movies.cards == [496243] and svc.bot.movies.retags == [496243]
+    assert "spoilers" not in json.loads(row["flags"])     # the Post-watch tag is retired
+    assert svc.bot.movies.cards == [496243]
 
 
 def test_deleted_spoiler_post_is_recreated(tmp_path):
@@ -273,7 +274,7 @@ def test_move_sends_as_author_then_deletes(tmp_path):
     m = svc.wh.sent[0]
     lines = m.content.split("\n")
     assert lines[0] == "-# ↪ replying to Alex: https://discord.com/channels/1/555/40"
-    assert lines[1] == "-# moved from the spoiler-free post by <@7>"
+    assert lines[1] == "-# moved from the pre-watch discussion by <@7>"
     assert lines[2] == "the dad did it"
     assert m.files == ["file:a.png"]
     assert m.kw["username"] == "Sam" and m.kw["avatar_url"] == "https://a/sam.png"

@@ -1,6 +1,6 @@
-"""The button row under a movie's info card in #movies.
+"""The button row under a movie's info card in #pre-watch-discussion.
 
-Before a spoiler discussion exists, the card has a persistent "Spoiler
+Before a post-watch discussion exists, the card has a persistent "Post-watch
 discussion" button (custom_id `spoilers:<tmdb_id>`, so it keeps working after
 restarts). Once the discussion exists, the card gets a plain link button.
 """
@@ -14,8 +14,8 @@ import discord
 log = logging.getLogger(__name__)
 
 # Bump when the card layout changes; old cards are refreshed once at startup.
-CARD_VERSION = 1
-SPOILER_BUTTON_LABEL = "Spoiler discussion"
+CARD_VERSION = 2   # 2: "Post-watch discussion" label + no-spoilers reminder
+SPOILER_BUTTON_LABEL = "Post-watch discussion"
 SPOILER_BUTTON_EMOJI = "🔓"
 
 
@@ -42,7 +42,7 @@ class SpoilerButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spoile
             return
         verb = "Opened" if created else "Here's"
         await interaction.followup.send(
-            f"{verb} the spoiler discussion → {thread.jump_url}\n"
+            f"{verb} the post-watch discussion → {thread.jump_url}\n"
             "-# ⚠️ Everything there may spoil the film.", ephemeral=True)
 
 

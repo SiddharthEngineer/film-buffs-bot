@@ -19,11 +19,25 @@ def test_backlog_gets_up_to_max_genres():
 
 def test_flags_take_priority_over_genres_and_cap_is_five():
     genres = ["g_action", "g_drama", "g_scifi", "g_thriller"]
-    keys = compose_tag_keys("watched", {"spoilers", "streaming", "in_theaters"}, genres)
-    assert keys == ["watched", "spoilers", "in_theaters", "streaming", "g_action"]
+    keys = compose_tag_keys("watched", {"streaming", "in_theaters"}, genres)
+    assert keys == ["watched", "in_theaters", "streaming", "g_action", "g_drama"]
+    # The retired Post-watch flag never becomes a tag, even if an old row has it.
+    assert "spoilers" not in compose_tag_keys("backlog", {"spoilers"}, genres)
     assert len(keys) <= MAX_APPLIED_TAGS
 
 
 def test_unknown_status_rejected():
     with pytest.raises(ValueError):
         compose_tag_keys("bogus", [], [])
+
+
+def test_card_reminder_is_last_and_replaces_old_fields():
+    import discord
+    from filmbuffs.movies import LEGACY_SPOILER_FIELD, REMINDER_NAME, set_reminder
+    e = discord.Embed(title="x")
+    e.add_field(name=LEGACY_SPOILER_FIELD, value="old")
+    e.add_field(name="Pitch", value="p")
+    e.add_field(name=REMINDER_NAME, value="older text")
+    set_reminder(set_reminder(e))
+    assert [f.name for f in e.fields] == ["Pitch", REMINDER_NAME]
+    assert "Post-watch discussion" in e.fields[-1].value

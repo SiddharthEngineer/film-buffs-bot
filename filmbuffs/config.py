@@ -12,7 +12,7 @@ from .state import DB_PATH, ROOT, State
 
 # Status tags the bot sets. Exactly one of STATUS_TAGS is on a post at a time.
 STATUS_TAGS = ("backlog", "up_next", "watched", "watched_solo")
-FLAG_TAGS = ("spoilers", "in_theaters", "streaming")
+FLAG_TAGS = ("in_theaters", "streaming")
 
 
 @dataclass
@@ -51,9 +51,9 @@ class Config:
                 if ch["key"] == "movies":
                     forum_spec = ch
         if "movies" not in self.channels or forum_spec is None:
-            raise RuntimeError("The #movies forum is not set up. Run setup_server.py --apply first.")
+            raise RuntimeError("The #pre-watch-discussion forum (key: movies) is not set up. Run setup_server.py --apply first.")
         if "movie_spoilers" not in self.channels:
-            raise RuntimeError("The #movie-spoilers forum is not set up. Run setup_server.py --apply first.")
+            raise RuntimeError("The #post-watch-discussion forum (key: movie_spoilers) is not set up. Run setup_server.py --apply first.")
 
         self.tags: dict[str, TagDef] = {}
         for t in forum_spec.get("tags", []):

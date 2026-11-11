@@ -10,10 +10,10 @@ What it does (with --apply):
   • Stores every diary entry, review, watched film and watchlist film in the
     database (for stats), linking rows the RSS poller already saw so nothing is
     stored or posted twice.
-  • Creates missing #movies posts: watched films as Watched (solo), watchlist
+  • Creates missing #pre-watch-discussion posts: watched films as Watched (solo), watchlist
     films as Backlog. Existing posts are never retagged.
-  • Posts each review in the movie's spoiler discussion (created if needed),
-    unless that review is already there. Nothing is posted in #movies or
+  • Posts each review in the movie's post-watch discussion (created if needed),
+    unless that review is already there. Nothing is posted in #pre-watch-discussion or
     #letterboxd-feed, so history doesn't flood the channels.
 
 Dry run is the default: it resolves titles on TMDB, prints the numbers, and
@@ -131,12 +131,12 @@ def print_plan(plan: Plan, export, filters: Filters, unmatched_path: Path | None
           f"{plan.linked_to_rss} linked to entries the RSS poller saw")
     print("\nDiscord" + (" (nothing: --store-only)" if filters.store_only else ""))
     by_status = plan.posts_by_status()
-    print(f"  #movies posts to create: {len(plan.new_posts)}"
+    print(f"  #pre-watch-discussion posts to create: {len(plan.new_posts)}"
           + (f" ({', '.join(f'{STATUS_NAMES[k]} {v}' for k, v in by_status.items())})"
              if by_status else ""))
-    print(f"  Existing #movies posts (left as they are): {len(plan.existing_posts)}")
-    print(f"  Reviews to post in spoiler discussions: {len(plan.reviews)} "
-          f"({len(plan.new_spoiler_posts)} new spoiler posts); "
+    print(f"  Existing #pre-watch-discussion posts (left as they are): {len(plan.existing_posts)}")
+    print(f"  Reviews to post in post-watch discussions: {len(plan.reviews)} "
+          f"({len(plan.new_spoiler_posts)} new post-watch posts); "
           f"{plan.reviews_already} already posted")
     if plan.filtered:
         print(f"  Rows not acted on (filters or no TMDB match): {plan.filtered}")
@@ -187,7 +187,7 @@ async def apply_plan(client: BackfillClient, plan: Plan) -> int:
             export_uri=row.uri, logged_date=row.logged_date))
     print(f"Stored {stored} rows, linked {linked} RSS entries.")
 
-    # 2. Missing #movies posts, oldest first.
+    # 2. Missing #pre-watch-discussion posts, oldest first.
     todo = sorted(plan.new_posts.items(), key=lambda kv: kv[1][1])
     for n, (tid, (status, _)) in enumerate(todo, 1):
         movie = await client.tmdb.movie(tid)

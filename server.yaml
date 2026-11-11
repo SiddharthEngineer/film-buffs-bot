@@ -68,14 +68,14 @@ categories:
     name: "🎬 Movies"
     channels:
       - key: movies
-        name: movies
+        name: pre-watch-discussion
         type: forum
         default_sort: latest_activity
         topic: |
-          One post per movie. Posts are created by the bot. Use /addmovie in any channel to add a film (pick it from the autocomplete list).
-          👍 the first message of a post to vote for it in the weekly pick.
-          Posts here are always spoiler-free. Every movie has a separate spoiler discussion in #movie-spoilers: click 🔓 Spoiler discussion on the movie's info card (or run /spoiler inside the post) to open it.
-          Slipped up? Right-click (long-press on mobile) a message → Apps → Mark as spoiler moves it to the spoiler discussion. Nothing else in the post moves.
+          🚫 NO SPOILERS in this channel. Talk about trailers, hype and first impressions only.
+          One post per movie, created by the bot. Use /addmovie in any channel to add a film (pick it from the autocomplete list). 👍 the first message of a post to vote for it in the weekly pick.
+          Seen it? Every movie has a post-watch discussion in #post-watch-discussion where spoilers are allowed: click 🔓 Post-watch discussion on the movie's info card (or run /spoiler inside the post).
+          Slipped up? Right-click (long-press on mobile) a message → Apps → Mark as spoiler moves it to the post-watch discussion. Nothing else in the post moves.
         overwrites:
           "@everyone":
             allow: [send_messages_in_threads]
@@ -88,8 +88,6 @@ categories:
           - {key: up_next,     name: "Up Next",        emoji: "⏭️", moderated: true}
           - {key: watched,     name: "Watched",        emoji: "✅", moderated: true}
           - {key: watched_solo, name: "Watched (solo)", emoji: "👤", moderated: true}
-          # "spoilers" = this movie has a spoiler discussion in #movie-spoilers (key kept so the ID survives).
-          - {key: spoilers,    name: "Post-watch",     emoji: "🍿", moderated: true}
           - {key: in_theaters, name: "In Theaters",    emoji: "🎟️", moderated: true}
           - {key: streaming,   name: "Streaming",      emoji: "📺", moderated: true}
           # Genre tags. tmdb_genres = TMDB genre names that map to this tag.
@@ -105,14 +103,17 @@ categories:
           - {key: g_romance,   name: "Romance",     tmdb_genres: [Romance, Music]}
           - {key: g_scifi,     name: "Sci-Fi",      tmdb_genres: [Science Fiction]}
           - {key: g_thriller,  name: "Thriller",    tmdb_genres: [Thriller]}
-          # 19 of Discord's 20-tag limit used.
+          # 18 of Discord's 20-tag limit used.
+        retire_tags:
+          # Was "this movie has a post-watch discussion"; the info card button shows that.
+          - {key: spoilers, name: "Post-watch"}
       - key: movie_spoilers
-        name: movie-spoilers
+        name: post-watch-discussion
         type: forum
         default_sort: latest_activity
         topic: |
-          Spoilers allowed, no warnings needed. One post per movie, created by the bot when someone first opens a movie's spoiler discussion.
-          Each post links back to the movie's spoiler-free post in #movies. Vote with 👍 there, not here.
+          ⚠️ SPOILERS ALLOWED. Only open a movie's post once you've seen it.
+          One post per movie, created by the bot when someone first opens a movie's post-watch discussion. Each post links back to the movie's spoiler-free post in #pre-watch-discussion. Vote with 👍 there, not here.
         overwrites:
           "@everyone":
             allow: [send_messages_in_threads]
@@ -132,7 +133,7 @@ categories:
         preset: read_only
       - key: letterboxd_feed
         name: letterboxd-feed
-        topic: "New Letterboxd diary entries from linked members. Ratings and reviews are in each movie's spoiler discussion."
+        topic: "New Letterboxd diary entries from linked members. Ratings and reviews are in each movie's post-watch discussion."
         preset: read_only
 
   - key: voice
@@ -169,13 +170,13 @@ messages:
       • Winners are logged in {#watch-log}. Watch-week dates show up as server events.
 
       **Spoiler policy**
-      • {#movies} is always spoiler-free. Talk about trailers, hype and first impressions there.
-      • Every movie has its own spoiler discussion in {#movie_spoilers}. Click **🔓 Spoiler discussion** on a movie's info card, or run **/spoiler** inside its post. Posts with a spoiler discussion get the 🍿 Post-watch tag.
-      • Someone slipped? Right-click (long-press on mobile) their message → **Apps → Mark as spoiler**. The bot moves it to the spoiler discussion; nothing else in the post moves.
+      • {#movies} is spoiler-free: trailers, hype and first impressions only.
+      • Seen it? Every movie has its own post in {#movie_spoilers}, where spoilers are allowed. Click **🔓 Post-watch discussion** on a movie's info card, or run **/spoiler** inside its post.
+      • Someone slipped? Right-click (long-press on mobile) their message → **Apps → Mark as spoiler**. The bot moves it to the post-watch discussion; nothing else in the post moves.
       • Outside movie posts, always use `||spoiler bars||`.
 
       **Letterboxd**
-      • Run **/letterboxd** with your username to link your account. New diary entries show up in {#letterboxd-feed} and the movie's post; ratings and reviews go in its spoiler discussion. **/letterboxd-unlink** to stop.
+      • Run **/letterboxd** with your username to link your account. New diary entries show up in {#letterboxd-feed} and the movie's post; ratings and reviews go in its post-watch discussion. **/letterboxd-unlink** to stop.
 
       **Be nice.** Disagree about movies, not about people.
     color: 0xE5A00D

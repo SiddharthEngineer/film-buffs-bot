@@ -1,5 +1,7 @@
 # Status (as of 2026-11-11)
 
+> **Channel names (2026-11-11):** `#movies` is now **`#pre-watch-discussion`** and `#movie-spoilers` is **`#post-watch-discussion`** (keys `movies` / `movie_spoilers` unchanged). Older sections below use the old names.
+
 ## Done and live
 
 ### Phase 0: connection ✅
@@ -34,7 +36,7 @@ Built by `setup_server.py --apply` from `server.yaml`; a fresh `--plan` reports 
 ### Ops already in place
 - systemd unit `film-buffs-bot` (enabled, `Restart=on-failure`, runs as `dev`, `ProtectSystem=strict` with write access only to `data/` and `backups/`).
 - Commands are synced to the guild only (instant updates).
-- 52 unit tests passing (`uv run pytest -q`).
+- 53 unit tests passing (`uv run pytest -q`).
 
 ## Phase 3R: spoiler companion posts ✅ (live, owner-tested)
 Code and tests are done (25 tests pass). The old spoiler line is retired: its cog was switched off first, and `filmbuffs/spoilers.py` + `filmbuffs/cogs/spoilers.py` were rewritten.
@@ -87,6 +89,14 @@ uv run backfill.py data/imports/<export>.zip --apply      # asks to confirm
 - Resumable: stopping and re-running skips finished work. The dry run after an apply should show nothing left to do.
 - Runs as a short second connection next to the live bot (like `setup_server.py`). There's a tiny race if someone clicks a movie's spoiler button at the very moment the backfill creates that film's spoiler post.
 - Migration 4: `export_uri`, `logged_date` on entries; `tmdb_title_matches`.
+
+## Pre-/post-watch rename ✅ (live, 2026-11-11)
+Owner request, done before running the backfill so its new posts get the new titles.
+- Forums renamed via `server.yaml`: `#pre-watch-discussion` (key `movies`) and `#post-watch-discussion` (key `movie_spoilers`). New guidelines: pre-watch opens with "🚫 NO SPOILERS in this channel"; post-watch with "⚠️ SPOILERS ALLOWED". Welcome message and `#letterboxd-feed` topic reworded.
+- The **🍿 Post-watch tag is retired** (removed from the forum and every post; the info card button already shows whether a post-watch discussion exists). `setup_server.py` gained `retire_tags:` (per forum, `{key, name}`, name must match) to do this. 18 of 20 tags used. Migration 5 drops the old `spoilers` flag from movie rows.
+- Info cards (CARD_VERSION 2): button reads **🔓 Post-watch discussion**, and a last field "🚫 No spoilers in this post" reminds members where spoilers go. Existing cards and post-watch posts were refreshed at startup.
+- Post-watch posts are titled `Title (Year) — Post-watch`; the starter says "Post-watch discussion for … Spoilers allowed" with a link back. All bot wording (/spoiler, Mark as spoiler, Letterboxd notes, backfill output) says pre-/post-watch discussion. Internal names (`spoiler_*` columns, `spoilers:<id>` button IDs) are unchanged so existing buttons keep working.
+- Checked live: Parasite shows Backlog + genres, the reminder field and new button; its post-watch post was renamed.
 
 ## Tooling
 - uv 0.12 manages the environment (2026-11-11): `pyproject.toml` + `uv.lock` replaced `requirements*.txt`; `.python-version` is 3.14. The systemd unit still runs `.venv/bin/python` (uv builds that venv), so no service change was needed.

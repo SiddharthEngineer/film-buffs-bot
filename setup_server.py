@@ -369,6 +369,19 @@ class Reconciler:
         final: list[discord.ForumTag] = []
         details: list[str] = []
         need_record = False
+        # retire_tags: [{key, name}] removes a tag the bot used to manage. The name
+        # must still match, as a guard against removing the wrong one.
+        declared = {t["key"] for t in ch.get("tags", [])}
+        retiring: dict[int, dict] = {}
+        for r in ch.get("retire_tags", []):
+            if r.get("key") in declared:
+                raise ConfigError(f"#{obj.name}: tag {r.get('key')!r} is both declared and retired")
+            tid = self.state.get(f"tag:{ch['key']}:{r.get('key')}")
+            if tid in current:
+                if current[tid].name != r.get("name"):
+                    raise ConfigError(f"#{obj.name}: retired tag {r.get('key')!r} is named "
+                                      f"{current[tid].name!r}, not {r.get('name')!r}; check it")
+                retiring[tid] = r
         for t in ch.get("tags", []):
             tkey = f"tag:{ch['key']}:{t['key']}"
             existing = current.get(self.state.get(tkey) or 0)
@@ -398,7 +411,9 @@ class Reconciler:
                                f"{' (moderated)' if t.get('moderated') else ''}")
             final.append(new)
         for x in obj.available_tags:
-            if x.id not in used:
+            if x.id in retiring:
+                details.append(f"- tag {x.name} (retire_tags; it comes off every post)")
+            elif x.id not in used:
                 final.append(x)
                 self.notes.append(f"#{obj.name}: tag {x.name!r} is unmanaged; left alone")
         if len(final) > 20:

@@ -1,9 +1,9 @@
 """Letterboxd: linked accounts, RSS polling, and posting new diary entries.
 
 Each new entry produces three messages, in this order:
-  1. #movie-spoilers post: an embed with rating, ♥, rewatch, watched date, review.
-  2. #movies post: a neutral one-liner ("X logged this") linking to (1). No rating.
-  3. #letterboxd-feed: one line linking the #movies post. No rating, no review.
+  1. #post-watch-discussion post: an embed with rating, ♥, rewatch, watched date, review.
+  2. #pre-watch-discussion post: a neutral one-liner ("X logged this") linking to (1). No rating.
+  3. #letterboxd-feed: one line linking the #pre-watch-discussion post. No rating, no review.
 Every entry is stored before anything is posted, and each message ID is saved as
 soon as it is sent, so a crash or Discord error resumes without duplicates.
 """
@@ -256,7 +256,7 @@ def movies_note(user_id: int, spoiler_url: str, has_rating: bool, has_review: bo
     else:
         what = "Their diary entry is"
     return (f"📓 <@{user_id}> logged this on Letterboxd. "
-            f"{what} in the spoiler discussion → {spoiler_url}")
+            f"{what} in the post-watch discussion → {spoiler_url}")
 
 
 def feed_line(user_id: int, display: str, movies_url: str) -> str:

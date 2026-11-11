@@ -6,7 +6,7 @@ Phases 0–2, 3R, 4 and 6 are done (see [STATUS.md](STATUS.md)). Phase 6 was bui
 
 ## Guiding decisions (agreed with the owner)
 
-1. **`#movies` is always spoiler-free.** Spoilers live in a companion post per movie in a new `#movie-spoilers` forum. No in-post spoiler line, no dividers.
+1. **The pre-watch forum is always spoiler-free.** Spoilers live in a companion post per movie in the post-watch forum. No in-post spoiler line, no dividers. (Renamed 2026-11-11: `#movies` → `#pre-watch-discussion`, `#movie-spoilers` → `#post-watch-discussion`; the 🍿 Post-watch tag was retired. Phase notes below keep the old names.)
 2. **Never reorder messages inside a post.** No repost-at-the-bottom tricks.
 3. **Star ratings are spoilers.** So are liked ♥, rewatch flags and review text. The spoiler-free side may only say *that* someone logged a film ("Siddharth logged this on Letterboxd"), never how they rated it.
 4. **Letterboxd is the source of truth for who watched what.** Nobody logs watches in Discord; the bot pulls from Letterboxd.
@@ -94,7 +94,7 @@ Standalone `backfill.py`, run by hand.
 - In Theaters / Streaming tags: the original spec listed them but gave no rule. Option: set them from TMDB release dates and US watch providers. **Ask the owner** before building.
 
 ## Open questions for the owner
-Answered 2026-11-11: the tag is 🍿 Post-watch; Mark as spoiler moves the message; a solo Letterboxd log keeps an existing post's tags.
+Answered 2026-11-11: Mark as spoiler moves the message; a solo Letterboxd log keeps an existing post's tags; channels renamed to pre-/post-watch discussion and the Post-watch tag retired.
 
 1. Phase 5: domain/port/reverse proxy for the `.ics` feed.
 2. In Theaters / Streaming: automate from TMDB, or leave manual/unused?

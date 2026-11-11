@@ -103,6 +103,13 @@ MIGRATIONS = [
         resolved_at  TEXT NOT NULL
     );
     """,
+    # Channels renamed to pre-/post-watch discussion; the "Post-watch" tag (flag
+    # `spoilers`) is retired, so drop the flag. spoiler_thread_id still says
+    # whether a post-watch discussion exists.
+    """
+    UPDATE movies SET flags = (SELECT json_group_array(value) FROM json_each(movies.flags)
+                               WHERE value != 'spoilers');
+    """,
 ]
 
 

@@ -92,7 +92,7 @@ class Letterboxd(commands.Cog):
         await interaction.followup.send(
             f"✅ Linked to **{name}**. From now on, new diary entries show up in "
             f"{self._feed_mention()} and the movie's post (ratings and reviews go in its "
-            "spoiler discussion). Entries you logged before now aren't posted.\n"
+            "post-watch discussion). Entries you logged before now aren't posted.\n"
             f"-# Checked about every {self.bot.config.lb_poll_minutes:g} minutes. "
             "`/letterboxd-unlink` to stop.", ephemeral=True)
 

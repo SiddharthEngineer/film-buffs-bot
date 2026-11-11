@@ -1,15 +1,18 @@
-"""Spoiler discussions: one companion post per movie in #movie-spoilers.
+"""Post-watch discussions: one companion post per movie in #post-watch-discussion.
 
-#movies posts stay spoiler-free. A movie's spoiler post is created lazily (the
-info card button, /spoiler, or Mark as spoiler) and never more than once.
-"Mark as spoiler" moves a message out of a #movies post into the spoiler post:
-it is re-sent there via webhook as its author, then the original is deleted.
-Nothing is ever reposted in #movies, so the order there never changes.
+#pre-watch-discussion posts stay spoiler-free. A movie's post-watch post is
+created lazily (the info card button, /spoiler, Mark as spoiler, or a Letterboxd
+entry) and never more than once. "Mark as spoiler" moves a message out of a
+pre-watch post into the post-watch post: it is re-sent there via webhook as its
+author, then the original is deleted. Nothing is ever reposted in the pre-watch
+post, so the order there never changes.
+
+Internal names (channel key movie_spoilers, "spoiler post", spoilers:<id>
+custom_ids) predate the rename and are kept so existing IDs keep working.
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 from collections import defaultdict
@@ -30,18 +33,18 @@ MESSAGE_LIMIT = 2000
 DEFAULT_FILE_LIMIT = 20 * 1024 * 1024
 REQUEST_LIMIT = 25 * 1024 * 1024
 MAX_FILES = 10
-SPOILER_FLAG = "spoilers"   # tag key; shown as "🍿 Post-watch"
 
 
 # ------------------------------------------------------------------ pure logic
 
 def spoiler_post_name(display: str) -> str:
-    return truncate(f"{display} — Spoilers", 100)
+    return truncate(f"{display} — Post-watch", 100)
 
 
 def starter_text(display: str, movies_url: str) -> str:
-    return (f"⚠️ **Spoilers for {display}.** Everything here may spoil the film.\n"
-            f"← Back to the spoiler-free post: {movies_url}")
+    return (f"⚠️ **Post-watch discussion for {display}. Spoilers allowed.** "
+            f"Everything here may spoil the film, so only read on once you've seen it.\n"
+            f"← Back to the spoiler-free pre-watch discussion: {movies_url}")
 
 
 def split_text(text: str, first_room: int, room: int = MESSAGE_LIMIT) -> list[str]:
@@ -119,7 +122,7 @@ class SpoilerService:
     def forum(self) -> discord.ForumChannel:
         ch = self.bot.get_channel(self.bot.config.channels["movie_spoilers"])
         if not isinstance(ch, discord.ForumChannel):
-            raise RuntimeError("#movie-spoilers forum not found")
+            raise RuntimeError("#post-watch-discussion forum not found")
         return ch
 
     # lookups -----------------------------------------------------------------
@@ -157,7 +160,7 @@ class SpoilerService:
     async def open(self, tmdb_id: int) -> tuple[discord.Thread, bool]:
         """Return (spoiler post, created). Creates it at most once per movie.
 
-        Raises LookupError if the movie (or its #movies post) no longer exists.
+        Raises LookupError if the movie (or its #pre-watch-discussion post) no longer exists.
         """
         async with self._open_locks[tmdb_id]:
             movies_post = await self.bot.movies.find_post(tmdb_id)
@@ -171,13 +174,9 @@ class SpoilerService:
             display = display_of(row)
             thread, starter = await self._create_post(display, movies_post.jump_url)
             await self.bot.db.set_spoiler_post(tmdb_id, thread.id, starter.id)
-            flags = set(json.loads(row["flags"]))
-            if SPOILER_FLAG not in flags:
-                flags.add(SPOILER_FLAG)
-                await self.bot.db.set_flags(tmdb_id, list(flags))
             log.info("Created spoiler post %s for TMDB %s (%s)", thread.id, tmdb_id, display)
-            # Cosmetic follow-ups: the post exists and is recorded even if these fail.
-            for step in (self.bot.movies.update_card, self.bot.movies.retag):
+            # Cosmetic follow-up: the post exists and is recorded even if this fails.
+            for step in (self.bot.movies.update_card,):
                 try:
                     await step(tmdb_id)
                 except discord.HTTPException:
@@ -185,15 +184,34 @@ class SpoilerService:
                                   step.__name__, tmdb_id)
             return thread, True
 
+    async def refresh_post(self, row) -> None:
+        """Bring an existing post-watch post's title and first message up to date."""
+        thread = await self.find_spoiler_post(row)
+        movies_post = await self.bot.movies.find_post(row["tmdb_id"])
+        if thread is None or movies_post is None:
+            return
+        display = display_of(row)
+        name = spoiler_post_name(display)
+        if thread.name != name:
+            await thread.edit(name=name, archived=False, reason="Post-watch rename")
+        if row["spoiler_starter_message_id"]:
+            text = starter_text(display, movies_post.jump_url)
+            try:
+                starter = await thread.fetch_message(row["spoiler_starter_message_id"])
+            except discord.NotFound:
+                return
+            if starter.content != text:
+                await starter.edit(content=text, allowed_mentions=discord.AllowedMentions.none())
+
     async def _create_post(self, display: str, movies_url: str):
         created = await self.forum.create_thread(
             name=spoiler_post_name(display), content=starter_text(display, movies_url),
-            allowed_mentions=discord.AllowedMentions.none(), reason="Spoiler discussion")
+            allowed_mentions=discord.AllowedMentions.none(), reason="Post-watch discussion")
         return created.thread, created.message
 
     # moving a message --------------------------------------------------------
     async def webhook(self) -> discord.Webhook:
-        """The bot's own webhook on #movie-spoilers (created once, reused)."""
+        """The bot's own webhook on #post-watch-discussion (created once, reused)."""
         if self._webhook is None:
             forum = self.forum
             for wh in await forum.webhooks():
@@ -210,7 +228,7 @@ class SpoilerService:
 
     async def move(self, message: discord.Message, actor: discord.abc.User,
                    tmdb_id: int) -> discord.Message:
-        """Move a message from a #movies post into the movie's spoiler post.
+        """Move a message from a #pre-watch-discussion post into the movie's spoiler post.
 
         Returns the first moved copy. Raises AlreadyMoved if the original is gone,
         ValueError if it can't be moved (nothing is changed then).
@@ -228,7 +246,7 @@ class SpoilerService:
 
             spoiler_post, _ = await self.open(tmdb_id)
 
-            header = [f"-# moved from the spoiler-free post by {actor.mention}"]
+            header = [f"-# moved from the pre-watch discussion by {actor.mention}"]
             ref = message.reference
             if ref and ref.message_id:
                 # DeletedReferencedMessage (reply to a deleted message) has no author.

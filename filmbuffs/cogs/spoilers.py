@@ -1,6 +1,6 @@
-"""Spoiler discussions: /spoiler and the "Mark as spoiler" context menu.
+"""Post-watch discussions: /spoiler and the "Mark as spoiler" context menu.
 
-The info card's "Spoiler discussion" button lives in filmbuffs/cards.py.
+The info card's "Post-watch discussion" button lives in filmbuffs/cards.py.
 """
 from __future__ import annotations
 
@@ -45,27 +45,27 @@ class Spoilers(commands.Cog):
 
     # /spoiler ----------------------------------------------------------------
     @app_commands.command(name="spoiler",
-                          description="Open this movie's spoiler discussion (use inside a #movies post)")
+                          description="Open this movie's post-watch discussion (spoilers allowed)")
     @app_commands.guild_only()
     async def spoiler(self, interaction: discord.Interaction) -> None:
         channel = interaction.channel
         row = await self.svc.movie_for_spoiler_post(channel)
         if row is not None:
             movies_post = await self.bot.movies.find_post(row["tmdb_id"])
-            back = f" The spoiler-free post is {movies_post.jump_url}." if movies_post else ""
+            back = f" The pre-watch post is {movies_post.jump_url}." if movies_post else ""
             await interaction.response.send_message(
-                f"You're already in the spoiler discussion.{back}", ephemeral=True)
+                f"You're already in the post-watch discussion.{back}", ephemeral=True)
             return
         row = await self.svc.movie_for_movies_post(channel)
         if row is None:
             await interaction.response.send_message(
-                "Use /spoiler inside a movie's post in #movies.", ephemeral=True)
+                "Use /spoiler inside a movie's post in #pre-watch-discussion.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         thread, created = await self.svc.open(row["tmdb_id"])
         verb = "Opened" if created else "Here's"
         await interaction.followup.send(
-            f"{verb} the spoiler discussion → {thread.jump_url}\n"
+            f"{verb} the post-watch discussion → {thread.jump_url}\n"
             "-# ⚠️ Everything there may spoil the film.", ephemeral=True)
 
     # Mark as spoiler ---------------------------------------------------------
@@ -74,16 +74,16 @@ class Spoilers(commands.Cog):
         thread = interaction.channel
         row = await self.svc.movie_for_movies_post(thread)
         if row is None:
-            text = ("This is already the spoiler discussion, so nothing needs hiding here."
+            text = ("This is already the post-watch discussion, so spoilers are fine here."
                     if await self.svc.movie_for_spoiler_post(thread) is not None else
-                    "Mark as spoiler only works inside movie posts in #movies.")
+                    "Mark as spoiler only works inside movie posts in #pre-watch-discussion.")
             await interaction.response.send_message(text, ephemeral=True)
             return
         refusal = None
         if message.id == thread.id:
             refusal = "That's the movie's info card; it has no spoilers."
         elif message.author.bot or message.webhook_id or message.type not in USER_MESSAGE_TYPES:
-            refusal = "Only members' messages can be moved to the spoiler discussion."
+            refusal = "Only members' messages can be moved to the post-watch discussion."
         elif message.poll:
             refusal = "Polls can't be moved. Ask the author to delete it instead."
         elif not (message.content or message.attachments):
@@ -105,7 +105,7 @@ class Spoilers(commands.Cog):
                                             ephemeral=True)
             return
         await interaction.followup.send(
-            f"🙈 Moved to the spoiler discussion → {moved.jump_url}", ephemeral=True)
+            f"🙈 Moved to the post-watch discussion → {moved.jump_url}", ephemeral=True)
 
 
 async def setup(bot: "FilmBuffsBot") -> None:

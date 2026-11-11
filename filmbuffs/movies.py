@@ -1,4 +1,4 @@
-"""Movie posts in the #movies forum. Shared by /addmovie, Letterboxd and backfill."""
+"""Movie posts in the #pre-watch-discussion forum. Shared by /addmovie, Letterboxd and backfill."""
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +22,19 @@ EMBED_COLOR = 0xE5A00D
 VOTE_EMOJI = "👍"
 # Field added by the old (pre-3R) spoiler-line design; removed from cards on refresh.
 LEGACY_SPOILER_FIELD = "Spoiler line"
+# Last field on every info card: the pre-watch post's no-spoilers reminder.
+REMINDER_NAME = "🚫 No spoilers in this post"
+REMINDER_VALUE = ("Trailers, hype and first impressions only. Seen it? Spoilers go in the "
+                  "**🔓 Post-watch discussion** (button below).")
+
+
+def set_reminder(e: discord.Embed) -> discord.Embed:
+    """Put the no-spoilers reminder last on the card (replacing any older copy)."""
+    for i in reversed([i for i, f in enumerate(e.fields)
+                       if f.name in (REMINDER_NAME, LEGACY_SPOILER_FIELD)]):
+        e.remove_field(i)
+    e.add_field(name=REMINDER_NAME, value=REMINDER_VALUE, inline=False)
+    return e
 
 
 def truncate(text: str, limit: int) -> str:
@@ -52,7 +65,7 @@ def build_embed(movie: Movie, added_by: discord.abc.User | int | None,
     if pitch:
         e.add_field(name="Pitch", value=truncate(pitch, 1024), inline=False)
     e.set_footer(text=f"{VOTE_EMOJI} this message to vote for it in the weekly pick")
-    return e
+    return set_reminder(e)
 
 
 class MovieService:
@@ -64,7 +77,7 @@ class MovieService:
     def forum(self) -> discord.ForumChannel:
         ch = self.bot.get_channel(self.bot.config.channels["movies"])
         if not isinstance(ch, discord.ForumChannel):
-            raise RuntimeError("#movies forum not found")
+            raise RuntimeError("#pre-watch-discussion forum not found")
         return ch
 
     async def find_post(self, tmdb_id: int) -> discord.Thread | None:
@@ -148,7 +161,7 @@ class MovieService:
         return f"https://discord.com/channels/{self.bot.config.guild_id}/{row['spoiler_thread_id']}"
 
     async def update_card(self, tmdb_id: int) -> None:
-        """Re-render the info card's button (and drop the legacy spoiler-line field)."""
+        """Re-render the info card: button, no-spoilers reminder (drops the legacy field)."""
         row = await self.bot.db.get_movie(tmdb_id)
         thread = await self.find_post(tmdb_id)
         if row is None or thread is None:
@@ -158,12 +171,7 @@ class MovieService:
         starter = await thread.fetch_message(row["starter_message_id"])
         kwargs: dict = {"view": card_view(tmdb_id, self.spoiler_url(row))}
         if starter.embeds:
-            embed = starter.embeds[0]
-            idx = [i for i, f in enumerate(embed.fields) if f.name == LEGACY_SPOILER_FIELD]
-            for i in reversed(idx):
-                embed.remove_field(i)
-            if idx:
-                kwargs["embed"] = embed
+            kwargs["embed"] = set_reminder(starter.embeds[0])
         await starter.edit(**kwargs)
         await self.bot.db.set_card_version(tmdb_id, CARD_VERSION)
 
@@ -176,6 +184,7 @@ class MovieService:
             try:
                 await self.update_card(row["tmdb_id"])
                 await self.retag(row["tmdb_id"])
+                await self.bot.spoilers.refresh_post(row)
             except discord.HTTPException:
                 log.exception("Could not refresh the card for TMDB %s", row["tmdb_id"])
             await asyncio.sleep(1)   # gentle on rate limits for bulk edits

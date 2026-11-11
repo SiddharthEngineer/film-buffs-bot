@@ -2,9 +2,9 @@
 
 A custom Discord bot plus an infrastructure-as-code setup script for **Film Buffs**, a private Discord server where a group of friends picks, watches and talks about movies.
 
-- **Movies** live as posts in a `#movies` forum, one per film, created by the bot from TMDB data.
+- **Movies** live as posts in the `#pre-watch-discussion` forum, one per film, created by the bot from TMDB data.
 - **Letterboxd** is where people log what they watch. The bot pulls those logs in and keeps everything in SQLite, so we can build engagement stats later.
-- **Spoilers** are kept out of `#movies` entirely; each film can get a companion post in `#movie-spoilers` (being rebuilt, see the roadmap).
+- **Spoilers** are kept out of `#pre-watch-discussion` entirely; each film gets a companion post in `#post-watch-discussion` (created the first time someone opens it).
 - **Weekly pick**: a Monday poll picks next week's movie from the most-👍'd backlog posts (planned).
 
 | Doc | What's in it |
@@ -26,7 +26,7 @@ filmbuffs/            the bot package (python -m filmbuffs)
   config.py           .env + server.yaml + IDs from the state DB
   db.py               SQLite schema + migrations (data/filmbuffs.db)
   tmdb.py             TMDB client: search, details, autocomplete
-  movies.py           movie posts in #movies (create, embed, tags)
+  movies.py           movie posts in #pre-watch-discussion (create, embed, tags)
   tags.py             which forum tags a post carries (5-tag limit)
   spoilers.py         spoiler system (current design is being replaced)
   cogs/               slash commands and listeners
@@ -88,6 +88,6 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 
 | Command | Where | What it does |
 |---|---|---|
-| `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#movies` (or links the existing one). Free text is rejected; pick from the autocomplete. |
+| `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#pre-watch-discussion` (or links the existing one). Free text is rejected; pick from the autocomplete. |
 | `/spoiler` | inside a movie post | Old spoiler-line design; to be replaced (see ROADMAP) |
 | Apps → **Mark as spoiler** | any message in a movie post | Old design (reposts the message at the bottom); to be replaced |
