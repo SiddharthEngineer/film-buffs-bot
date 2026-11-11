@@ -10,14 +10,15 @@ from discord.ext import commands
 
 from .config import Config
 from .db import Database
+from .letterboxd import LetterboxdService
 from .movies import MovieService
 from .spoilers import SpoilerService
 from .tmdb import TMDB
 
 log = logging.getLogger("filmbuffs")
 
-USER_AGENT = "FilmBuffsBot/0.3 (private Discord bot)"
-EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers"]
+USER_AGENT = "FilmBuffsBot/0.4 (private Discord bot)"
+EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd"]
 
 
 class FilmBuffsBot(commands.Bot):
@@ -32,6 +33,7 @@ class FilmBuffsBot(commands.Bot):
         self.tmdb: TMDB | None = None
         self.movies = MovieService(self)
         self.spoilers = SpoilerService(self)
+        self.letterboxd = LetterboxdService(self)
 
     async def setup_hook(self) -> None:
         await self.db.connect()

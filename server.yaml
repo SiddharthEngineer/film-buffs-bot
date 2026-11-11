@@ -22,6 +22,12 @@ managed_categories_first: true
 # genre tags fill the remaining slots.
 max_genre_tags: 3
 
+# Letterboxd RSS polling (Phase 4). Feeds are fetched one after another with a
+# random pause between them, so the bot never hits Letterboxd in a burst.
+letterboxd:
+  poll_minutes: 15
+  jitter_seconds: [3, 12]
+
 # Reusable permission sets.
 presets:
   read_only:
@@ -126,7 +132,7 @@ categories:
         preset: read_only
       - key: letterboxd_feed
         name: letterboxd-feed
-        topic: "New Letterboxd reviews from linked members (full reviews are in each movie's post)."
+        topic: "New Letterboxd diary entries from linked members. Ratings and reviews are in each movie's spoiler discussion."
         preset: read_only
 
   - key: voice

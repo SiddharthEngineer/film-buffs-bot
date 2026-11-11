@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–2 are done (see [STATUS.md](STATUS.md)). The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–2, 3R and 4 are done (see [STATUS.md](STATUS.md)). The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 ## Guiding decisions (agreed with the owner)
 
@@ -42,7 +42,7 @@ Replace the in-post spoiler line with a separate spoiler post per movie.
 
 ---
 
-## Phase 4: Letterboxd integration
+## Phase 4: Letterboxd integration (built; see STATUS.md)
 
 - `/letterboxd username:<name>` links a Discord user to a Letterboxd account (validate `https://letterboxd.com/<username>/rss/` exists). `/letterboxd-unlink`.
 - Poll every linked feed every ~15 minutes, politely: conditional GET (ETag / Last-Modified), the bot's honest User-Agent (`FilmBuffsBot/x.y (private Discord bot)`), jitter between feeds.
@@ -54,7 +54,7 @@ Replace the in-post spoiler line with a separate spoiler post per movie.
   - **Spoiler-free `#movies` post:** a one-line neutral note, e.g. "📓 Siddharth logged this on Letterboxd. Their rating and review are in the spoiler discussion → link". No stars, no ♥, no review.
   - **`#movie-spoilers` post** (create if needed): an embed with user, star rating, liked ♥, rewatch flag, watched date, review text and a link to the Letterboxd review.
   - **`#letterboxd-feed`:** one line linking the `#movies` post, no rating and no review text.
-- Open question: when one person logs a film that's still `Backlog` (not group-watched), should the tag change? Original spec only covers auto-created posts (`Watched (solo)`). Ask the owner.
+- A solo log never changes an existing post's tag (owner, 2026-11-11: Backlog stays Backlog). Only posts auto-created from a log start as `Watched (solo)`.
 
 ## Phase 5: weekly pick, events, history
 
@@ -90,8 +90,7 @@ Standalone `backfill.py`, run by hand.
 - In Theaters / Streaming tags: the original spec listed them but gave no rule. Option: set them from TMDB release dates and US watch providers. **Ask the owner** before building.
 
 ## Open questions for the owner
-Answered 2026-11-11: the tag is 🍿 Post-watch; Mark as spoiler moves the message.
+Answered 2026-11-11: the tag is 🍿 Post-watch; Mark as spoiler moves the message; a solo Letterboxd log keeps an existing post's tags.
 
-1. Phase 4: should a solo Letterboxd log change an existing `Backlog` post's tag?
-2. Phase 5: domain/port/reverse proxy for the `.ics` feed.
-3. In Theaters / Streaming: automate from TMDB, or leave manual/unused?
+1. Phase 5: domain/port/reverse proxy for the `.ics` feed.
+2. In Theaters / Streaming: automate from TMDB, or leave manual/unused?

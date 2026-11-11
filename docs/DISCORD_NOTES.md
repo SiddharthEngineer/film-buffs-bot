@@ -6,6 +6,7 @@ Things checked against current docs or live tests while building. Re-check anyth
 - **Docs moved** to `https://docs.discord.com/developers/...` (old `discord.com/developers/docs` URLs 301 there).
 - **Forum posts:** creating one needs Send Messages on the forum ("Create Posts"); Create Public Threads is ignored. Works in a non-Community server (live-tested).
 - **Forum tags:** max 20 per forum (`available_tags`), names ≤ 20 chars, **max 5 applied per post**. `moderated` tags can only be added/removed by members with Manage Threads.
+- **Sending into an archived thread** (checked 2026-11-11, threads topic): a message un-archives it automatically unless it's locked; needs Send Messages in Threads. Locked threads need Manage Threads (the bot has it on both forums). Forum posts behave like text-channel threads.
 - **Editing an archived thread** (tags, messages) fails unless it's un-archived in the same edit; `MovieService.retag` passes `archived=False`.
 - **Channel permission overwrites** need Manage Roles, and a bot can only allow/deny permissions it has itself.
 - **Scheduled events:** Create Events is enough to create and edit/delete the bot's own events (Manage Events only for others'). EXTERNAL events need `entity_metadata.location` (1–100 chars), `scheduled_end_time`, and `channel_id` null.
@@ -28,4 +29,6 @@ Things checked against current docs or live tests while building. Re-check anyth
 - **RSS works for bots** with an honest User-Agent: `https://letterboxd.com/<user>/rss/` returns 200 (`application/rss+xml`, behind Cloudflare).
 - RSS items include `<tmdb:movieId>`, plus `letterboxd:filmTitle` etc.
 - **Regular web pages return 403 to non-browser clients** (including `/tmdb/<id>`). Don't try to get around it (no browser User-Agent spoofing); Claude Code's auto mode blocks it as bot-check circumvention, and it isn't polite.
+- **Feed format** (checked 2026-11-11 on two public feeds): ~50 newest items; GUIDs `letterboxd-watch-<n>`, `letterboxd-review-<n>` and `letterboxd-list-<n>` (lists have no film fields; skip them). Diary items carry `letterboxd:watchedDate`, `rewatch` (Yes/No), `filmTitle`, `filmYear`, `memberRating` (absent when unrated), `memberLike` (Yes/No) and `tmdb:movieId`. Review text is HTML in `<description>` after a poster `<img>`; spoiler reviews start with "This review may contain spoilers."
+- **No caching headers:** the feed sends `cache-control: no-store` and no ETag/Last-Modified, so conditional GETs don't help (the bot still sends them if they appear). Unknown users get 404.
 - `https://letterboxd.com/tmdb/<id>` redirects to the film page in a real browser (confirmed by the owner).

@@ -35,6 +35,10 @@ class Config:
             self.layout = yaml.safe_load(f)
         self.tz = ZoneInfo(self.layout.get("timezone", "America/Chicago"))
         self.max_genre_tags = int(self.layout.get("max_genre_tags", 3))
+        lb = self.layout.get("letterboxd") or {}
+        self.lb_poll_minutes = float(lb.get("poll_minutes", 15))
+        lo, hi = lb.get("jitter_seconds", [3, 12])
+        self.lb_jitter = (float(lo), float(hi))
 
         state = State()
         self.channels: dict[str, int] = {}
