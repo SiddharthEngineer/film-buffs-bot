@@ -1,6 +1,6 @@
 [project]
 name = "film-buffs-bot"
-version = "0.4.0"
+version = "0.5.0"
 description = "Private Discord bot for the Film Buffs server"
 requires-python = ">=3.12"
 dependencies = [

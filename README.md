@@ -28,8 +28,13 @@ filmbuffs/            the bot package (python -m filmbuffs)
   tmdb.py             TMDB client: search, details, autocomplete
   movies.py           movie posts in #pre-watch-discussion (create, embed, tags)
   tags.py             which forum tags a post carries (5-tag limit)
-  spoilers.py         spoiler system (current design is being replaced)
-  cogs/               slash commands and listeners
+  spoilers.py         post-watch discussions (companion posts, Mark as spoiler)
+  letterboxd.py       Letterboxd RSS: linking, polling, posting entries
+  backfill.py         matching logic for backfill.py (Letterboxd export import)
+  backup.py           nightly SQLite backups + 14-day retention
+  botlogs.py          posts errors to #bot-logs (throttled)
+  cogs/               slash commands, listeners, background loops
+backfill.py           imports a Letterboxd export (dry run by default)
 setup_server.py       reconciles the Discord server to server.yaml
 filmbuffs/state.py    which Discord objects setup_server.py manages
 server.yaml           declared server layout (channels, perms, tags, messages)
@@ -89,5 +94,46 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 | Command | Where | What it does |
 |---|---|---|
 | `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#pre-watch-discussion` (or links the existing one). Free text is rejected; pick from the autocomplete. |
-| `/spoiler` | inside a movie post | Old spoiler-line design; to be replaced (see ROADMAP) |
-| Apps → **Mark as spoiler** | any message in a movie post | Old design (reposts the message at the bottom); to be replaced |
+| `/spoiler` | inside a movie post | Links the movie's post-watch discussion (creates it if needed); inside a post-watch post, links back. |
+| Apps → **Mark as spoiler** | any message in a pre-watch post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
+| `/letterboxd [username]` | any channel | Links your Letterboxd account, or shows which one is linked. `/letterboxd-unlink` stops posting. |
+
+## Admin cheat sheet
+
+`/admin` commands are only shown to members with **Manage Server** (Administrators, so the Moderator role, always count). The bot also accepts the role named in `server.yaml` → `ops.admin_role`. Replies are ephemeral.
+
+| Command | What it does |
+|---|---|
+| `/admin resync [post]` | Re-renders a movie's info card (button, no-spoilers reminder) and re-applies its tags from the database; also refreshes its post-watch post's title and starter. Run it inside the pre- or post-watch post, or pick the post. Use it after editing a movie row by hand, or if a card or its tags look wrong. |
+| `/admin letterboxd-unlink member:<member>` | Unlinks someone's Letterboxd account (e.g. a wrong link or they asked). Their stored entries stay. |
+
+**#bot-logs** (admins only) gets:
+- 🟢 a startup notice: version, git commit, schema version, last backup.
+- 🔴 every ERROR from the bot, with the end of the traceback. The same error is posted at most once an hour (later posts say how many repeats were held back), and at most 5 messages go out per 10 minutes. Full tracebacks are always in `journalctl -u film-buffs-bot`.
+- Letterboxd: a single error when a feed fails 4 polls in a row (about an hour) or Letterboxd refuses 4 rounds in a row, and a 🟡 notice when it works again. One-off failures only go to the journal. An entry that fails to post 5 times is given up on and reported.
+
+**Backups:** every night at 04:00 America/Chicago (`server.yaml` → `ops`), the bot snapshots `data/filmbuffs.db` into `backups/filmbuffs-<UTC time>.db` with SQLite's online backup API, checks it, and deletes backups older than 14 days (the newest is always kept). If the newest backup is over a day old when the bot starts, it makes one right away. Each backup is a complete, ordinary SQLite file.
+
+```bash
+ls -lh backups/                                              # what's there
+sqlite3 backups/<file>.db "SELECT COUNT(*) FROM movies"      # peek inside one
+```
+
+Restoring (this replaces the live database; the bot must be stopped):
+
+```bash
+sudo systemctl stop film-buffs-bot
+mv data/filmbuffs.db data/filmbuffs.db.broken; rm -f data/filmbuffs.db-wal data/filmbuffs.db-shm
+cp backups/<file>.db data/filmbuffs.db
+sudo systemctl start film-buffs-bot
+```
+
+Backups live on the same disk as the bot. For off-machine copies, pull `backups/` from another computer now and then (e.g. `scp` or `rsync`).
+
+**Other handy checks:**
+
+```bash
+journalctl -u film-buffs-bot --since today        # today's logs
+journalctl -u film-buffs-bot -p err               # errors only
+uv run setup_server.py                            # should say "No changes"
+```

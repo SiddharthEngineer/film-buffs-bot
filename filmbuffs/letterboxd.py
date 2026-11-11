@@ -23,6 +23,7 @@ import aiohttp
 import discord
 import feedparser
 
+from .botlogs import StreakAlert
 from .movies import truncate
 from .tmdb import TMDBError, year_of
 
@@ -35,6 +36,8 @@ FEED_URL = "https://letterboxd.com/{username}/rss/"
 PROFILE_URL = "https://letterboxd.com/{username}/"
 EMBED_COLOR = 0x40BCF4
 MAX_ATTEMPTS = 5
+# Consecutive failed polls (one per round, ~15 min) before #bot-logs hears about it.
+ALERT_AFTER = 4
 REVIEW_LIMIT = 3800           # embed description is 4096; leave room for the header
 SPOILER_WARNING = "This review may contain spoilers."
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{1,40}$")
@@ -317,6 +320,7 @@ class LetterboxdService:
     def __init__(self, bot: "FilmBuffsBot"):
         self.bot = bot
         self._locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self.streaks = StreakAlert(ALERT_AFTER)
 
     @property
     def feed_channel(self) -> discord.TextChannel | None:
@@ -354,19 +358,36 @@ class LetterboxdService:
 
     # polling -----------------------------------------------------------------
     async def poll_all(self) -> None:
+        """One polling round. Persistent failures (a feed that keeps failing, or
+        Letterboxd refusing every round) are reported once to #bot-logs, plus a
+        notice when they recover; single failures only go to the journal."""
         links = await self.bot.db.all_links()
         for i, link in enumerate(links):
+            uid = link["discord_user_id"]
             if i:
                 await asyncio.sleep(random.uniform(*self.bot.config.lb_jitter))
             try:
-                await self.poll_user(link["discord_user_id"])
+                await self.poll_user(uid)
             except LetterboxdError as e:
                 if e.status in (403, 429) or (e.status or 0) >= 500:
                     log.warning("Letterboxd said HTTP %s; skipping the rest of this round",
                                 e.status)
+                    if self.streaks.fail("round"):
+                        log.error("Letterboxd has refused %d polling rounds in a row "
+                                  "(last: %s). Nothing is being posted.", ALERT_AFTER, e)
                     return
+                if self.streaks.fail(uid):
+                    log.error("Letterboxd feed %s (member %s) has failed %d polls in a row: %s",
+                              link["username"], uid, ALERT_AFTER, e)
+                continue
             except Exception:
-                log.exception("Polling Letterboxd for %s failed", link["discord_user_id"])
+                log.exception("Polling Letterboxd for %s failed", uid)
+                continue
+            if self.streaks.ok(uid):
+                log.warning("Letterboxd feed %s (member %s) works again",
+                            link["username"], uid, extra={"botlogs": True})
+        if links and self.streaks.ok("round"):
+            log.warning("Letterboxd polling works again", extra={"botlogs": True})
 
     async def poll_user(self, user_id: int) -> int:
         """Fetch one member's feed and post anything new. Returns entries posted."""
@@ -432,8 +453,12 @@ class LetterboxdService:
         except (discord.HTTPException, TMDBError, LookupError) as e:
             state = "failed" if attempts >= MAX_ATTEMPTS else "pending"
             await self.bot.db.update_entry(guid, state=state, error=repr(e)[:500])
-            log.exception("Posting Letterboxd entry %s failed (attempt %d, now %s)",
-                          guid, attempts, state)
+            if state == "failed":     # only the final attempt goes to #bot-logs
+                log.error("Gave up posting Letterboxd entry %s (%s %s) after %d attempts",
+                          guid, row["film_title"], row["film_year"], attempts, exc_info=True)
+            else:
+                log.warning("Posting Letterboxd entry %s failed (attempt %d, will retry)",
+                            guid, attempts, exc_info=True)
             return False
         return (await self.bot.db.get_entry(guid))["state"] == "posted"
 

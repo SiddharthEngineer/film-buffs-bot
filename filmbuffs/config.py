@@ -39,6 +39,13 @@ class Config:
         self.lb_poll_minutes = float(lb.get("poll_minutes", 15))
         lo, hi = lb.get("jitter_seconds", [3, 12])
         self.lb_jitter = (float(lo), float(hi))
+        ops = self.layout.get("ops") or {}
+        hh, mm = str(ops.get("backup_time", "04:00")).split(":")
+        self.backup_time = (int(hh), int(mm))
+        self.backup_keep_days = int(ops.get("backup_keep_days", 14))
+        self.backups_dir = ROOT / "backups"
+        # Members with this role (or Manage Server) can use /admin commands.
+        self.admin_role = str(ops.get("admin_role", "Moderator"))
 
         state = State()
         self.channels: dict[str, int] = {}

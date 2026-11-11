@@ -1,5 +1,6 @@
 """Phase 4: Letterboxd feed parsing, spoiler-free wording, and the posting flow."""
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import discord
@@ -347,4 +348,38 @@ def test_account_can_only_be_linked_once_and_unlink(tmp_path):
         assert await svc.link(42, "sam") == 0                    # re-link is fine, no dupes
         assert await svc.unlink(42) and not await svc.unlink(42)
         assert await svc.poll_user(42) == 0
+    asyncio.run(closing(run))
+
+
+def test_poll_failures_alert_once_and_recover(tmp_path, caplog):
+    """Phase 7: a feed that keeps failing logs one ERROR (→ #bot-logs) at the
+    threshold, then one 'works again' notice; Letterboxd refusals stop the round."""
+    async def run():
+        feeds = {"sam": feed()}
+        svc, bot, feed_ch, db = await make_service(tmp_path, feeds)
+        await svc.link(42, "sam")
+        good_fetch = svc._fetch
+        status = {"code": 404}
+
+        async def failing(username, link=None):
+            raise lbmod.LetterboxdError("HTTP error", status["code"])
+        svc._fetch = failing
+
+        def errors():
+            return [r for r in caplog.records if r.levelno >= 40]
+        with caplog.at_level(logging.INFO):
+            for _ in range(lbmod.ALERT_AFTER + 3):
+                await svc.poll_all()
+            assert len(errors()) == 1 and "failed 4 polls in a row" in errors()[0].getMessage()
+            svc._fetch = good_fetch
+            await svc.poll_all()
+            assert [r.getMessage() for r in caplog.records
+                    if getattr(r, "botlogs", False)] == ["Letterboxd feed sam (member 42) works again"]
+
+            caplog.clear()
+            status["code"] = 429
+            svc._fetch = failing
+            for _ in range(lbmod.ALERT_AFTER):
+                await svc.poll_all()
+            assert len(errors()) == 1 and "refused 4 polling rounds" in errors()[0].getMessage()
     asyncio.run(closing(run))

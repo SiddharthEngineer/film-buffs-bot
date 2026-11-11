@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–2, 3R, 4 and 6 are done (see [STATUS.md](STATUS.md)). Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–2, 3R, 4, 6 and 7 are done (see [STATUS.md](STATUS.md)). Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 ## Guiding decisions (agreed with the owner)
 
@@ -81,13 +81,15 @@ Standalone `backfill.py`, run by hand.
 - `--dry-run` (default) reports counts by tag, reviews to post, unmatched, and estimated runtime under rate limits; `--apply` executes; resumable; throttled. Filters: `--only-watchlist`, `--min-rating`, `--since YYYY-MM-DD`.
 - **Show the owner dry-run numbers before applying.** It may create hundreds of posts.
 
-## Phase 7: ops & docs
+## Phase 7: ops & docs (built; see STATUS.md)
 
-- Nightly SQLite backup to `backups/` (keep 14 days). Use SQLite's online backup API, not a file copy.
-- Post failures to `#bot-logs` (logging handler + error hooks), plus a startup notice.
-- Admin commands as needed (e.g. re-sync a post's info card or tags, unlink someone's Letterboxd).
-- Tests: TMDB matching, spoiler-post creation, schedule/tie-break logic, RSS dedupe.
-- README admin cheat sheet; keep STATUS.md current.
+- Nightly SQLite backup to `backups/` (keep 14 days) with SQLite's online backup API, run in the bot at 04:00 Chicago, with a catch-up at startup.
+- Failures to `#bot-logs` (throttled logging handler + error hooks), plus a startup notice.
+- `/admin resync`, `/admin letterboxd-unlink`.
+- Tests: backup retention, log throttle/dedup, poller alerts, admin check. (TMDB matching, spoiler-post creation and RSS dedupe were already covered in earlier phases; schedule/tie-break tests belong to Phase 5.)
+- README admin cheat sheet.
+
+Possible later: off-machine backup copies (needs a destination from the owner); more `/admin` commands if a need shows up.
 
 ## Later ideas
 - Engagement stats from the SQLite data (who watched what, rating spreads, most-active posts, weekly-pick participation).
