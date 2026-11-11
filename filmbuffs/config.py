@@ -48,6 +48,8 @@ class Config:
                     forum_spec = ch
         if "movies" not in self.channels or forum_spec is None:
             raise RuntimeError("The #movies forum is not set up. Run setup_server.py --apply first.")
+        if "movie_spoilers" not in self.channels:
+            raise RuntimeError("The #movie-spoilers forum is not set up. Run setup_server.py --apply first.")
 
         self.tags: dict[str, TagDef] = {}
         for t in forum_spec.get("tags", []):

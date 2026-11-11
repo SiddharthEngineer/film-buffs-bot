@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from .cards import CARD_VERSION, card_view
 from .tags import compose_tag_keys, genre_tag_keys
 from .tmdb import Movie
 
@@ -19,7 +20,8 @@ log = logging.getLogger(__name__)
 
 EMBED_COLOR = 0xE5A00D
 VOTE_EMOJI = "👍"
-SPOILER_FIELD = "Spoiler line"
+# Field added by the old (pre-3R) spoiler-line design; removed from cards on refresh.
+LEGACY_SPOILER_FIELD = "Spoiler line"
 
 
 def truncate(text: str, limit: int) -> str:
@@ -29,8 +31,8 @@ def truncate(text: str, limit: int) -> str:
     return cut + "…"
 
 
-def build_embed(movie: Movie, added_by: discord.abc.User | int | None, pitch: str | None,
-                spoiler_line: str | None = None) -> discord.Embed:
+def build_embed(movie: Movie, added_by: discord.abc.User | int | None,
+                pitch: str | None) -> discord.Embed:
     e = discord.Embed(title=movie.display, url=movie.tmdb_url,
                       description=truncate(movie.overview, 600) or "*No synopsis on TMDB.*",
                       color=EMBED_COLOR)
@@ -49,8 +51,6 @@ def build_embed(movie: Movie, added_by: discord.abc.User | int | None, pitch: st
         e.add_field(name="Added by", value=f"<@{uid}>", inline=True)
     if pitch:
         e.add_field(name="Pitch", value=truncate(pitch, 1024), inline=False)
-    if spoiler_line:
-        e.add_field(name=SPOILER_FIELD, value=spoiler_line, inline=False)
     e.set_footer(text=f"{VOTE_EMOJI} this message to vote for it in the weekly pick")
     return e
 
@@ -109,6 +109,7 @@ class MovieService:
             created = await self.forum.create_thread(
                 name=truncate(movie.display, 100),
                 embed=build_embed(movie, added_by, pitch),
+                view=card_view(movie.id, None),
                 applied_tags=self.applied_tags(status, flags, genres),
                 reason=f"Movie post ({source})",
             )
@@ -118,6 +119,7 @@ class MovieService:
                 tmdb_id=movie.id, thread_id=thread.id, starter_message_id=message.id,
                 title=movie.title, year=movie.year, status=status, flags=flags,
                 genre_tags=genres, added_by=uid, pitch=pitch, source=source)
+            await self.bot.db.set_card_version(movie.id, CARD_VERSION)
             try:
                 await message.add_reaction(VOTE_EMOJI)
             except discord.HTTPException:
@@ -139,3 +141,41 @@ class MovieService:
         # Archived posts must be un-archived in the same edit, or Discord refuses it.
         extra = {"archived": False} if thread.archived else {}
         await thread.edit(applied_tags=tags, reason="Movie status change", **extra)
+
+    def spoiler_url(self, row) -> str | None:
+        if not row["spoiler_thread_id"]:
+            return None
+        return f"https://discord.com/channels/{self.bot.config.guild_id}/{row['spoiler_thread_id']}"
+
+    async def update_card(self, tmdb_id: int) -> None:
+        """Re-render the info card's button (and drop the legacy spoiler-line field)."""
+        row = await self.bot.db.get_movie(tmdb_id)
+        thread = await self.find_post(tmdb_id)
+        if row is None or thread is None:
+            return
+        if thread.archived:
+            await thread.edit(archived=False, reason="Updating the movie's info card")
+        starter = await thread.fetch_message(row["starter_message_id"])
+        kwargs: dict = {"view": card_view(tmdb_id, self.spoiler_url(row))}
+        if starter.embeds:
+            embed = starter.embeds[0]
+            idx = [i for i, f in enumerate(embed.fields) if f.name == LEGACY_SPOILER_FIELD]
+            for i in reversed(idx):
+                embed.remove_field(i)
+            if idx:
+                kwargs["embed"] = embed
+        await starter.edit(**kwargs)
+        await self.bot.db.set_card_version(tmdb_id, CARD_VERSION)
+
+    async def refresh_old_cards(self) -> None:
+        """One-off per CARD_VERSION bump: bring existing posts' cards and tags up to date."""
+        rows = await self.bot.db.movies_needing_card(CARD_VERSION)
+        if rows:
+            log.info("Refreshing %d info card(s) to version %d", len(rows), CARD_VERSION)
+        for row in rows:
+            try:
+                await self.update_card(row["tmdb_id"])
+                await self.retag(row["tmdb_id"])
+            except discord.HTTPException:
+                log.exception("Could not refresh the card for TMDB %s", row["tmdb_id"])
+            await asyncio.sleep(1)   # gentle on rate limits for bulk edits

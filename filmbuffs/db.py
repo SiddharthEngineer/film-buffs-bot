@@ -28,6 +28,19 @@ MIGRATIONS = [
         spoiler_marked_at           TEXT
     );
     """,
+    # Phase 3R: spoiler discussions are separate posts in #movie-spoilers. The old
+    # spoiler-line columns stay (unused). card_version lets the bot refresh old
+    # info cards (button, no "Spoiler line" field) once at startup.
+    """
+    ALTER TABLE movies ADD COLUMN spoiler_thread_id INTEGER;
+    ALTER TABLE movies ADD COLUMN spoiler_starter_message_id INTEGER;
+    ALTER TABLE movies ADD COLUMN card_version INTEGER NOT NULL DEFAULT 0;
+    CREATE UNIQUE INDEX movies_spoiler_thread ON movies(spoiler_thread_id);
+    UPDATE movies SET spoiler_marker_message_id = NULL, spoiler_divider_message_id = NULL,
+                      spoiler_marked_at = NULL,
+                      flags = (SELECT json_group_array(value) FROM json_each(movies.flags)
+                               WHERE value != 'spoilers');
+    """,
 ]
 
 
@@ -87,11 +100,26 @@ class Database:
                                 (json.dumps(sorted(set(flags))), tmdb_id))
         await self.conn.commit()
 
-    async def set_spoiler_marker(self, tmdb_id: int, *, marker_id: int, divider_id: int | None,
-                                 marked_at: str) -> None:
+    async def get_movie_by_spoiler_thread(self, thread_id: int) -> aiosqlite.Row | None:
+        cur = await self.conn.execute("SELECT * FROM movies WHERE spoiler_thread_id=?",
+                                      (thread_id,))
+        return await cur.fetchone()
+
+    async def set_spoiler_post(self, tmdb_id: int, thread_id: int | None,
+                               starter_message_id: int | None) -> None:
         await self.conn.execute(
-            "UPDATE movies SET spoiler_marker_message_id=?, spoiler_divider_message_id=?, "
-            "spoiler_marked_at=? WHERE tmdb_id=?", (marker_id, divider_id, marked_at, tmdb_id))
+            "UPDATE movies SET spoiler_thread_id=?, spoiler_starter_message_id=? WHERE tmdb_id=?",
+            (thread_id, starter_message_id, tmdb_id))
+        await self.conn.commit()
+
+    async def movies_needing_card(self, version: int) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT * FROM movies WHERE card_version < ? ORDER BY added_at", (version,))
+        return list(await cur.fetchall())
+
+    async def set_card_version(self, tmdb_id: int, version: int) -> None:
+        await self.conn.execute("UPDATE movies SET card_version=? WHERE tmdb_id=?",
+                                (version, tmdb_id))
         await self.conn.commit()
 
     async def delete_movie(self, tmdb_id: int) -> None:

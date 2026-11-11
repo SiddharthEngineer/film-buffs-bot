@@ -15,13 +15,13 @@ Phases 0–2 are done (see [STATUS.md](STATUS.md)). The original Phase 3 was bui
 
 ---
 
-## Phase 3R: spoiler companion posts (next up)
+## Phase 3R: spoiler companion posts (built; see STATUS.md)
 
 Replace the in-post spoiler line with a separate spoiler post per movie.
 
 **Server (`server.yaml`, then plan/apply):**
 - Add forum `#movie-spoilers` in 🎬 Movies, same permissions as `#movies` (only the bot creates posts; everyone can reply).
-- Repurpose the `spoilers` tag in `#movies` to mean "this movie has a spoiler discussion". Keep the tag **key** `spoilers` so its Discord ID survives; only the display name/emoji change. **Name still to pick** with the owner. Suggestions: "Spoiler Talk" (🔓), "Post-watch" (🍿), "Discussed" (💬).
+- Repurpose the `spoilers` tag in `#movies` to mean "this movie has a spoiler discussion". Keep the tag **key** `spoilers` so its Discord ID survives; only the display name/emoji change. Owner picked **🍿 Post-watch**.
 - Update the `#movies` guidelines and the welcome message to describe the new flow.
 
 **Behavior:**
@@ -30,7 +30,7 @@ Replace the in-post spoiler line with a separate spoiler post per movie.
   - Use a persistent component (`discord.ui.DynamicItem` with a `custom_id` like `spoilers:<tmdb_id>`) so buttons keep working after restarts.
 - The spoiler post's starter message: "⚠️ Spoilers for Title (Year). Everything here may spoil the film. ← Back to the spoiler-free post" (with link). No 👍 reaction; votes stay on the `#movies` post.
 - Apply the repurposed tag to the `#movies` post when its spoiler post is created.
-- **Mark as spoiler** (message context menu, anyone, in `#movies` posts): move the message into the movie's spoiler post (create it if needed) via webhook with the author's display name + avatar, attachments re-uploaded, a small "moved from the spoiler-free post by @X" note and reply context as a "↪ replying to" line; then delete the original. Do **not** repost anything in `#movies`. Confirm with the owner whether moving is acceptable or whether it should instead ask the author to edit in `||bars||`; the owner chose this option ("A") but stressed "never rearrange messages".
+- **Mark as spoiler** (message context menu, anyone, in `#movies` posts): move the message into the movie's spoiler post (create it if needed) via webhook with the author's display name + avatar, attachments re-uploaded, a small "moved from the spoiler-free post by @X" note and reply context as a "↪ replying to" line; then delete the original. Do **not** repost anything in `#movies`. Owner confirmed moving (2026-11-11).
 - `/spoiler` becomes "open this movie's spoiler post" (create if needed, ephemeral link), usable inside a `#movies` post or its spoiler post.
 - Remove: `||markup||` listener, dividers, the "Spoiler line" embed field, earliest-wins marker logic.
 
@@ -90,8 +90,8 @@ Standalone `backfill.py`, run by hand.
 - In Theaters / Streaming tags: the original spec listed them but gave no rule. Option: set them from TMDB release dates and US watch providers. **Ask the owner** before building.
 
 ## Open questions for the owner
-1. Name and emoji for the repurposed `spoilers` tag ("has a spoiler discussion").
-2. Mark as spoiler: move the message to the spoiler post (current plan), or ask the author to edit instead?
-3. Phase 4: should a solo Letterboxd log change an existing `Backlog` post's tag?
-4. Phase 5: domain/port/reverse proxy for the `.ics` feed.
-5. In Theaters / Streaming: automate from TMDB, or leave manual/unused?
+Answered 2026-11-11: the tag is 🍿 Post-watch; Mark as spoiler moves the message.
+
+1. Phase 4: should a solo Letterboxd log change an existing `Backlog` post's tag?
+2. Phase 5: domain/port/reverse proxy for the `.ics` feed.
+3. In Theaters / Streaming: automate from TMDB, or leave manual/unused?

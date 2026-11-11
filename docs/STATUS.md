@@ -22,8 +22,8 @@ Built by `setup_server.py --apply` from `server.yaml`; a fresh `--plan` reports 
 ```
 
 - The original `#games`, `#music` and the default "Text Channels"/"Voice Channels" categories were deleted via the `retire:` list (they were empty).
-- `#movies` tags (19 of 20): status tags, all moderated (only the bot applies them): Backlog, Up Next, Watched, Watched (solo), Spoilers, In Theaters, Streaming. Genre tags: Action, Adventure, Animation, Comedy, Crime, Documentary, Drama, Fantasy, Horror, Romance, Sci-Fi, Thriller (mapping from TMDB genres is in `server.yaml`).
-- Forum default sort: latest activity. Guidelines text explains `/addmovie` and 👍 voting. **The guidelines and the welcome message still describe the old spoiler-line design** and need updating with Phase 3R.
+- `#movies` tags (19 of 20): status tags, all moderated (only the bot applies them): Backlog, Up Next, Watched, Watched (solo), Post-watch (was Spoilers), In Theaters, Streaming. Genre tags: Action, Adventure, Animation, Comedy, Crime, Documentary, Drama, Fantasy, Horror, Romance, Sci-Fi, Thriller (mapping from TMDB genres is in `server.yaml`).
+- Forum default sort: latest activity. Guidelines text explains `/addmovie`, 👍 voting and the spoiler discussions.
 
 ### Phase 2: `/addmovie` ✅ (user-tested)
 - TMDB autocomplete shows `Title (Year) — Director`; choice values are `tmdb:<id>` so a typed numeric title like "1917" is never read as an ID. Pasted TMDB movie URLs are also accepted. Anything else is rejected ephemerally and no post is created.
@@ -34,19 +34,19 @@ Built by `setup_server.py --apply` from `server.yaml`; a fresh `--plan` reports 
 ### Ops already in place
 - systemd unit `film-buffs-bot` (enabled, `Restart=on-failure`, runs as `dev`, `ProtectSystem=strict` with write access only to `data/` and `backups/`).
 - Commands are synced to the guild only (instant updates).
-- 19 unit tests passing (`tests/`).
+- 25 unit tests passing (`tests/`).
 
-## Built but being replaced
+## Phase 3R: spoiler companion posts ✅ (live, owner-tested)
+Code and tests are done (25 tests pass). The old spoiler line is retired: its cog was switched off first, and `filmbuffs/spoilers.py` + `filmbuffs/cogs/spoilers.py` were rewritten.
+Deployed 2026-11-11. Live-tested from a script on a throwaway post (since deleted): button custom_id, lazy creation, back-link, card → link button, Backlog + Post-watch tags, reuse on second open, and the webhook move with the original deleted. Parasite's card was refreshed (button added, "Spoiler line" field gone, tags Backlog + genres).
 
-### Phase 3 (old design): in-post spoiler line ⚠️ superseded
-Code: `filmbuffs/spoilers.py`, `filmbuffs/cogs/spoilers.py`. **It is still live.**
+- `server.yaml`: new forum `#movie-spoilers` (same permissions as `#movies`); the `spoilers` tag is renamed **🍿 Post-watch** (key and ID unchanged) and means "has a spoiler discussion"; `#movies` guidelines and the welcome message describe the new flow. Applied by the owner; `--plan` reports no changes.
+- Info card gets a **🔓 Spoiler discussion** button (`filmbuffs/cards.py`, a persistent `DynamicItem`, `spoilers:<tmdb_id>`). The first click creates "Title (Year) — Spoilers" in `#movie-spoilers` (starter links back, no 👍), adds Post-watch, and turns the button into a link button. A per-movie lock means concurrent clicks create one post. Spoiler posts deleted by hand are forgotten and recreated on the next click.
+- `/spoiler`: ephemeral link to the movie's spoiler post (creates it). Inside a spoiler post it links back to `#movies`.
+- **Mark as spoiler** (anyone, in `#movies` posts): re-sends the message in the spoiler post via the "Film Buffs spoiler moves" webhook (on `#movie-spoilers`) as the author, with "↪ replying to" and "moved from the spoiler-free post by @X" lines, attachments re-uploaded; then deletes the original. Nothing is posted in `#movies`. If any send or the delete fails, the copies are deleted and the original stays.
+- Migration 2: `spoiler_thread_id`, `spoiler_starter_message_id`, `card_version`; it clears the old spoiler-line columns and the `spoilers` flag (Parasite). On startup the bot refreshes old info cards once (adds the button, drops the "Spoiler line" field, retags).
+- The bot no longer requests the Message Content intent.
 
-What it does: `||markup||`, `/spoiler` or "Mark as spoiler" sets a single spoiler line per post (earliest point wins), posts a divider, adds a "spoiler-free ends here" field to the info card, and adds the Spoilers tag. "Mark as spoiler" deletes the original message and **reposts it at the bottom of the thread** via webhook.
-
-Why it's being replaced: reposting reorders the conversation, and Discord can't insert a divider mid-thread, control where a reader lands when opening a post, or hide other people's messages in place. So an in-post line can't keep returning readers safe. See ROADMAP Phase 3R.
-
-## Known state / cleanup for the next session
-- **Disable the old spoiler behavior first** (the `filmbuffs.cogs.spoilers` extension) so nobody reorders another post before Phase 3R lands.
-- DB row for Parasite (TMDB 496243) still has `flags=["spoilers"]`, a spoiler marker and divider ID (1569940896399630407) from testing, and its info card has a "Spoiler line" field. The owner deleted the test messages in that post. Phase 3R's migration should clear the flag/marker, remove the field and retag the post.
-- The webhook "Film Buffs reposts" exists on `#movies` (created by the old design); Phase 3R can reuse it or create one on `#movie-spoilers`.
+## Known state / cleanup
+- The old webhook "Film Buffs reposts" on `#movies` is unused now. It's harmless; delete it in Server Settings → Integrations → Webhooks if you like (the bot won't delete it without asking).
 - `data/filmbuffs.db` is not backed up yet (nightly backup is Phase 7). It holds the setup-script state (key → Discord ID) as well as movies; losing it means `setup_server.py` would no longer recognize the channels it manages.

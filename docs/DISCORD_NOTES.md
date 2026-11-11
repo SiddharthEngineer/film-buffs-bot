@@ -9,8 +9,11 @@ Things checked against current docs or live tests while building. Re-check anyth
 - **Editing an archived thread** (tags, messages) fails unless it's un-archived in the same edit; `MovieService.retag` passes `archived=False`.
 - **Channel permission overwrites** need Manage Roles, and a bot can only allow/deny permissions it has itself.
 - **Scheduled events:** Create Events is enough to create and edit/delete the bot's own events (Manage Events only for others'). EXTERNAL events need `entity_metadata.location` (1–100 chars), `scheduled_end_time`, and `channel_id` null.
-- **Webhooks:** can post into a forum thread with `thread_id` (auto-unarchives). They can't send real replies (no `message_reference`). Allowed flags: SUPPRESS_EMBEDS, SUPPRESS_NOTIFICATIONS. Webhook names can't contain "discord" or "clyde".
+- **Webhooks:** can post into a forum thread with `thread_id` (auto-unarchives), but **only threads of the webhook's own channel**, so moving into `#movie-spoilers` needs a webhook on that forum. They can't send real replies (no `message_reference`). Allowed flags: SUPPRESS_EMBEDS, SUPPRESS_NOTIFICATIONS. Webhook names can't contain "discord" or "clyde".
 - **Bot limits that shaped the spoiler redesign:** a bot cannot insert a message mid-thread, control where a client opens a thread (return visits jump to newest/unread), hide or edit other users' messages, or reveal multiple spoiler tags with one click.
+- **Buttons** (checked 2026-11-11): custom_id 1–100 chars; link buttons (style 5) need a `url` (≤ 512 chars), have no custom_id and send no interaction; ≤ 5 buttons per action row; label ≤ 80 chars. A bot can edit components on its own messages (incl. a forum starter message).
+- **File uploads** (checked 2026-11-11): 20 MiB per file by default (more with boosts), ~25 MiB per request, 10 files per message. discord.py 2.7's `Guild.filesize_limit` still reports 10 MiB for unboosted servers; the bot uses the larger of the two.
+- **Message content in interactions:** messages delivered with a message context-menu command include their content even without the Message Content intent, so the bot no longer requests that intent.
 - **Autocomplete** must answer within 3 s; max 25 choices; choice name/value ≤ 100 chars.
 - **Poll answer limit** (10) and **max poll duration**: re-verify in Phase 5.
 - Text channel topic ≤ 1024 chars; forum guidelines ≤ 4096.

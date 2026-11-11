@@ -1,8 +1,10 @@
-"""The spoiler line: one per movie post; everything above it is spoiler-free.
+"""Spoiler discussions: one companion post per movie in #movie-spoilers.
 
-A spoiler *point* is a message ID (a Discord snowflake, so it is also a
-position in time). The earliest point ever reported for a post wins: an
-earlier point moves the line back, a later one changes nothing.
+#movies posts stay spoiler-free. A movie's spoiler post is created lazily (the
+info card button, /spoiler, or Mark as spoiler) and never more than once.
+"Mark as spoiler" moves a message out of a #movies post into the spoiler post:
+it is re-sent there via webhook as its author, then the original is deleted.
+Nothing is ever reposted in #movies, so the order there never changes.
 """
 from __future__ import annotations
 
@@ -11,69 +13,81 @@ import json
 import logging
 import re
 from collections import defaultdict
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 import discord
 
-from .db import utcnow
-from .movies import SPOILER_FIELD
+from .movies import truncate
 
 if TYPE_CHECKING:
     from .bot import FilmBuffsBot
 
 log = logging.getLogger(__name__)
 
-SPOILER_RE = re.compile(r"\|\|.+?\|\|", re.DOTALL)
-WEBHOOK_NAME = "Film Buffs reposts"
+WEBHOOK_NAME = "Film Buffs spoiler moves"
 MESSAGE_LIMIT = 2000
+# Discord: 20 MiB per file by default (more with boosts), 25 MiB per request, 10 files per message.
+DEFAULT_FILE_LIMIT = 20 * 1024 * 1024
+REQUEST_LIMIT = 25 * 1024 * 1024
+MAX_FILES = 10
+SPOILER_FLAG = "spoilers"   # tag key; shown as "🍿 Post-watch"
 
 
 # ------------------------------------------------------------------ pure logic
 
-def has_spoiler_markup(message: discord.Message) -> bool:
-    """`||spoiler||` text, or an attachment marked as a spoiler."""
-    if SPOILER_RE.search(message.content or ""):
-        return True
-    return any(a.is_spoiler() for a in message.attachments)
+def spoiler_post_name(display: str) -> str:
+    return truncate(f"{display} — Spoilers", 100)
 
 
-def should_move_marker(current: int | None, new_point: int) -> bool:
-    """Earliest spoiler point wins."""
-    return current is None or new_point < current
+def starter_text(display: str, movies_url: str) -> str:
+    return (f"⚠️ **Spoilers for {display}.** Everything here may spoil the film.\n"
+            f"← Back to the spoiler-free post: {movies_url}")
 
 
-def format_ct(dt: datetime, tz) -> str:
-    local = dt.astimezone(tz)
-    return local.strftime("%b %-d, %Y %-I:%M %p ") + local.tzname()
-
-
-def wrap_spoiler(text: str, header: str, limit: int = MESSAGE_LIMIT) -> list[str]:
-    """Wrap text in spoiler bars, split across messages if needed.
-
-    Existing `||` pairs are removed first, since spoilers cannot nest. The
-    header (e.g. "-# marked as spoiler by …") goes on the first message only.
-    """
-    text = text.replace("||", "").strip()
-    if not text:
-        return [header] if header else []
+def split_text(text: str, first_room: int, room: int = MESSAGE_LIMIT) -> list[str]:
+    """Split text into chunks: the first fits `first_room`, the rest `room`.
+    Prefers breaking at newlines, then spaces."""
+    text = text.strip()
     chunks: list[str] = []
-    first_room = limit - len(header) - 1 - 4 if header else limit - 4
-    room = first_room
+    limit = first_room
     while text:
-        if len(text) <= room:
-            piece, text = text, ""
-        else:
-            cut = text.rfind("\n", 0, room)
-            if cut < room // 2:
-                cut = text.rfind(" ", 0, room)
-            if cut < room // 2:
-                cut = room
-            piece, text = text[:cut], text[cut:].lstrip()
-        body = f"||{piece}||"
-        chunks.append(f"{header}\n{body}" if header and not chunks else body)
-        room = limit - 4
+        if len(text) <= limit:
+            chunks.append(text)
+            break
+        cut = text.rfind("\n", 0, limit)
+        if cut < limit // 2:
+            cut = text.rfind(" ", 0, limit)
+        if cut < limit // 2:
+            cut = limit
+        chunks.append(text[:cut].rstrip())
+        text = text[cut:].lstrip()
+        limit = room
     return chunks
+
+
+def move_messages(content: str, header: str, limit: int = MESSAGE_LIMIT) -> list[str]:
+    """The text messages for a moved message: header on the first one."""
+    body = split_text(content or "", limit - len(header) - 1, limit)
+    if not body:
+        return [header]
+    return [f"{header}\n{body[0]}"] + body[1:]
+
+
+def batch_files(sizes: list[int], max_total: int = REQUEST_LIMIT,
+                max_count: int = MAX_FILES) -> list[list[int]]:
+    """Group attachment indexes into requests within Discord's per-request limits."""
+    batches: list[list[int]] = []
+    cur: list[int] = []
+    total = 0
+    for i, size in enumerate(sizes):
+        if cur and (total + size > max_total or len(cur) >= max_count):
+            batches.append(cur)
+            cur, total = [], 0
+        cur.append(i)
+        total += size
+    if cur:
+        batches.append(cur)
+    return batches
 
 
 def safe_webhook_username(name: str) -> str:
@@ -84,166 +98,174 @@ def safe_webhook_username(name: str) -> str:
     return name[:80] or "Member"
 
 
+def display_of(row) -> str:
+    return f"{row['title']} ({row['year']})" if row["year"] else row["title"]
+
+
+class AlreadyMoved(Exception):
+    """The message was already moved (or deleted) by the time we got to it."""
+
+
 # --------------------------------------------------------------------- service
 
 class SpoilerService:
     def __init__(self, bot: "FilmBuffsBot"):
         self.bot = bot
-        self._locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._open_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._move_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._webhook: discord.Webhook | None = None
 
-    async def movie_for_thread(self, channel) -> "dict | None":
+    @property
+    def forum(self) -> discord.ForumChannel:
+        ch = self.bot.get_channel(self.bot.config.channels["movie_spoilers"])
+        if not isinstance(ch, discord.ForumChannel):
+            raise RuntimeError("#movie-spoilers forum not found")
+        return ch
+
+    # lookups -----------------------------------------------------------------
+    async def movie_for_movies_post(self, channel):
         if not isinstance(channel, discord.Thread):
             return None
         if channel.parent_id != self.bot.config.channels["movies"]:
             return None
         return await self.bot.db.get_movie_by_thread(channel.id)
 
+    async def movie_for_spoiler_post(self, channel):
+        if not isinstance(channel, discord.Thread):
+            return None
+        if channel.parent_id != self.bot.config.channels["movie_spoilers"]:
+            return None
+        return await self.bot.db.get_movie_by_spoiler_thread(channel.id)
+
+    async def find_spoiler_post(self, row) -> discord.Thread | None:
+        """The movie's spoiler post, or None. Forgets posts that were deleted by hand."""
+        tid = row["spoiler_thread_id"]
+        if not tid:
+            return None
+        thread = self.bot.get_channel(tid)
+        if thread is None:
+            try:
+                thread = await self.bot.fetch_channel(tid)
+            except discord.NotFound:
+                log.warning("Spoiler post %s for TMDB %s was deleted; forgetting it",
+                            tid, row["tmdb_id"])
+                await self.bot.db.set_spoiler_post(row["tmdb_id"], None, None)
+                return None
+        return thread  # type: ignore[return-value]
+
+    # lazy creation -----------------------------------------------------------
+    async def open(self, tmdb_id: int) -> tuple[discord.Thread, bool]:
+        """Return (spoiler post, created). Creates it at most once per movie.
+
+        Raises LookupError if the movie (or its #movies post) no longer exists.
+        """
+        async with self._open_locks[tmdb_id]:
+            movies_post = await self.bot.movies.find_post(tmdb_id)
+            row = await self.bot.db.get_movie(tmdb_id)
+            if movies_post is None or row is None:
+                raise LookupError(tmdb_id)
+            existing = await self.find_spoiler_post(row)
+            if existing is not None:
+                return existing, False
+
+            display = display_of(row)
+            thread, starter = await self._create_post(display, movies_post.jump_url)
+            await self.bot.db.set_spoiler_post(tmdb_id, thread.id, starter.id)
+            flags = set(json.loads(row["flags"]))
+            if SPOILER_FLAG not in flags:
+                flags.add(SPOILER_FLAG)
+                await self.bot.db.set_flags(tmdb_id, list(flags))
+            log.info("Created spoiler post %s for TMDB %s (%s)", thread.id, tmdb_id, display)
+            # Cosmetic follow-ups: the post exists and is recorded even if these fail.
+            for step in (self.bot.movies.update_card, self.bot.movies.retag):
+                try:
+                    await step(tmdb_id)
+                except discord.HTTPException:
+                    log.exception("%s failed after creating spoiler post for TMDB %s",
+                                  step.__name__, tmdb_id)
+            return thread, True
+
+    async def _create_post(self, display: str, movies_url: str):
+        created = await self.forum.create_thread(
+            name=spoiler_post_name(display), content=starter_text(display, movies_url),
+            allowed_mentions=discord.AllowedMentions.none(), reason="Spoiler discussion")
+        return created.thread, created.message
+
+    # moving a message --------------------------------------------------------
     async def webhook(self) -> discord.Webhook:
-        """The bot's own webhook on #movies (created once, reused)."""
+        """The bot's own webhook on #movie-spoilers (created once, reused)."""
         if self._webhook is None:
-            forum = self.bot.movies.forum
+            forum = self.forum
             for wh in await forum.webhooks():
                 if wh.user and wh.user.id == self.bot.user.id and wh.name == WEBHOOK_NAME:
                     self._webhook = wh
                     break
             else:
                 self._webhook = await forum.create_webhook(
-                    name=WEBHOOK_NAME, reason="Reposting messages marked as spoilers")
+                    name=WEBHOOK_NAME, reason="Moving messages marked as spoilers")
         return self._webhook
 
-    async def is_own_webhook_message(self, message: discord.Message) -> bool:
-        return bool(message.webhook_id) and message.webhook_id == (await self.webhook()).id
+    def file_limit(self, guild: discord.Guild | None) -> int:
+        return max(guild.filesize_limit if guild else 0, DEFAULT_FILE_LIMIT)
 
-    async def mark_from_now(self, thread: discord.Thread,
-                            actor: discord.abc.User) -> tuple[bool, str]:
-        """/spoiler: everything after a new divider may contain spoilers."""
-        now_point = discord.utils.time_snowflake(discord.utils.utcnow())
-        return await self.mark(thread, now_point, source="command", actor=actor)
+    async def move(self, message: discord.Message, actor: discord.abc.User,
+                   tmdb_id: int) -> discord.Message:
+        """Move a message from a #movies post into the movie's spoiler post.
 
-    async def mark(self, thread: discord.Thread, point_id: int, *, source: str,
-                   actor: discord.abc.User | None = None) -> tuple[bool, str]:
-        """Report a spoiler at `point_id` in a movie post.
-
-        Returns (moved, message): moved is True if the line was created or moved
-        back. `point_id` may be a deleted message (retroactive marks); links
-        then point at the nearest messages that still exist.
+        Returns the first moved copy. Raises AlreadyMoved if the original is gone,
+        ValueError if it can't be moved (nothing is changed then).
         """
-        async with self._locks[thread.id]:
-            row = await self.bot.db.get_movie_by_thread(thread.id)
-            if row is None:
-                return False, "not a movie post"
-            tmdb_id = row["tmdb_id"]
-
-            flags = set(json.loads(row["flags"]))
-            if "spoilers" not in flags:
-                flags.add("spoilers")
-                await self.bot.db.set_flags(tmdb_id, list(flags))
-                await self.bot.movies.retag(tmdb_id)
-
-            current = row["spoiler_marker_message_id"]
-            if not should_move_marker(current, point_id):
-                return False, f"line already at or before this point (source={source})"
-
-            tz = self.bot.config.tz
-            point_time = discord.utils.snowflake_time(point_id)
-            old_divider = row["spoiler_divider_message_id"]
-            first_spoiler = await self._first_at_or_after(thread, point_id, skip=old_divider)
-            last_clean = await self._last_before(thread, point_id)
-
-            if source == "command":
-                body = "Everything below this line may contain spoilers."
-            elif first_spoiler is not None:
-                body = f"Messages from {first_spoiler.jump_url} onward may contain spoilers."
-            else:
-                body = "Everything below this line may contain spoilers."
-            by = f" (marked by {actor.mention})" if actor and source in ("retro", "command") else ""
-            divider = await thread.send(
-                f"⚠️ **SPOILER LINE** — {format_ct(point_time, tz)}. {body}{by}",
-                allowed_mentions=discord.AllowedMentions.none())
-
-            if source == "command":
-                point_id = divider.id  # "from now on" means after the divider itself
-
-            await self.bot.db.set_spoiler_marker(
-                tmdb_id, marker_id=point_id, divider_id=divider.id,
-                marked_at=point_time.isoformat(timespec="seconds"))
-            if old_divider and old_divider != divider.id:
-                try:
-                    await thread.get_partial_message(old_divider).delete()
-                except discord.NotFound:
-                    pass
-
-            await self._update_starter(thread, row["starter_message_id"], last_clean, tz)
-            log.info("Spoiler line in %s (%s) set at %s via %s",
-                     thread.id, row["title"], point_id, source)
-            return True, divider.jump_url
-
-    async def _first_at_or_after(self, thread: discord.Thread, point_id: int,
-                                 skip: int | None = None):
-        async for m in thread.history(after=discord.Object(point_id - 1), limit=5,
-                                      oldest_first=True):
-            if m.id != skip:  # the old divider is about to be deleted
-                return m
-        return None
-
-    async def _last_before(self, thread: discord.Thread, point_id: int):
-        async for m in thread.history(before=discord.Object(point_id), limit=1):
-            return m
-        return None
-
-    async def _update_starter(self, thread: discord.Thread, starter_id: int,
-                              last_clean: discord.Message | None, tz) -> None:
-        starter = await thread.fetch_message(starter_id)
-        if not starter.embeds:
-            return
-        embed = starter.embeds[0]
-        target = last_clean or starter
-        line = (f"✅ Spoiler-free discussion ends here → {target.jump_url} "
-                f"({format_ct(target.created_at, tz)})")
-        idx = next((i for i, f in enumerate(embed.fields) if f.name == SPOILER_FIELD), None)
-        if idx is None:
-            embed.add_field(name=SPOILER_FIELD, value=line, inline=False)
-        else:
-            embed.set_field_at(idx, name=SPOILER_FIELD, value=line, inline=False)
-        await starter.edit(embed=embed)
-
-    # retroactive -------------------------------------------------------------
-    async def repost_as_spoiler(self, message: discord.Message,
-                                actor: discord.abc.User) -> str:
-        """Repost `message` hidden behind spoiler bars as its author, delete it,
-        and move the spoiler line. Returns a short status for the actor."""
-        thread = message.channel
-        files = []
-        limit = message.guild.filesize_limit if message.guild else 10 * 1024 * 1024
+        limit = self.file_limit(message.guild)
         for a in message.attachments:
             if a.size > limit:
-                raise ValueError(f"attachment {a.filename} is too large to re-upload")
-            files.append(await a.to_file(spoiler=True))
+                raise ValueError(f"the attachment {a.filename} is too large to re-upload")
 
-        header = f"-# marked as spoiler by {actor.mention}"
-        ref = message.reference
-        if ref and ref.message_id:
-            replied = ref.resolved if isinstance(ref.resolved, discord.Message) else None
-            who = replied.author.display_name if replied else "a message"
-            link = (replied.jump_url if replied else
-                    f"https://discord.com/channels/{message.guild.id}/{thread.id}/{ref.message_id}")
-            header = f"-# ↪ replying to {who}: {link}\n{header}"
-        chunks = wrap_spoiler(message.content or "", header)
-        if not chunks:
-            chunks = [header]
+        async with self._move_locks[message.id]:
+            try:
+                message = await message.channel.fetch_message(message.id)
+            except discord.NotFound:
+                raise AlreadyMoved from None
 
-        wh = await self.webhook()
-        author = message.author
-        kwargs = dict(username=safe_webhook_username(author.display_name),
-                      avatar_url=author.display_avatar.url, thread=thread, wait=True,
-                      allowed_mentions=discord.AllowedMentions.none(), suppress_embeds=True)
-        for i, chunk in enumerate(chunks):
-            last = i == len(chunks) - 1
-            await wh.send(chunk, files=files if last else discord.utils.MISSING, **kwargs)
+            spoiler_post, _ = await self.open(tmdb_id)
 
-        point_id = message.id
-        await message.delete()
-        moved, info = await self.mark(thread, point_id, source="retro", actor=actor)
-        return "Spoiler line moved back to this message." if moved else \
-            "It was already below the spoiler line, so the line stays where it is."
+            header = [f"-# moved from the spoiler-free post by {actor.mention}"]
+            ref = message.reference
+            if ref and ref.message_id:
+                # DeletedReferencedMessage (reply to a deleted message) has no author.
+                replied = ref.resolved if getattr(ref.resolved, "author", None) else None
+                who = replied.author.display_name if replied else "a message"
+                link = (replied.jump_url if replied else
+                        f"https://discord.com/channels/{message.guild.id}/"
+                        f"{message.channel.id}/{ref.message_id}")
+                header.insert(0, f"-# ↪ replying to {who}: {link}")
+            texts = move_messages(message.content or "", "\n".join(header))
+
+            files = [await a.to_file(spoiler=a.is_spoiler()) for a in message.attachments]
+            batches = batch_files([a.size for a in message.attachments])
+
+            wh = await self.webhook()
+            author = message.author
+            kwargs = dict(username=safe_webhook_username(author.display_name),
+                          avatar_url=author.display_avatar.url, thread=spoiler_post,
+                          wait=True, allowed_mentions=discord.AllowedMentions.none())
+            sent: list[discord.WebhookMessage] = []
+            try:
+                for i, text in enumerate(texts):
+                    last = i == len(texts) - 1
+                    first_files = [files[j] for j in batches[0]] if last and batches else []
+                    sent.append(await wh.send(text, files=first_files or discord.utils.MISSING,
+                                              **kwargs))
+                for batch in batches[1:]:
+                    sent.append(await wh.send(files=[files[j] for j in batch], **kwargs))
+                await message.delete()
+            except discord.HTTPException:
+                # Don't leave a half-moved message or a duplicate behind.
+                for m in sent:
+                    try:
+                        await m.delete()
+                    except discord.HTTPException:
+                        log.exception("Could not roll back moved copy %s", m.id)
+                raise
+            log.info("Moved message %s from %s to spoiler post %s (by %s)",
+                     message.id, message.channel.id, spoiler_post.id, actor.id)
+            return sent[0]

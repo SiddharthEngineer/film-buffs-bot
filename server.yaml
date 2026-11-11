@@ -68,7 +68,8 @@ categories:
         topic: |
           One post per movie. Posts are created by the bot. Use /addmovie in any channel to add a film (pick it from the autocomplete list).
           👍 the first message of a post to vote for it in the weekly pick.
-          Chat freely inside any post. Each post has one ⚠️ SPOILER LINE: everything above it is spoiler-free. Wrap spoilers in ||double bars||, or use /spoiler, or right-click a message → Apps → Mark as spoiler.
+          Posts here are always spoiler-free. Every movie has a separate spoiler discussion in #movie-spoilers: click 🔓 Spoiler discussion on the movie's info card (or run /spoiler inside the post) to open it.
+          Slipped up? Right-click (long-press on mobile) a message → Apps → Mark as spoiler moves it to the spoiler discussion. Nothing else in the post moves.
         overwrites:
           "@everyone":
             allow: [send_messages_in_threads]
@@ -81,7 +82,8 @@ categories:
           - {key: up_next,     name: "Up Next",        emoji: "⏭️", moderated: true}
           - {key: watched,     name: "Watched",        emoji: "✅", moderated: true}
           - {key: watched_solo, name: "Watched (solo)", emoji: "👤", moderated: true}
-          - {key: spoilers,    name: "Spoilers",       emoji: "⚠️", moderated: true}
+          # "spoilers" = this movie has a spoiler discussion in #movie-spoilers (key kept so the ID survives).
+          - {key: spoilers,    name: "Post-watch",     emoji: "🍿", moderated: true}
           - {key: in_theaters, name: "In Theaters",    emoji: "🎟️", moderated: true}
           - {key: streaming,   name: "Streaming",      emoji: "📺", moderated: true}
           # Genre tags. tmdb_genres = TMDB genre names that map to this tag.
@@ -98,6 +100,19 @@ categories:
           - {key: g_scifi,     name: "Sci-Fi",      tmdb_genres: [Science Fiction]}
           - {key: g_thriller,  name: "Thriller",    tmdb_genres: [Thriller]}
           # 19 of Discord's 20-tag limit used.
+      - key: movie_spoilers
+        name: movie-spoilers
+        type: forum
+        default_sort: latest_activity
+        topic: |
+          Spoilers allowed, no warnings needed. One post per movie, created by the bot when someone first opens a movie's spoiler discussion.
+          Each post links back to the movie's spoiler-free post in #movies. Vote with 👍 there, not here.
+        overwrites:
+          "@everyone":
+            allow: [send_messages_in_threads]
+            deny: [send_messages]          # only the bot creates posts
+          "@bot":
+            allow: [view_channel, send_messages, send_messages_in_threads, embed_links, manage_threads]
 
   - key: planning
     name: "📅 Planning"
@@ -148,13 +163,13 @@ messages:
       • Winners are logged in {#watch-log}. Watch-week dates show up as server events.
 
       **Spoiler policy**
-      • Each movie post has one **⚠️ SPOILER LINE**. Everything above it is spoiler-free; below it, anything goes.
-      • Wrap spoilers in `||double bars||`, or run **/spoiler** inside a post before you go into details. Either one sets the line.
-      • Someone else slipped? Right-click (long-press on mobile) their message → **Apps → Mark as spoiler**. The bot reposts it hidden and moves the line back.
+      • {#movies} is always spoiler-free. Talk about trailers, hype and first impressions there.
+      • Every movie has its own spoiler discussion in {#movie_spoilers}. Click **🔓 Spoiler discussion** on a movie's info card, or run **/spoiler** inside its post. Posts with a spoiler discussion get the 🍿 Post-watch tag.
+      • Someone slipped? Right-click (long-press on mobile) their message → **Apps → Mark as spoiler**. The bot moves it to the spoiler discussion; nothing else in the post moves.
       • Outside movie posts, always use `||spoiler bars||`.
 
       **Letterboxd**
-      • Run **/letterboxd** with your username to link your account. New diary entries and reviews show up in the movie's post (spoiler-hidden) and in {#letterboxd-feed}. **/letterboxd-unlink** to stop.
+      • Run **/letterboxd** with your username to link your account. New diary entries show up in {#letterboxd-feed} and the movie's post; ratings and reviews go in its spoiler discussion. **/letterboxd-unlink** to stop.
 
       **Be nice.** Disagree about movies, not about people.
     color: 0xE5A00D

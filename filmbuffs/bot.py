@@ -16,14 +16,13 @@ from .tmdb import TMDB
 
 log = logging.getLogger("filmbuffs")
 
-USER_AGENT = "FilmBuffsBot/0.2 (private Discord bot)"
+USER_AGENT = "FilmBuffsBot/0.3 (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers"]
 
 
 class FilmBuffsBot(commands.Bot):
     def __init__(self, config: Config):
         intents = discord.Intents.default()
-        intents.message_content = True   # spoiler markup detection (Phase 3)
         super().__init__(command_prefix=commands.when_mentioned, intents=intents,
                          help_command=None,
                          allowed_mentions=discord.AllowedMentions(everyone=False, roles=False))
