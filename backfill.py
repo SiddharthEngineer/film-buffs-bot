@@ -37,6 +37,7 @@ from pathlib import Path
 import aiohttp
 import discord
 
+from filmbuffs.availability import AvailabilityService
 from filmbuffs.backfill import (ExportError, TitleResolver, parse_export, read_overrides,
                                 write_unmatched)
 from filmbuffs.bot import USER_AGENT
@@ -131,6 +132,7 @@ class BackfillClient(discord.Client):
                          allowed_mentions=discord.AllowedMentions.none())
         self.config, self.db, self.tmdb = config, db, tmdb
         self.movies = MovieService(self)
+        self.availability = AvailabilityService(self)
         self.spoilers = SpoilerService(self)
         self.letterboxd = LetterboxdService(self)
 

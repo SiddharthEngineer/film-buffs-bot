@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–8 and 5R are built (see [STATUS.md](STATUS.md)); Phases 9–10 are planned and approved by the owner (2026-11-11), not started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–9 and 5R are built and live (see [STATUS.md](STATUS.md)); only 5R's vote picker waits for the first vote (Fri 2026-11-13). Phase 9 went live 2026-11-12; Phase 10 is planned, not started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 ## Guiding decisions (agreed with the owner)
 
@@ -133,7 +133,7 @@ Owner (2026-11-12): two weeks from nominating to watching is too long, especiall
 - **Tests:** schedule boundaries (Thu/Fri/Sun cutoffs, DST), IRV (majority in round 1, eliminations, exhausted ballots, every tie path, single voter), picker add/undo/clear, transition of an open ballot, unknown `{#…}` refs rejected.
 - **Owner by hand:** run through the picker in Discord once voting opens (or on a throwaway test week), and run `setup_server.py` plan/apply for the topic and welcome text.
 
-## Phase 9: In Theaters / Streaming tags from TMDB (planned)
+## Phase 9: In Theaters / Streaming tags from TMDB (built; see STATUS.md)
 
 Owner (2026-11-11): set them automatically. Both tags already exist as bot-only flag tags.
 - Daily job: one TMDB call per movie (`append_to_response=release_dates,watch/providers`, region US), ~450 calls, well under TMDB's limits.
@@ -141,6 +141,7 @@ Owner (2026-11-11): set them automatically. Both tags already exist as bot-only 
 - **Streaming:** on at least one US subscription service (TMDB's `flatrate`; rent/buy doesn't count).
 - Info card gets a line like "📺 Streaming on Netflix, Max" (TMDB's provider data comes from JustWatch, which must be credited, e.g. in the card footer). Tags change through `MovieService.retag`; only changed posts are edited.
 - Tags use up the 5-tag budget before genres, so a film In Theaters or Streaming shows one fewer genre.
+- **Narrowed by the owner after the first dry run (2026-11-12):** the tags are only for new films. In Theaters = first US run within 60 days and not out at home; re-releases are ignored (they vary by theater chain). Streaming = first released within the last year and now watchable at home (digital release, subscription, rent or buy). Every card still lists subscription services ("📺 Streaming on …") even without the tag.
 
 ## Phase 10: engagement stats (planned)
 

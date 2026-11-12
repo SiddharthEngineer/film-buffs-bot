@@ -120,6 +120,16 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
             return []
         return [app_commands.Choice(name=label, value=value) for label, value in pairs[:25]]
 
+    @app_commands.command(name="availability",
+                          description="Re-check In Theaters / Streaming for every movie now")
+    @admin_only()
+    async def availability(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        log.info("%s started an availability check", interaction.user.id)
+        report = await self.bot.availability.run()
+        await interaction.followup.send(f"✅ In Theaters / Streaming: {report.summary()}.",
+                                        ephemeral=True)
+
     @app_commands.command(name="letterboxd-unlink",
                           description="Unlink a member's Letterboxd account")
     @app_commands.describe(member="Whose account to unlink")

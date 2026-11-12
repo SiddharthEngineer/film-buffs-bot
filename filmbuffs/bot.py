@@ -11,6 +11,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from .availability import AvailabilityService
 from .backup import latest_backup
 from .botlogs import DiscordLogHandler
 from .config import Config
@@ -24,10 +25,11 @@ from .weekly import WeeklyService
 
 log = logging.getLogger("filmbuffs")
 
-VERSION = "0.8"
+VERSION = "0.9"
 USER_AGENT = f"FilmBuffsBot/{VERSION} (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd",
-              "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly"]
+              "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly",
+              "filmbuffs.cogs.availability"]
 
 
 def git_commit() -> str:
@@ -50,6 +52,7 @@ class FilmBuffsBot(commands.Bot):
         self.session: aiohttp.ClientSession | None = None
         self.tmdb: TMDB | None = None
         self.movies = MovieService(self)
+        self.availability = AvailabilityService(self)
         self.spoilers = SpoilerService(self)
         self.letterboxd = LetterboxdService(self)
         self.votes = VoteService(self)

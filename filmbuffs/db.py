@@ -253,6 +253,13 @@ MIGRATIONS = [
     );
     ALTER TABLE weeks ADD COLUMN vote_rounds TEXT;
     """,
+    # Phase 9: In Theaters / Streaming from TMDB (US). availability is the last
+    # classification as JSON {in_theaters, streaming: [provider names],
+    # theatrical, digital}; the in_theaters/streaming flags in `flags` follow it.
+    """
+    ALTER TABLE movies ADD COLUMN availability TEXT;
+    ALTER TABLE movies ADD COLUMN availability_checked_at TEXT;
+    """,
 ]
 
 
@@ -311,6 +318,17 @@ class Database:
         await self.conn.execute("UPDATE movies SET flags=? WHERE tmdb_id=?",
                                 (json.dumps(sorted(set(flags))), tmdb_id))
         await self.conn.commit()
+
+    async def set_availability(self, tmdb_id: int, availability: str,
+                               flags: list[str]) -> None:
+        await self.conn.execute(
+            "UPDATE movies SET availability=?, availability_checked_at=?, flags=? WHERE tmdb_id=?",
+            (availability, utcnow(), json.dumps(sorted(set(flags))), tmdb_id))
+        await self.conn.commit()
+
+    async def all_movies(self) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute("SELECT * FROM movies ORDER BY added_at")
+        return list(await cur.fetchall())
 
     async def get_movie_by_spoiler_thread(self, thread_id: int) -> aiosqlite.Row | None:
         cur = await self.conn.execute("SELECT * FROM movies WHERE spoiler_thread_id=?",

@@ -279,6 +279,8 @@ def test_migration_seeds_watchlist_from_backfill(tmp_path):
         await db.conn.execute("DROP TABLE ranked_votes")           # migration 9
         for col in ("updated_at", "removed_at", "embed_source"):
             await db.conn.execute(f"ALTER TABLE letterboxd_entries DROP COLUMN {col}")
+        for col in ("availability", "availability_checked_at"):     # migration 10
+            await db.conn.execute(f"ALTER TABLE movies DROP COLUMN {col}")
         await db.conn.execute("DELETE FROM schema_version WHERE version >= 6")
         for guid, tid in (("a", 1), ("b", None)):
             await db.insert_entry({"guid": guid, "discord_user_id": 10, "username": "me",

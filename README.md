@@ -116,6 +116,7 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 | Command | What it does |
 |---|---|
 | `/admin resync [post]` | Re-renders a movie's info card (button, no-spoilers reminder) and re-applies its tags from the database; also refreshes its post-watch post's title and starter. Run it inside the `#movies` or post-watch post, or pick the post. Use it after editing a movie row by hand, or if a card or its tags look wrong. |
+| `/admin availability` | Re-checks In Theaters / Streaming for every movie against TMDB now (it also runs daily at 05:00 Chicago) and replies with what changed. Takes a few minutes. |
 | `/admin pick week:<This/Next week> title:` | Sets that week's movie. Closes an open vote early (its ballots are kept), puts a previously picked film back to its old tag, updates the event and announces it. If the week has started, it's pinned right away. |
 | `/admin letterboxd-unlink member:<member>` | Unlinks someone's Letterboxd account (e.g. a wrong link or they asked). Their stored entries stay. |
 

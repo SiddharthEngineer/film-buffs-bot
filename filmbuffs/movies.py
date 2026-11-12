@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from .availability import FIELD_NAME as WATCH_FIELD, JUSTWATCH_CREDIT, Availability, card_line
 from .cards import CARD_VERSION, card_view
 from .tags import compose_tag_keys, genre_tag_keys
 from .tmdb import Movie
@@ -26,6 +27,7 @@ LEGACY_SPOILER_FIELD = "Spoiler line"
 REMINDER_NAME = "🚫 No spoilers in this post"
 REMINDER_VALUE = ("Trailers, hype and first impressions only. Seen it? Spoilers go in the "
                   "**🔓 Post-watch discussion** (button below).")
+VOTE_FOOTER = f"{VOTE_EMOJI} this message to vote for it in the weekly pick"
 
 
 def set_reminder(e: discord.Embed) -> discord.Embed:
@@ -37,6 +39,18 @@ def set_reminder(e: discord.Embed) -> discord.Embed:
     return e
 
 
+def set_availability(e: discord.Embed, av: Availability | None) -> discord.Embed:
+    """Put the "Where to watch (US)" field just above the reminder (or drop it), and
+    credit JustWatch in the footer whenever the field is shown (TMDB's terms)."""
+    for i in reversed([i for i, f in enumerate(e.fields) if f.name == WATCH_FIELD]):
+        e.remove_field(i)
+    text = card_line(av)
+    if text:
+        e.add_field(name=WATCH_FIELD, value=text, inline=False)
+    e.set_footer(text=f"{VOTE_FOOTER} · {JUSTWATCH_CREDIT}" if text else VOTE_FOOTER)
+    return set_reminder(e)
+
+
 def truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
@@ -45,7 +59,7 @@ def truncate(text: str, limit: int) -> str:
 
 
 def build_embed(movie: Movie, added_by: discord.abc.User | int | None,
-                pitch: str | None) -> discord.Embed:
+                pitch: str | None, availability: Availability | None = None) -> discord.Embed:
     e = discord.Embed(title=movie.display, url=movie.tmdb_url,
                       description=truncate(movie.overview, 600) or "*No synopsis on TMDB.*",
                       color=EMBED_COLOR)
@@ -64,8 +78,7 @@ def build_embed(movie: Movie, added_by: discord.abc.User | int | None,
         e.add_field(name="Added by", value=f"<@{uid}>", inline=True)
     if pitch:
         e.add_field(name="Pitch", value=truncate(pitch, 1024), inline=False)
-    e.set_footer(text=f"{VOTE_EMOJI} this message to vote for it in the weekly pick")
-    return set_reminder(e)
+    return set_availability(e, availability)
 
 
 class MovieService:
@@ -118,10 +131,14 @@ class MovieService:
                 return existing, False
 
             genres = genre_tag_keys(movie.genres, self.bot.config.genre_map)
-            flags: list[str] = []
+            # In Theaters / Streaming up front, so a new post needs no later edit.
+            # If TMDB fails, the daily availability check fills them in.
+            svc = getattr(self.bot, "availability", None)
+            av = await svc.for_new_post(movie.id) if svc else None
+            flags: list[str] = av.flags if av else []
             created = await self.forum.create_thread(
                 name=truncate(movie.display, 100),
-                embed=build_embed(movie, added_by, pitch),
+                embed=build_embed(movie, added_by, pitch, av),
                 view=card_view(movie.id, None),
                 applied_tags=self.applied_tags(status, flags, genres),
                 reason=f"Movie post ({source})",
@@ -133,6 +150,8 @@ class MovieService:
                 title=movie.title, year=movie.year, status=status, flags=flags,
                 genre_tags=genres, added_by=uid, pitch=pitch, source=source)
             await self.bot.db.set_card_version(movie.id, CARD_VERSION)
+            if av is not None:
+                await self.bot.db.set_availability(movie.id, av.to_json(), flags)
             log.info("Created post %s for TMDB %s (%s) via %s",
                      thread.id, movie.id, movie.display, source)
             return thread, True
@@ -157,7 +176,8 @@ class MovieService:
         return f"https://discord.com/channels/{self.bot.config.guild_id}/{row['spoiler_thread_id']}"
 
     async def update_card(self, tmdb_id: int) -> None:
-        """Re-render the info card: button, no-spoilers reminder (drops the legacy field)."""
+        """Re-render the info card: button, where to watch, no-spoilers reminder
+        (drops the legacy field)."""
         row = await self.bot.db.get_movie(tmdb_id)
         thread = await self.find_post(tmdb_id)
         if row is None or thread is None:
@@ -167,7 +187,8 @@ class MovieService:
         starter = await thread.fetch_message(row["starter_message_id"])
         kwargs: dict = {"view": card_view(tmdb_id, self.spoiler_url(row))}
         if starter.embeds:
-            kwargs["embed"] = set_reminder(starter.embeds[0])
+            kwargs["embed"] = set_availability(starter.embeds[0],
+                                               Availability.from_json(row["availability"]))
         await starter.edit(**kwargs)
         await self.bot.db.set_card_version(tmdb_id, CARD_VERSION)
 
