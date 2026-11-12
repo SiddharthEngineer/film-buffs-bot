@@ -29,15 +29,15 @@ filmbuffs/            the bot package (python -m filmbuffs)
   movies.py           movie posts in #movies (create, embed, tags)
   votes.py            👍 vote tracking, the pinned leaderboard post
   weekly.py           weekly pick: ballot, poll, watch week
-  watchlist.py        /watchlist import (Letterboxd export)
   tags.py             which forum tags a post carries (5-tag limit)
   spoilers.py         post-watch discussions (companion posts, Mark as spoiler)
   letterboxd.py       Letterboxd RSS: linking, polling, posting entries
-  backfill.py         matching logic for backfill.py (Letterboxd export import)
+  backfill.py         Letterboxd export parsing + TMDB title matching
+  sync.py             full sync from a Letterboxd export (/letterboxd sync, backfill.py)
   backup.py           nightly SQLite backups, newest 3 kept
   botlogs.py          posts errors to #bot-logs (throttled)
   cogs/               slash commands, listeners, background loops
-backfill.py           imports a Letterboxd export (dry run by default)
+backfill.py           shell version of /letterboxd sync for the owner (dry run by default)
 setup_server.py       reconciles the Discord server to server.yaml
 filmbuffs/state.py    which Discord objects setup_server.py manages
 server.yaml           declared server layout (channels, perms, tags, messages)
@@ -101,10 +101,11 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 | `/nominate [title]` / `/unnominate` | any channel (no title: inside a movie post) | One nomination per member on the open ballot; run again to swap. |
 | `/schedule` | any channel | This week's movie, next week's poll, the open ballot. |
 | `/top [genre] [include_watched]` | any channel | The most-wanted films. |
-| `/watchlist import file:` · `show` · `clear` | any channel | Upload your Letterboxd export zip; your watchlist counts like a 👍, and films without a post get one (Backlog). |
+| `/watchlist show` · `clear` | any channel | What the bot has from your last export upload; clear removes it (your 👍 stay). |
 | `/spoiler` | inside a movie post | Links the movie's post-watch discussion (creates it if needed); inside a post-watch post, links back. |
 | Apps → **Mark as spoiler** | any message in a `#movies` post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
-| `/letterboxd [username]` | any channel | Links your Letterboxd account, or shows which one is linked. `/letterboxd-unlink` stops posting. |
+| `/letterboxd link [username]` · `unlink` | any channel | Links your Letterboxd account (no username: shows which one is linked and your last sync). `unlink` stops posting. |
+| `/letterboxd sync file:` | any channel | Upload your Letterboxd export zip. Shows a preview (new / changed / removed entries, posts to create), then **Apply** or **Cancel**. Stores your history, edits the bot's embeds for entries you edited, deletes the bot's messages for entries you deleted, replaces your watchlist (each film counts toward the rankings like that member's 👍, shown as 📋; no reaction is added to the post). |
 
 ## Admin cheat sheet
 

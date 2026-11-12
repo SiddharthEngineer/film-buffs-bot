@@ -1,7 +1,7 @@
-"""Letterboxd export backfill: parse the zip, match films to TMDB, plan the work.
+"""Letterboxd export: parse the zip and match its films to TMDB.
 
-The Discord side (creating posts, posting reviews) lives in backfill.py at the
-repo root; everything here is testable without Discord.
+Used by the export sync (filmbuffs/sync.py: /letterboxd sync and backfill.py).
+Everything here is testable without Discord.
 
 Export layout (Letterboxd → Settings → Data → Export your data):
   profile.csv     Username, ...
@@ -23,7 +23,7 @@ import re
 import unicodedata
 import zipfile
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from .letterboxd import review_to_markdown
@@ -90,6 +90,15 @@ class Export:
     username: str | None
     rows: list[ExportRow]
     file_counts: dict[str, int]
+    # When the export was made (UTC ISO), from the zip's name
+    # ("letterboxd-<user>-2026-11-11-16-08-utc.zip"), else the end of the newest
+    # day logged in it. Entries the bot saw after this aren't expected in it.
+    exported_at: str | None = None
+
+    @property
+    def has_diary(self) -> bool:
+        """The export includes the diary/watched files (so missing entries mean deleted)."""
+        return any(n in self.file_counts for n in ("diary.csv", "watched.csv"))
 
 
 def _read_csv(zf: zipfile.ZipFile, name: str) -> list[dict[str, str]] | None:
@@ -137,15 +146,32 @@ def export_review_markdown(text: str) -> str | None:
     return review_to_markdown(html) or None
 
 
-def parse_export(path: str | Path) -> Export:
+_EXPORT_NAME_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-utc", re.IGNORECASE)
+
+
+def exported_at_from_name(name: str | None) -> str | None:
+    m = _EXPORT_NAME_RE.search(name or "")
+    if not m:
+        return None
+    y, mo, d, h, mi = m.groups()
+    return f"{y}-{mo}-{d}T{h}:{mi}:59+00:00"
+
+
+def parse_export(path: str | Path | bytes, filename: str | None = None) -> Export:
+    """Parse an export zip (a path, or the zip's bytes plus its file name)."""
+    if isinstance(path, (bytes, bytearray)):
+        source, label = io.BytesIO(path), filename or "that file"
+    else:
+        source, label = path, str(path)
+        filename = filename or Path(path).name
     try:
-        zf = zipfile.ZipFile(path)
+        zf = zipfile.ZipFile(source)
     except (zipfile.BadZipFile, FileNotFoundError, IsADirectoryError) as e:
-        raise ExportError(f"can't open {path}: {e}") from None
+        raise ExportError(f"can't open {label}: {e}") from None
     with zf:
         data = {name: _read_csv(zf, name) for name in FILES}
     if all(data[n] is None for n in FILES[1:]):
-        raise ExportError(f"{path} doesn't look like a Letterboxd export (no diary/watched CSVs)")
+        raise ExportError(f"{label} doesn't look like a Letterboxd export (no diary/watched CSVs)")
     counts = {n: len(rows) for n, rows in data.items() if rows is not None}
     username = None
     if data["profile.csv"]:
@@ -206,7 +232,11 @@ def parse_export(path: str | Path) -> Export:
     for r in data["watchlist.csv"] or []:
         rows.append(base(r, "watchlist"))
     rows.sort(key=lambda x: (x.date, x.title))
-    return Export(username, rows, counts)
+    exported = exported_at_from_name(filename)
+    if exported is None:
+        newest = max((r.logged_date for r in rows if r.logged_date), default=None)
+        exported = f"{newest}T23:59:59+00:00" if newest else None
+    return Export(username, rows, counts, exported)
 
 
 # ------------------------------------------------------------------ TMDB matching
@@ -373,147 +403,6 @@ class TitleResolver:
         return "; ".join(out)
 
 
-# ------------------------------------------------------------------ planning
-
-@dataclass
-class Filters:
-    since: str | None = None          # YYYY-MM-DD
-    min_rating: float | None = None
-    only_watchlist: bool = False
-    no_watchlist: bool = False
-    store_only: bool = False
-
-    def acts_on(self, row: ExportRow) -> bool:
-        if self.store_only:
-            return False
-        if row.kind == "watchlist":
-            if self.no_watchlist:
-                return False
-        else:
-            if self.only_watchlist:
-                return False
-            if self.min_rating is not None and (row.rating or 0) < self.min_rating:
-                return False
-        if self.since and row.date and row.date < self.since:
-            return False
-        return True
-
-
-@dataclass
-class Item:
-    row: ExportRow
-    tmdb_id: int | None
-    how: str
-    existing: object | None = None        # DB entry already linked to this row
-    rss_match: object | None = None       # RSS entry this row will be linked to
-    acts: bool = False
-
-
-@dataclass
-class Plan:
-    user_id: int
-    username: str
-    items: list[Item] = field(default_factory=list)
-    unmatched: list[tuple[ExportRow, str, str]] = field(default_factory=list)
-    new_posts: dict[int, tuple[str, str]] = field(default_factory=dict)   # tmdb → (status, date)
-    existing_posts: set[int] = field(default_factory=set)
-    reviews: list[Item] = field(default_factory=list)
-    reviews_already: int = 0
-    new_spoiler_posts: set[int] = field(default_factory=set)
-    tmdb_lookups: int = 0
-
-    @property
-    def to_store(self) -> int:
-        return sum(1 for i in self.items if i.existing is None and i.rss_match is None)
-
-    @property
-    def already_stored(self) -> int:
-        return sum(1 for i in self.items if i.existing is not None)
-
-    @property
-    def linked_to_rss(self) -> int:
-        return sum(1 for i in self.items if i.rss_match is not None)
-
-    @property
-    def filtered(self) -> int:
-        return sum(1 for i in self.items if not i.acts)
-
-    def posts_by_status(self) -> dict[str, int]:
-        out: dict[str, int] = defaultdict(int)
-        for status, _ in self.new_posts.values():
-            out[status] += 1
-        return dict(out)
-
-    def est_seconds(self) -> float:
-        return ((len(self.new_posts) + len(self.new_spoiler_posts)) * SECS_PER_POST
-                + len(self.reviews) * SECS_PER_REVIEW)
-
-
-def review_of(item: Item) -> str | None:
-    for src in (item.existing, item.rss_match):
-        if src is not None and src["review_text"]:
-            return src["review_text"]
-    return item.row.review_text
-
-
-async def build_plan(db, resolver: TitleResolver, export: Export, user_id: int,
-                     username: str, filters: Filters) -> Plan:
-    plan = Plan(user_id, username)
-    keys = {(r.title, r.year) for r in export.rows}
-    results = dict(zip(keys, await asyncio.gather(*(resolver.resolve(t, y) for t, y in keys))))
-    plan.tmdb_lookups = resolver.lookups
-
-    entries = await db.user_entries(user_id)
-    by_guid = {e["guid"]: e for e in entries}
-    by_uri = {e["export_uri"]: e for e in entries if e["export_uri"]}
-    rss: dict[tuple, list] = defaultdict(list)
-    for e in entries:
-        if e["source"] == "rss" and not e["export_uri"] and e["kind"] in ("watch", "review"):
-            rss[(e["tmdb_id"], e["watched_date"])].append(e)
-
-    for row in export.rows:
-        tid, how, cands = results[(row.title, row.year)]
-        item = Item(row, tid, how)
-        item.existing = by_guid.get(row.guid(user_id))
-        if item.existing is None and row.uri and row.kind in ("watch", "review"):
-            item.existing = by_uri.get(row.uri)
-        if item.existing is None and tid and row.kind in ("watch", "review"):
-            queue = rss.get((tid, row.watched_date))
-            if queue:
-                item.rss_match = queue.pop(0)
-        item.acts = bool(tid) and filters.acts_on(row)
-        plan.items.append(item)
-        if not tid:
-            plan.unmatched.append((row, how, cands))
-
-    movie_rows = {}
-    for item in plan.items:
-        if not item.acts:
-            continue
-        tid = item.tmdb_id
-        if tid not in movie_rows:
-            movie_rows[tid] = await db.get_movie(tid)
-        if movie_rows[tid] is not None:
-            plan.existing_posts.add(tid)
-        else:
-            status = "backlog" if item.row.kind == "watchlist" else "watched_solo"
-            prev = plan.new_posts.get(tid)
-            if prev is None or (prev[0] == "backlog" and status == "watched_solo"):
-                plan.new_posts[tid] = (status, item.row.date)
-        if item.row.kind == "watchlist" or not review_of(item):
-            continue
-        linked = item.existing or item.rss_match
-        if linked is not None and (linked["spoiler_message_id"] or linked["state"] == "pending"):
-            plan.reviews_already += 1          # posted already, or the poller will
-            continue
-        plan.reviews.append(item)
-        mrow = movie_rows[tid]
-        if mrow is None or not mrow["spoiler_thread_id"]:
-            plan.new_spoiler_posts.add(tid)
-    plan.reviews.sort(key=lambda i: (i.row.date, i.row.title))
-    return plan
-
-
 def read_overrides(path: str | Path) -> dict[str, int]:
     """title_key → TMDB ID from a filled-in unmatched CSV (rows with a tmdb_id)."""
     out = {}
@@ -545,6 +434,5 @@ def write_unmatched(path: str | Path, unmatched: list[tuple[ExportRow, str, str]
             w.writerow([row.title, row.year or "", kinds, reason, cands, row.uri or "", ""])
 
 
-__all__ = ["Export", "ExportError", "ExportRow", "Filters", "Item", "Plan", "TitleResolver",
-           "TMDBError", "build_plan", "choose_match", "parse_export", "read_overrides",
-           "write_unmatched", "WATCHED_KINDS"]
+__all__ = ["Export", "ExportError", "ExportRow", "TitleResolver", "TMDBError", "choose_match",
+           "parse_export", "read_overrides", "write_unmatched", "WATCHED_KINDS"]

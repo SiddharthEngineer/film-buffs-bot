@@ -1,5 +1,5 @@
 """Weekly pick, votes and watchlists: /nominate, /unnominate, /schedule, /top,
-/watchlist, 👍 reaction tracking, the leaderboard post and the weekly tick."""
+/watchlist show|clear, 👍 reaction tracking, the leaderboard post and the weekly tick."""
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +14,6 @@ from discord.ext import commands, tasks
 
 from ..tmdb import TMDBError, parse_choice
 from ..votes import ranked_line
-from ..watchlist import WatchlistError, import_watchlist, parse_watchlist
 from ..weekly import ELIGIBLE
 
 if TYPE_CHECKING:
@@ -22,13 +21,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-POST_SECONDS = 3.0      # pause between posts created from a watchlist import
-
 
 class Weekly(commands.Cog):
     def __init__(self, bot: "FilmBuffsBot"):
         self.bot = bot
-        self._importing: set[int] = set()
 
     async def cog_load(self) -> None:
         self.tick.start()
@@ -185,94 +181,22 @@ class Weekly(commands.Cog):
     watchlist = app_commands.Group(name="watchlist", guild_only=True,
                                    description="Your uploaded Letterboxd watchlist (counts as interest)")
 
-    @watchlist.command(name="import",
-                       description="Upload your Letterboxd export zip (or its watchlist.csv)")
-    @app_commands.describe(file="Letterboxd → Settings → Data → Export your data; upload the zip")
-    async def watchlist_import(self, interaction: discord.Interaction,
-                               file: discord.Attachment) -> None:
-        uid = interaction.user.id
-        if uid in self._importing:
-            await interaction.response.send_message("⏳ Your previous upload is still being read.",
-                                                    ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        self._importing.add(uid)
-        try:
-            try:
-                rows = parse_watchlist(await file.read(), file.filename)
-            except WatchlistError as e:
-                await interaction.followup.send(f"❌ Couldn't read it: {e}.", ephemeral=True)
-                return
-            if not rows:
-                await interaction.followup.send("Your watchlist in that file is empty. Nothing "
-                                                "was changed.", ephemeral=True)
-                return
-            if len(rows) > 50:
-                await interaction.followup.send(
-                    f"⏳ Matching {len(rows)} films with TMDB. This can take a minute or two.",
-                    ephemeral=True)
-            matched, unmatched = await import_watchlist(self.bot.db, self.bot.tmdb, uid, rows)
-            _, n, posted = await self.bot.db.watchlist_summary(uid)
-            log.info("%s imported a watchlist: %d rows, %d matched", uid, len(rows), len(matched))
-            msg = (f"✅ Watchlist saved: {len(rows)} films, {n} matched; they count as your "
-                   f"interest (📋) in the rankings and ballot. {posted} already have a post in "
-                   f"<#{self.bot.config.channels['movies']}>.\n-# This replaces your previous upload. "
-                   f"It only changes when you upload again; your live Letterboxd watchlist isn't "
-                   f"read.")
-            if unmatched:
-                shown = ", ".join(unmatched[:15]) + (" …" if len(unmatched) > 15 else "")
-                msg += f"\n-# Couldn't match {len(unmatched)}: {shown}"
-            missing = await self.bot.db.watchlist_without_posts(uid)
-            if missing:
-                mins = max(1, round(len(missing) * POST_SECONDS / 60))
-                msg += (f"\n📋 Creating **{len(missing)}** missing posts (tagged Backlog, added by "
-                        f"you), about {mins} min. I'll say here when it's done.")
-            await interaction.followup.send(msg[:2000], ephemeral=True)
-            if missing:
-                await self._create_posts(interaction, missing)
-        finally:
-            self._importing.discard(uid)
-
-    async def _create_posts(self, interaction: discord.Interaction, tmdb_ids: list[int]) -> None:
-        """Create #movies posts for watchlist films that have none, gently."""
-        made, failed = 0, 0
-        for tmdb_id in tmdb_ids:
-            try:
-                movie = await self.bot.tmdb.movie(tmdb_id)
-                if movie is None:
-                    failed += 1
-                    continue
-                _, created = await self.bot.movies.ensure_post(
-                    movie, added_by=interaction.user.id, pitch=None, status="backlog",
-                    source="watchlist")
-                made += created
-            except (TMDBError, discord.HTTPException):
-                failed += 1
-                log.warning("Watchlist post for TMDB %s failed", tmdb_id, exc_info=True)
-            await asyncio.sleep(POST_SECONDS)
-        log.info("Watchlist import by %s: %d posts created, %d failed",
-                 interaction.user.id, made, failed)
-        text = f"✅ Created {made} posts from your watchlist." + (
-            f" {failed} failed; run **/watchlist import** again to retry them." if failed else "")
-        try:   # the interaction token lasts 15 minutes
-            await interaction.followup.send(text, ephemeral=True)
-        except discord.HTTPException:
-            pass
-
     @watchlist.command(name="show", description="What the bot has from your watchlist upload")
     async def watchlist_show(self, interaction: discord.Interaction) -> None:
         imp, n, posted = await self.bot.db.watchlist_summary(interaction.user.id)
         if imp is None and n == 0:
             await interaction.response.send_message(
-                "You haven't uploaded a watchlist. **/watchlist import** takes your Letterboxd "
-                "export zip. (It's optional: 👍 on a movie's post counts the same.)", ephemeral=True)
+                "You haven't uploaded a watchlist. **/letterboxd sync** takes your Letterboxd "
+                "export zip. Each film on it counts toward the rankings like your 👍 would "
+                "(shown as 📋); no 👍 is added to the posts. It's optional: a 👍 on a movie's "
+                "post works too.", ephemeral=True)
             return
         when = f"<t:{int(datetime.fromisoformat(imp['imported_at']).timestamp())}:D>" if imp else "?"
         unmatched = json.loads(imp["unmatched"]) if imp else []
         await interaction.response.send_message(
             f"📋 Uploaded {when}: {n} films, {posted} with a post (counting as interest)."
             + (f" {len(unmatched)} couldn't be matched." if unmatched else "")
-            + "\n-# **/watchlist import** again to update it, **/watchlist clear** to remove it.",
+            + "\n-# **/letterboxd sync** again to update it, **/watchlist clear** to remove it.",
             ephemeral=True)
 
     @watchlist.command(name="clear", description="Remove your uploaded watchlist")

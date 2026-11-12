@@ -205,8 +205,8 @@ messages:
       • Outside movie posts, always use `||spoiler bars||`.
 
       **Letterboxd**
-      • Run **/letterboxd** with your username to link your account. New diary entries show up in {#letterboxd-feed} and the movie's post; ratings and reviews go in its post-watch discussion. **/letterboxd-unlink** to stop.
-      • Optional: **/watchlist import** your Letterboxd export zip. Films on your watchlist count like a 👍 in the rankings (the bot can't read your live watchlist, so upload again to update it).
+      • Run **/letterboxd link** with your username to link your account. New diary entries show up in {#letterboxd-feed} and the movie's post; ratings and reviews go in its post-watch discussion. **/letterboxd unlink** to stop.
+      • Optional: **/letterboxd sync** your Letterboxd export zip. It brings in your history, applies edits and deletions you made on Letterboxd, and each film on your watchlist counts toward the rankings like your 👍 would (shown as 📋 in **/top** and the leaderboard; the bot can't add a 👍 for you). Upload a fresh export whenever you want to update it.
 
       **Be nice.** Disagree about movies, not about people.
     color: 0xE5A00D

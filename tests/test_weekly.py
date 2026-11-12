@@ -1,14 +1,11 @@
 """Phase 5: votes, watchlists, ballot, poll winner, weekly schedule."""
 import asyncio
-import io
-import zipfile
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from filmbuffs.db import Database
 from filmbuffs.votes import VoteService, is_vote
-from filmbuffs.watchlist import WatchlistError, parse_watchlist
 from filmbuffs.weekly import (Schedule, WeeklyService, answer_label, compose_ballot, date_range,
                               log_line, next_action, pick_winner, weeks_to_create, when)
 
@@ -131,40 +128,6 @@ def test_pick_winner_and_tie_breaks():
     assert (w["tmdb_id"], ru) == (1, 0)
 
 
-# ------------------------------------------------------------------ watchlist files
-
-CSV = "Date,Name,Year,Letterboxd URI\n2024-01-01,Parasite,2019,https://boxd.it/a\n" \
-      "2024-01-02,Heat,1995,https://boxd.it/b\n2024-01-02,Heat,1995,https://boxd.it/b\n"
-
-
-def test_parse_watchlist_csv_and_zip():
-    assert parse_watchlist(("﻿" + CSV).encode(), "watchlist.csv") == \
-        [("Parasite", 2019), ("Heat", 1995)]
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("deleted/watchlist.csv", "Date,Name,Year\n2024-01-01,Gone,2000\n")
-        z.writestr("watchlist.csv", CSV)
-        z.writestr("diary.csv", "x")
-    assert parse_watchlist(buf.getvalue(), "letterboxd-me.zip") == [("Parasite", 2019), ("Heat", 1995)]
-
-
-def test_parse_watchlist_rejects_other_files():
-    for data, name in ((b"a,b\n1,2\n", "x.csv"), (b"PKnotazip", "x.zip")):
-        try:
-            parse_watchlist(data, name)
-        except WatchlistError:
-            pass
-        else:
-            raise AssertionError(name)
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("diary.csv", "x")
-    try:
-        parse_watchlist(buf.getvalue(), "e.zip")
-    except WatchlistError as e:
-        assert "watchlist.csv" in str(e)
-
-
 # ------------------------------------------------------------------ database
 
 async def seeded(tmp_path):
@@ -228,6 +191,9 @@ def test_migration_seeds_watchlist_from_backfill(tmp_path):
                   "week_options", "poll_voters", "bot_meta"):
             await db.conn.execute(f"DROP TABLE {t}")
         await db.conn.execute("DROP INDEX movies_starter")
+        await db.conn.execute("DROP TABLE letterboxd_syncs")       # migration 8
+        for col in ("updated_at", "removed_at", "embed_source"):
+            await db.conn.execute(f"ALTER TABLE letterboxd_entries DROP COLUMN {col}")
         await db.conn.execute("DELETE FROM schema_version WHERE version >= 6")
         for guid, tid in (("a", 1), ("b", None)):
             await db.insert_entry({"guid": guid, "discord_user_id": 10, "username": "me",

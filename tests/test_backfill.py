@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from filmbuffs.backfill import (ExportError, Filters, TitleResolver, build_plan, choose_match,
+from filmbuffs.backfill import (ExportError, TitleResolver, choose_match, exported_at_from_name,
                                 norm_title, parse_export, read_overrides, title_key,
                                 write_unmatched)
 from filmbuffs.db import Database
@@ -238,142 +238,18 @@ def test_unmatched_csv_round_trips_to_overrides(tmp_path):
     assert read_overrides(out) == {"mystery film|2001": 8}
 
 
-# ------------------------------------------------------------------ planning
-
-async def seed(db):
-    """The RSS poller already saw Heat (baseline, with review) and posted a Parasite
-    entry; a #movies post for Parasite exists."""
-    await db.insert_movie(tmdb_id=496243, thread_id=500, starter_message_id=1, title="Parasite",
-                          year=2019, status="backlog", flags=[], genre_tags=[], added_by=1,
-                          pitch=None, source="addmovie")
-    base = dict(discord_user_id=UID, username="sam", source="rss", liked=0, rewatch=0,
-                letterboxd_url="https://letterboxd.com/sam/film/x/", published_at="2026-11-09")
-    await db.insert_entry(dict(base, guid="letterboxd-review-1", kind="review", tmdb_id=949,
-                               film_title="Heat", film_year=1995, watched_date="2026-11-09",
-                               rating=4.0, review_text="Coffee shop scene (RSS).",
-                               state="baseline"))
-    await db.insert_entry(dict(base, guid="letterboxd-watch-2", kind="watch", tmdb_id=496243,
-                               film_title="Parasite", film_year=2019, watched_date="2025-06-10",
-                               rating=5.0, state="posted"))
-    await db.update_entry("letterboxd-watch-2", spoiler_message_id=999)
-
-
-async def plan_for(db, tmp_path, filters=Filters(), tmdb=None):
-    ex = parse_export(make_zip(tmp_path / "e.zip"))
-    return await build_plan(db, TitleResolver(db, tmdb or FakeTMDB()), ex, UID, "sam", filters)
-
-
-def test_plan_counts_and_rss_linking(tmp_path):
-    async def go():
-        db = await new_db(tmp_path)
-        await seed(db)
-        plan = await plan_for(db, tmp_path)
-        assert [r.title for r, _, _ in plan.unmatched] == ["Mystery Film"]
-        assert plan.linked_to_rss == 2 and plan.to_store == 4 and plan.already_stored == 0
-        # Parasite has a post; Heat + Amélie are new Watched (solo), Dune is Backlog.
-        assert plan.existing_posts == {496243}
-        assert plan.new_posts == {949: ("watched_solo", "2026-11-09"),
-                                  194: ("watched_solo", "2022-02-02"),
-                                  693134: ("backlog", "2025-01-01")}
-        # Parasite 2024 review is new; Heat's review is from RSS baseline (not yet posted).
-        assert [(i.row.title, i.row.date) for i in plan.reviews] == [
-            ("Parasite", "2024-03-01"), ("Heat", "2026-11-09")]
-        assert plan.new_spoiler_posts == {496243, 949}
-        assert plan.reviews_already == 0
-    run(go)
-
-
-def test_filters(tmp_path):
-    async def go():
-        db = await new_db(tmp_path)
-        p = await plan_for(db, tmp_path, Filters(store_only=True))
-        assert not p.new_posts and not p.reviews and p.to_store == 6
-        p = await plan_for(db, tmp_path, Filters(only_watchlist=True))
-        assert set(p.new_posts) == {693134} and not p.reviews
-        p = await plan_for(db, tmp_path, Filters(no_watchlist=True, min_rating=4.5))
-        assert set(p.new_posts) == {496243} and len(p.reviews) == 1
-        p = await plan_for(db, tmp_path, Filters(since="2025-01-01"))
-        assert set(p.new_posts) == {496243, 949, 693134}
-    run(go)
-
-
-# ------------------------------------------------------------------ apply
-
-class Chan:
-    def __init__(self, cid, name=""):
-        self.id, self.name, self.sent = cid, name, []
-
-    async def send(self, embed=None, **kw):
-        m = SimpleNamespace(id=10_000 + len(self.sent) + self.id, embed=embed)
-        self.sent.append(m)
-        return m
-
-
-class FakeClient:
-    def __init__(self, db):
-        self.db, self.tmdb = db, FakeTMDB()
-        self.config = SimpleNamespace(guild_id=1)
-        self.created, self.spoiler_posts = [], {}
-        member = SimpleNamespace(display_name="Sam", display_avatar=SimpleNamespace(url="u"))
-
-        async def fetch_member(uid):
-            return member
-        self.get_guild = lambda gid: SimpleNamespace(fetch_member=fetch_member)
-        client = self
-
-        class Movies:
-            async def ensure_post(self, movie, *, added_by, pitch, status, source):
-                if await db.get_movie(movie.id):
-                    return Chan(movie.id), False
-                client.created.append((movie.id, status, source))
-                await db.insert_movie(tmdb_id=movie.id, thread_id=movie.id + 1, starter_message_id=1,
-                                      title=movie.title, year=2000, status=status, flags=[],
-                                      genre_tags=[], added_by=added_by, pitch=None, source=source)
-                return Chan(movie.id), True
-
-        class Spoilers:
-            async def open(self, tid):
-                if tid not in client.spoiler_posts:
-                    client.spoiler_posts[tid] = Chan(tid + 2, f"spoilers {tid}")
-                return client.spoiler_posts[tid], True
-
-        self.movies, self.spoilers = Movies(), Spoilers()
-
-
-def test_apply_then_rerun_does_nothing_twice(tmp_path, monkeypatch):
-    async def instant(*a, **k):
-        return None
-    monkeypatch.setattr(script.asyncio, "sleep", instant)
-
-    async def go():
-        db = await new_db(tmp_path)
-        await seed(db)
-        client = FakeClient(db)
-        plan = await plan_for(db, tmp_path)
-        assert await script.apply_plan(client, plan) == 0
-        assert sorted(client.created) == [(194, "watched_solo", "backfill"),
-                                          (949, "watched_solo", "backfill"),
-                                          (693134, "backlog", "backfill")]
-        heat = client.spoiler_posts[949].sent
-        assert len(heat) == 1 and "Coffee shop scene (RSS)." in heat[0].embed.description
-        assert "imported" in heat[0].embed.footer.text
-        para = client.spoiler_posts[496243].sent
-        assert len(para) == 1 and "*stairs*" in para[0].embed.description
-        rss = await db.get_entry("letterboxd-review-1")
-        assert rss["state"] == "imported" and rss["export_uri"] == "https://boxd.it/d3"
-        assert rss["spoiler_message_id"] == heat[0].id
-        stored = await db.get_entry(f"export:{UID}:watched:https://boxd.it/f2")
-        assert stored["state"] == "imported" and stored["rating"] == 3.5
-        unmatched = await db.get_entry(f"export:{UID}:watch:https://boxd.it/d4")
-        assert unmatched["state"] == "unmatched" and unmatched["tmdb_id"] is None
-
-        again = await plan_for(db, tmp_path)
-        assert not again.new_posts and not again.reviews and again.to_store == 0
-        assert again.reviews_already == 2 and again.linked_to_rss == 0
-        assert await script.apply_plan(client, again) == 0
-        assert len(client.created) == 3
-        assert sum(len(c.sent) for c in client.spoiler_posts.values()) == 2
-    run(go)
+def test_export_time_from_name_or_newest_entry(tmp_path):
+    assert exported_at_from_name("letterboxd-sam-2026-11-11-16-08-utc.zip") == \
+        "2026-11-11T16:08:59+00:00"
+    assert exported_at_from_name("export.zip") is None
+    ex = parse_export(make_zip(tmp_path / "letterboxd-sam-2026-11-12-01-02-utc.zip"))
+    assert ex.exported_at == "2026-11-12T01:02:59+00:00" and ex.has_diary
+    data = make_zip(tmp_path / "e.zip").read_bytes()
+    ex = parse_export(data, "renamed.zip")
+    assert ex.exported_at == "2026-11-09T23:59:59+00:00"     # newest "Date" in the export
+    assert len(ex.rows) == 6
+    only_wl = {k: v for k, v in CSVS.items() if k in ("profile.csv", "watchlist.csv")}
+    assert not parse_export(make_zip(tmp_path / "w.zip", only_wl)).has_diary
 
 
 def test_parse_user():

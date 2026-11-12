@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–7 are built (see [STATUS.md](STATUS.md)); Phases 8–10 below are planned and approved by the owner (2026-11-11), not started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–8 are built (see [STATUS.md](STATUS.md)); Phases 9–10 below are planned and approved by the owner (2026-11-11), not started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 ## Guiding decisions (agreed with the owner)
 
@@ -96,9 +96,11 @@ Standalone `backfill.py`, run by hand.
 
 Possible later: off-machine backup copies (needs a destination from the owner); more `/admin` commands if a need shows up.
 
-## Phase 8: full Letterboxd sync from the export (planned)
+## Phase 8: full Letterboxd sync from the export (built; see STATUS.md)
 
 Owner request (2026-11-11): each export upload is a full sync, so edits on Letterboxd (rating, review, liked, rewatch, date) reach Discord. The RSS feed can't do this; it never shows edits.
+- **Command shape (owner, 2026-11-12):** Discord makes a command with subcommands unusable on its own, so `/letterboxd` is now a group: `/letterboxd link [username]`, `/letterboxd sync file:`, `/letterboxd unlink` (was `/letterboxd username:` and `/letterboxd-unlink`). `/admin letterboxd-unlink` is unchanged.
+- **Deleted entries (owner, 2026-11-12):** all three of the bot's messages for the entry go (post-watch embed, `#movies` note, `#letterboxd-feed` line), not only the embed, so nothing links to a deleted embed.
 - **One command for everyone:** `/letterboxd sync file:<export zip>` replaces `/watchlist import`, which is removed (owner, 2026-11-11). `/watchlist show` and `/watchlist clear` stay. It reuses the backfill's parsing and TMDB matching (`backfill.py` becomes a thin wrapper for the owner's use from the shell).
 - **Diff, then apply.** The upload is compared with what's stored for that member:
   - **New** entries: stored; reviews get a post-watch embed; films with no `#movies` post get one (Watched (solo) / Backlog, same rules as the backfill), throttled.
@@ -131,5 +133,7 @@ Answered 2026-11-11: no `.ics` feed; Mark as spoiler moves the message; a solo L
 Answered 2026-11-11: In Theaters / Streaming are set automatically (Phase 9); backups keep the newest 3.
 
 Answered 2026-11-11 (Phase 8): entries deleted on Letterboxd have their post-watch embed deleted; `/watchlist import` is removed in favour of `/letterboxd sync`.
+
+Answered 2026-11-12 (Phase 8): `/letterboxd` becomes a group (`link`/`sync`/`unlink`); a deleted entry's `#movies` note and feed line are deleted too.
 
 No open questions right now. Phase 10 (stats) needs a short design talk before it's built.

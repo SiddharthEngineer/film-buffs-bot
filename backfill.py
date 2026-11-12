@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
-"""Import a member's Letterboxd history from their data export zip.
+"""Sync a member's Letterboxd history from their data export zip (shell version
+of /letterboxd sync, for the owner).
 
-    python backfill.py data/imports/letterboxd-sam-2026-11-11.zip            # dry run
-    python backfill.py data/imports/letterboxd-sam-2026-11-11.zip --apply    # do it
+    uv run backfill.py data/imports/letterboxd-sam-2026-11-11-16-08-utc.zip           # dry run
+    uv run backfill.py data/imports/letterboxd-sam-2026-11-11-16-08-utc.zip --apply   # do it
 
 The member exports from Letterboxd → Settings → Data → Export your data.
 
-What it does (with --apply):
-  • Stores every diary entry, review, watched film and watchlist film in the
-    database (for stats), linking rows the RSS poller already saw so nothing is
-    stored or posted twice.
-  • Creates missing #movies posts: watched films as Watched (solo), watchlist
-    films as Backlog. Existing posts are never retagged.
-  • Posts each review in the movie's post-watch discussion (created if needed),
-    unless that review is already there. Nothing is posted in #movies or
-    #letterboxd-feed, so history doesn't flood the channels.
+It runs the same full sync as /letterboxd sync (filmbuffs/sync.py):
+  • New rows are stored; reviews go into the movie's post-watch discussion
+    ("imported from Letterboxd history"); films without a #movies post get one
+    (Watched (solo), or Backlog for watchlist films). Nothing is posted in
+    #movies or #letterboxd-feed.
+  • Entries edited on Letterboxd are updated and the bot's embed edited in place.
+  • Entries deleted on Letterboxd: the bot deletes its own messages for them and
+    marks them removed (kept for stats).
+  • The watchlist is replaced.
 
 Dry run is the default: it resolves titles on TMDB, prints the numbers, and
 writes the films it couldn't match unambiguously to an "unmatched" CSV. Fill in
@@ -36,27 +37,18 @@ from pathlib import Path
 import aiohttp
 import discord
 
-from filmbuffs.backfill import (ExportError, Filters, Plan, TitleResolver, build_plan,
-                                parse_export, read_overrides, review_of, write_unmatched)
+from filmbuffs.backfill import (ExportError, TitleResolver, parse_export, read_overrides,
+                                write_unmatched)
 from filmbuffs.bot import USER_AGENT
 from filmbuffs.config import Config
 from filmbuffs.db import Database
-from filmbuffs.letterboxd import spoiler_embed
+from filmbuffs.letterboxd import LetterboxdService
 from filmbuffs.movies import MovieService
 from filmbuffs.spoilers import SpoilerService
 from filmbuffs.state import ROOT
+from filmbuffs.sync import (Filters, SyncPlan, apply_sync, build_sync_plan, change_lines,
+                            fmt_duration, preview_lines)
 from filmbuffs.tmdb import TMDB, TMDBError
-
-STATUS_NAMES = {"watched_solo": "Watched (solo)", "backlog": "Backlog"}
-POST_PAUSE = 2.0
-REVIEW_PAUSE = 1.0
-
-
-def fmt_duration(secs: float) -> str:
-    m, s = divmod(int(secs + 0.5), 60)
-    h, m = divmod(m, 60)
-    return f"{h}h {m}m" if h else f"{m}m {s}s" if m else f"{s}s"
-
 
 async def discord_name(token: str, guild_id: int, user_id: int) -> str | None:
     """`Display name (@handle)` over the REST API (no gateway), or None."""
@@ -77,7 +69,7 @@ async def discord_name(token: str, guild_id: int, user_id: int) -> str | None:
         await client.close()
 
 
-async def write_spot_check(path: Path, plan: Plan, tmdb: TMDB) -> int:
+async def write_spot_check(path: Path, plan: SyncPlan, tmdb: TMDB) -> int:
     """Films matched by anything other than an exact title + year, for a quick look."""
     picked = {}
     for i in plan.items:
@@ -97,16 +89,17 @@ async def write_spot_check(path: Path, plan: Plan, tmdb: TMDB) -> int:
     return len(picked)
 
 
-def print_plan(plan: Plan, export, filters: Filters, unmatched_path: Path | None,
-               who: str, spot_check: tuple[Path, int] | None = None) -> None:
+def plain(line: str) -> str:
+    return line.replace("**", "").replace("-# ", "")
+
+
+def print_plan(plan: SyncPlan, unmatched_path: Path | None, who: str,
+               spot_check: tuple[Path, int] | None = None) -> None:
+    export = plan.export
     print(f"\nLetterboxd account {plan.username} → Discord member {who}")
     files = ", ".join(f"{n} {c}" for n, c in export.file_counts.items() if n != "profile.csv")
     print(f"  Files: {files}")
-    kinds: dict[str, int] = {}
-    for i in plan.items:
-        kinds[i.row.kind] = kinds.get(i.row.kind, 0) + 1
-    print(f"  Rows after merging: {len(plan.items)} "
-          f"({', '.join(f'{k} {v}' for k, v in sorted(kinds.items()))})")
+    print(f"  Exported: {export.exported_at or 'unknown'}")
     films: dict[str, str] = {}
     for i in plan.items:
         films.setdefault(i.row.key, i.how if i.tmdb_id else "unmatched")
@@ -118,28 +111,12 @@ def print_plan(plan: Plan, export, filters: Filters, unmatched_path: Path | None
                        if k != "unmatched")
     print(f"  TMDB: {matched} of {len(films)} films matched ({detail}); "
           f"{plan.tmdb_lookups} looked up this run")
-    reasons: dict[str, int] = {}
-    for row, why, _ in {r.key: (r, why, c) for r, why, c in plan.unmatched}.values():
-        reasons[why] = reasons.get(why, 0) + 1
-    if reasons:
-        print(f"  Unmatched films: {', '.join(f'{k} {v}' for k, v in reasons.items())}")
     if spot_check and spot_check[1]:
         print(f"  Matches worth a glance ({spot_check[1]}, not an exact title + year): "
               f"{spot_check[0]}")
-    print("\nDatabase")
-    print(f"  {plan.to_store} new rows to store, {plan.already_stored} already stored, "
-          f"{plan.linked_to_rss} linked to entries the RSS poller saw")
-    print("\nDiscord" + (" (nothing: --store-only)" if filters.store_only else ""))
-    by_status = plan.posts_by_status()
-    print(f"  #movies posts to create: {len(plan.new_posts)}"
-          + (f" ({', '.join(f'{STATUS_NAMES[k]} {v}' for k, v in by_status.items())})"
-             if by_status else ""))
-    print(f"  Existing #movies posts (left as they are): {len(plan.existing_posts)}")
-    print(f"  Reviews to post in post-watch discussions: {len(plan.reviews)} "
-          f"({len(plan.new_spoiler_posts)} new post-watch posts); "
-          f"{plan.reviews_already} already posted")
-    if plan.filtered:
-        print(f"  Rows not acted on (filters or no TMDB match): {plan.filtered}")
+    print()
+    for line in preview_lines(plan) + change_lines(plan, limit=30):
+        print("  " + plain(line))
     print(f"  Estimated time: {fmt_duration(plan.est_seconds())}")
     if plan.unmatched and unmatched_path:
         print(f"\nUnmatched films (with candidates and directors) written to {unmatched_path}")
@@ -155,78 +132,19 @@ class BackfillClient(discord.Client):
         self.config, self.db, self.tmdb = config, db, tmdb
         self.movies = MovieService(self)
         self.spoilers = SpoilerService(self)
+        self.letterboxd = LetterboxdService(self)
 
 
-async def apply_plan(client: BackfillClient, plan: Plan) -> int:
-    db, uid = client.db, plan.user_id
-    guild = client.get_guild(client.config.guild_id)
-    try:
-        member = await guild.fetch_member(uid)
-        name, avatar = member.display_name, member.display_avatar.url
-    except discord.NotFound:
-        name, avatar = plan.username, None
-        print(f"Note: Discord user {uid} isn't in the server; reviews will show {name!r}.")
-
-    # 1. Store rows and link RSS entries (fast, no Discord calls).
-    stored = linked = 0
-    for item in plan.items:
-        row = item.row
-        if item.existing is not None:
-            continue
-        if item.rss_match is not None:
-            await db.update_entry(item.rss_match["guid"], export_uri=row.uri)
-            linked += 1
-            continue
-        stored += await db.insert_entry(dict(
-            guid=row.guid(uid), discord_user_id=uid, username=plan.username, kind=row.kind,
-            tmdb_id=item.tmdb_id, film_title=row.title, film_year=row.year,
-            watched_date=row.watched_date, rating=row.rating, liked=int(row.liked),
-            rewatch=int(row.rewatch), review_text=row.review_text, letterboxd_url=row.uri,
-            published_at=row.logged_date, source="backfill",
-            state="imported" if item.tmdb_id else "unmatched",
-            export_uri=row.uri, logged_date=row.logged_date))
-    print(f"Stored {stored} rows, linked {linked} RSS entries.")
-
-    # 2. Missing #movies posts, oldest first.
-    todo = sorted(plan.new_posts.items(), key=lambda kv: kv[1][1])
-    for n, (tid, (status, _)) in enumerate(todo, 1):
-        movie = await client.tmdb.movie(tid)
-        if movie is None:
-            print(f"[post {n}/{len(todo)}] TMDB {tid} no longer exists; skipped")
-            continue
-        _, created = await client.movies.ensure_post(
-            movie, added_by=uid, pitch=None, status=status, source="backfill")
-        print(f"[post {n}/{len(todo)}] {movie.display}: "
-              f"{'created as ' + STATUS_NAMES[status] if created else 'already exists'}",
-              flush=True)
-        if created:
-            await asyncio.sleep(POST_PAUSE)
-
-    # 3. Reviews into spoiler discussions, oldest first.
-    for n, item in enumerate(plan.reviews, 1):
-        linked_row = item.existing or item.rss_match
-        guid = linked_row["guid"] if linked_row is not None else item.row.guid(uid)
-        entry = await db.get_entry(guid)
-        if entry["spoiler_message_id"]:
-            continue                        # done in an earlier, interrupted run
-        if not entry["review_text"]:
-            await db.update_entry(guid, review_text=review_of(item))
-            entry = await db.get_entry(guid)
-        post, _ = await client.spoilers.open(item.tmdb_id)
-        msg = await post.send(embed=spoiler_embed(entry, name, avatar, imported=True),
-                              allowed_mentions=discord.AllowedMentions.none())
-        await db.update_entry(guid, spoiler_message_id=msg.id)
-        if entry["state"] == "baseline":
-            await db.update_entry(guid, state="imported")
-        print(f"[review {n}/{len(plan.reviews)}] {item.row.display} → {post.name}", flush=True)
-        await asyncio.sleep(REVIEW_PAUSE)
-
-    # 4. RSS baseline rows linked to this export count as imported now.
-    for item in plan.items:
-        if item.rss_match is not None and item.rss_match["state"] == "baseline":
-            await db.update_entry(item.rss_match["guid"], state="imported")
-    print("Backfill complete. Re-run the dry run to confirm nothing is left.")
-    return 0
+async def apply_plan(client: BackfillClient, plan: SyncPlan) -> int:
+    async def progress(text: str) -> None:
+        print(text, flush=True)
+    res = await apply_sync(client, plan, via="script", progress=progress)
+    print(f"Sync complete: {res.as_dict()}")
+    if res.failed:
+        print(f"⚠️  {res.failed} Discord steps failed (see the log); re-run to retry them.")
+    else:
+        print("Re-run the dry run to confirm nothing is left.")
+    return 1 if res.failed else 0
 
 
 def parse_user(text: str | None) -> int | None:
@@ -293,8 +211,8 @@ async def main() -> int:
             print(f"Matching {len({(r.title, r.year) for r in export.rows})} films on TMDB…",
                   flush=True)
             try:
-                plan = await build_plan(db, TitleResolver(db, tmdb, overrides), export,
-                                        uid, username, filters)
+                plan = await build_sync_plan(db, TitleResolver(db, tmdb, overrides), export,
+                                             uid, username, filters)
             except TMDBError as e:
                 print(f"❌ TMDB failed: {e}. Nothing was changed; try again.")
                 return 1
@@ -304,7 +222,7 @@ async def main() -> int:
             check = out.with_name(f"backfill_matches-{username}.csv")
             spot = (check, await write_spot_check(check, plan, tmdb))
             who = await discord_name(config.token, config.guild_id, uid) or f"ID {uid}"
-            print_plan(plan, export, filters, out if plan.unmatched else None, who, spot)
+            print_plan(plan, out if plan.unmatched else None, who, spot)
 
             if not args.apply:
                 print("\nDry run: nothing was changed. Re-run with --apply to do it.")

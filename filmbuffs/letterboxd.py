@@ -24,6 +24,7 @@ import discord
 import feedparser
 
 from .botlogs import StreakAlert
+from .db import utcnow
 from .movies import truncate
 from .tmdb import TMDBError, year_of
 
@@ -404,8 +405,14 @@ class LetterboxdService:
             await self.bot.db.record_poll(user_id, ok=True, etag=result.etag,
                                           last_modified=result.last_modified)
             new = 0
+            merged: list[str] = []
             # Feeds are newest first; store oldest first so they post in order.
             for entry in reversed(result.entries or []):
+                watch_guid = await self._merge_target(entry)
+                if watch_guid is not None:
+                    await self._merge_review(entry, watch_guid, user_id, link["username"])
+                    merged.append(watch_guid)
+                    continue
                 new += await self.bot.db.insert_entry(
                     entry.as_row(user_id, link["username"], "rss", "pending"))
             if new:
@@ -413,7 +420,9 @@ class LetterboxdService:
                          link["username"])
             posted = 0
             pending = await self.bot.db.pending_entries(user_id)
-            member = await self._member(user_id) if pending else None
+            member = await self._member(user_id) if pending or merged else None
+            for guid in merged:
+                await self._after_merge(guid, member)
             for row in pending:
                 if member is None:
                     await self.bot.db.update_entry(row["guid"], state="skipped",
@@ -434,6 +443,137 @@ class LetterboxdService:
             return await guild.fetch_member(user_id)
         except discord.NotFound:
             return None
+
+    # review-N folded into watch-N ---------------------------------------------
+    # Adding a review to an existing diary entry makes it show up in the feed as
+    # letterboxd-review-N next to the already-stored letterboxd-watch-N (same N).
+    # That's the same entry, so the stored row is updated and its messages edited,
+    # instead of logging the film a second time.
+
+    async def _merge_target(self, entry: FeedEntry) -> str | None:
+        if entry.kind != "review" or not entry.guid.startswith("letterboxd-review-"):
+            return None
+        db = self.bot.db
+        if await db.get_entry(entry.guid) is not None:
+            return None                              # seen before (or already merged)
+        watch_guid = "letterboxd-watch-" + entry.guid.removeprefix("letterboxd-review-")
+        watch = await db.get_entry(watch_guid)
+        return watch_guid if watch is not None and watch["state"] != "merged" else None
+
+    async def _merge_review(self, entry: FeedEntry, watch_guid: str, user_id: int,
+                            username: str) -> None:
+        db = self.bot.db
+        await db.insert_entry(entry.as_row(user_id, username, "rss", "merged"))
+        await db.update_entry(entry.guid, error=f"merged into {watch_guid}")
+        await db.update_entry(watch_guid, kind="review", review_text=entry.review_text,
+                              rating=entry.rating, liked=int(entry.liked),
+                              rewatch=int(entry.rewatch), watched_date=entry.watched_date,
+                              updated_at=utcnow())
+        log.info("Letterboxd %s is a review added to %s; updating that entry",
+                 entry.guid, watch_guid)
+
+    async def _after_merge(self, guid: str, member: discord.Member | None) -> None:
+        """Bring Discord in line with a merged entry: edit the embed (and #movies
+        note) if there is one; if not, post the review unless the poller still
+        will (pending) or it was never posted."""
+        row = await self.bot.db.get_entry(guid)
+        try:
+            if row["spoiler_message_id"]:
+                await self.refresh_messages(row, member)
+            elif row["state"] in ("imported", "baseline") and row["tmdb_id"] and member:
+                await self.post_review(row, member.display_name, member.display_avatar.url,
+                                       source="feed")
+        except (discord.HTTPException, LookupError):
+            log.warning("Updating Discord for merged Letterboxd entry %s failed", guid,
+                        exc_info=True)
+
+    # the bot's own messages for an entry ---------------------------------------
+    async def _thread(self, thread_id: int | None, unarchive: bool = True):
+        """A thread/channel by ID, un-archived (edits and deletes in archived
+        threads fail). None if it's gone."""
+        if not thread_id:
+            return None
+        ch = self.bot.get_channel(thread_id)
+        if ch is None:
+            try:
+                ch = await self.bot.fetch_channel(thread_id)
+            except discord.NotFound:
+                return None
+        if unarchive and getattr(ch, "archived", False):
+            await ch.edit(archived=False, reason="Updating a Letterboxd entry")
+        return ch
+
+    def _jump(self, channel_id: int, message_id: int) -> str:
+        return f"https://discord.com/channels/{self.bot.config.guild_id}/{channel_id}/{message_id}"
+
+    async def post_review(self, row, name: str, avatar: str | None, *,
+                          source: str = "history") -> discord.Message:
+        """Post an entry's embed in the movie's post-watch discussion (created if
+        needed) and record it. Raises LookupError if the movie has no post."""
+        post, _ = await self.bot.spoilers.open(row["tmdb_id"])
+        msg = await post.send(embed=spoiler_embed(row, name, avatar,
+                                                  imported=source == "history"),
+                              allowed_mentions=discord.AllowedMentions.none())
+        await self.bot.db.update_entry(row["guid"], spoiler_message_id=msg.id,
+                                       embed_source=source)
+        return msg
+
+    async def refresh_messages(self, row, member: discord.Member | None) -> bool:
+        """Edit the entry's post-watch embed (and its #movies note, whose wording
+        depends on rating/review) to match the stored row. Returns False if the
+        embed is gone (deleted by hand); its ID is then forgotten."""
+        db = self.bot.db
+        mrow = await db.get_movie(row["tmdb_id"]) if row["tmdb_id"] else None
+        thread = await self._thread(mrow["spoiler_thread_id"] if mrow else None)
+        if thread is None:
+            await db.update_entry(row["guid"], spoiler_message_id=None)
+            return False
+        name = member.display_name if member else row["username"]
+        avatar = member.display_avatar.url if member else None
+        embed = spoiler_embed(row, name, avatar, imported=row["embed_source"] != "feed")
+        try:
+            await thread.get_partial_message(row["spoiler_message_id"]).edit(embed=embed)
+        except discord.NotFound:
+            await db.update_entry(row["guid"], spoiler_message_id=None)
+            return False
+        if row["movies_message_id"] and mrow:
+            text = movies_note(row["discord_user_id"],
+                               self._jump(thread.id, row["spoiler_message_id"]),
+                               row["rating"] is not None, bool(row["review_text"]))
+            post = await self._thread(mrow["thread_id"])
+            if post is not None:
+                try:
+                    await post.get_partial_message(row["movies_message_id"]).edit(
+                        content=text, allowed_mentions=discord.AllowedMentions.none())
+                except discord.NotFound:
+                    await db.update_entry(row["guid"], movies_message_id=None)
+        return True
+
+    async def delete_messages(self, row) -> int:
+        """Delete the bot's own messages for an entry (post-watch embed, #movies
+        note, #letterboxd-feed line). Returns how many were deleted; the IDs are
+        cleared as each one goes (or turns out to be gone already)."""
+        db = self.bot.db
+        mrow = await db.get_movie(row["tmdb_id"]) if row["tmdb_id"] else None
+        targets = [
+            ("spoiler_message_id", mrow["spoiler_thread_id"] if mrow else None),
+            ("movies_message_id", mrow["thread_id"] if mrow else None),
+            ("feed_message_id", self.bot.config.channels.get("letterboxd_feed")),
+        ]
+        n = 0
+        for col, channel_id in targets:
+            mid = row[col]
+            if not mid:
+                continue
+            ch = await self._thread(channel_id)
+            if ch is not None:
+                try:
+                    await ch.get_partial_message(mid).delete()
+                    n += 1
+                except discord.NotFound:
+                    pass
+            await db.update_entry(row["guid"], **{col: None})
+        return n
 
     # posting -----------------------------------------------------------------
     async def resolve_tmdb(self, row) -> int | None:
@@ -493,7 +633,7 @@ class LetterboxdService:
             msg = await spoiler_post.send(
                 embed=spoiler_embed(row, member.display_name, member.display_avatar.url),
                 allowed_mentions=quiet)
-            await db.update_entry(guid, spoiler_message_id=msg.id)
+            await db.update_entry(guid, spoiler_message_id=msg.id, embed_source="feed")
             spoiler_url = msg.jump_url
 
         if not row["movies_message_id"]:

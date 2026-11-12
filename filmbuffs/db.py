@@ -140,7 +140,7 @@ MIGRATIONS = [
     CREATE TABLE watchlist_imports (
         user_id      INTEGER PRIMARY KEY,
         imported_at  TEXT NOT NULL,
-        source       TEXT NOT NULL,          -- import | backfill
+        source       TEXT NOT NULL,          -- import | backfill | sync
         rows         INTEGER NOT NULL,
         matched      INTEGER NOT NULL,
         unmatched    TEXT NOT NULL DEFAULT '[]'   -- JSON: ["Title (Year)", ...]
@@ -207,6 +207,31 @@ MIGRATIONS = [
     ALTER TABLE weeks ADD COLUMN override_by INTEGER;
     ALTER TABLE weeks ADD COLUMN winner_prev_status TEXT;
     ALTER TABLE weeks ADD COLUMN pinned_at TEXT;
+    """,
+    # Phase 8: each export upload (/letterboxd sync, backfill.py) is a full sync.
+    #   state gains: removed (gone from Letterboxd; the row stays for stats, the
+    #     bot's own messages for it are deleted) and merged (an RSS review-N item
+    #     folded into the already-stored watch-N entry; kept so it isn't re-read).
+    #   updated_at: last time a sync or the poller changed the row's details.
+    #   embed_source: who posted the post-watch embed: feed (live poller) or
+    #     history (backfill/sync, footer says "imported from Letterboxd history").
+    #   letterboxd_syncs: one row per applied sync (counts as JSON), for stats.
+    """
+    ALTER TABLE letterboxd_entries ADD COLUMN updated_at TEXT;
+    ALTER TABLE letterboxd_entries ADD COLUMN removed_at TEXT;
+    ALTER TABLE letterboxd_entries ADD COLUMN embed_source TEXT;
+    UPDATE letterboxd_entries
+       SET embed_source = CASE WHEN movies_message_id IS NOT NULL THEN 'feed' ELSE 'history' END
+     WHERE spoiler_message_id IS NOT NULL;
+    CREATE TABLE letterboxd_syncs (
+        id               INTEGER PRIMARY KEY,
+        discord_user_id  INTEGER NOT NULL,
+        username         TEXT NOT NULL,
+        synced_at        TEXT NOT NULL,
+        exported_at      TEXT,
+        via              TEXT NOT NULL,          -- command | script
+        counts           TEXT NOT NULL           -- JSON
+    );
     """,
 ]
 
@@ -370,7 +395,9 @@ class Database:
 
     _ENTRY_UPDATABLE = {"tmdb_id", "state", "attempts", "error", "movies_message_id",
                         "spoiler_message_id", "feed_message_id", "export_uri",
-                        "review_text"}
+                        "review_text", "kind", "rating", "liked", "rewatch", "watched_date",
+                        "logged_date", "film_title", "film_year", "updated_at", "removed_at",
+                        "embed_source"}
 
     async def update_entry(self, guid: str, **fields) -> None:
         bad = set(fields) - self._ENTRY_UPDATABLE
@@ -386,6 +413,20 @@ class Database:
             "SELECT * FROM letterboxd_entries WHERE discord_user_id=? "
             "ORDER BY published_at, guid", (user_id,))
         return list(await cur.fetchall())
+
+    async def record_sync(self, user_id: int, username: str, exported_at: str | None,
+                          via: str, counts: dict) -> None:
+        await self.conn.execute(
+            "INSERT INTO letterboxd_syncs(discord_user_id, username, synced_at, exported_at, via, "
+            "counts) VALUES (?,?,?,?,?,?)",
+            (user_id, username, utcnow(), exported_at, via, json.dumps(counts)))
+        await self.conn.commit()
+
+    async def last_sync(self, user_id: int) -> aiosqlite.Row | None:
+        cur = await self.conn.execute(
+            "SELECT * FROM letterboxd_syncs WHERE discord_user_id=? ORDER BY id DESC LIMIT 1",
+            (user_id,))
+        return await cur.fetchone()
 
     async def get_title_match(self, key: str) -> tuple[int, str] | None:
         """(tmdb_id, how) for a cached title match."""
@@ -491,7 +532,7 @@ class Database:
 
     # watchlists ------------------------------------------------------------
     async def replace_watchlist(self, user_id: int, items: list[tuple[int, str, int | None]],
-                                rows: int, unmatched: list[str]) -> None:
+                                rows: int, unmatched: list[str], source: str = "sync") -> None:
         now = utcnow()
         await self.conn.execute("DELETE FROM watchlist_items WHERE user_id=?", (user_id,))
         await self.conn.executemany(
@@ -502,7 +543,7 @@ class Database:
             "VALUES (?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET "
             "imported_at=excluded.imported_at, source=excluded.source, rows=excluded.rows, "
             "matched=excluded.matched, unmatched=excluded.unmatched",
-            (user_id, now, "import", rows, len({i[0] for i in items}), json.dumps(unmatched)))
+            (user_id, now, source, rows, len({i[0] for i in items}), json.dumps(unmatched)))
         await self.conn.commit()
 
     async def watchlist_without_posts(self, user_id: int) -> list[int]:

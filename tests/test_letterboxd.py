@@ -135,12 +135,35 @@ class FakeMessage:
         self.jump_url = f"https://discord.com/channels/1/{channel.id}/{self.id}"
 
 
+CHANNELS: dict = {}
+
+
 class FakeChannel:
     def __init__(self, cid, fail_times=0):
         self.id = cid
         self.sent: list[FakeMessage] = []
+        self.edits: list[int] = []
         self.fail_times = fail_times
+        self.archived = False
         self.jump_url = f"https://discord.com/channels/1/{cid}"
+        CHANNELS[cid] = self
+
+    async def edit(self, archived=None, **kw):
+        if archived is not None:
+            self.archived = archived
+
+    def get_partial_message(self, mid):
+        chan = self
+
+        class Partial:
+            async def edit(self, content=None, embed=None, **kw):
+                m = next(m for m in chan.sent if m.id == mid)
+                if content is not None:
+                    m.content = content
+                if embed is not None:
+                    m.embed = embed
+                chan.edits.append(mid)
+        return Partial()
 
     async def send(self, content=None, *, embed=None, **kw):
         if self.fail_times:
@@ -199,7 +222,11 @@ async def make_service(tmp_path, feeds, member=MEMBER):
     bot = SimpleNamespace(
         db=db, tmdb=FakeTMDB(), session=None,
         config=SimpleNamespace(channels={"letterboxd_feed": 77}, guild_id=1, lb_jitter=(0, 0)),
-        get_channel=lambda cid: feed_ch if cid == 77 else None)
+        get_channel=CHANNELS.get)
+
+    async def fetch_channel(cid):
+        raise discord.NotFound(SimpleNamespace(status=404, reason="x"), "gone")
+    bot.fetch_channel = fetch_channel
     bot.movies, bot.spoilers = FakeMovies(db), FakeSpoilers(db)
     svc = LetterboxdService(bot)
 
@@ -272,6 +299,34 @@ def test_new_entries_post_three_messages_in_order_once(tmp_path):
             feed_line(42, "Film 27205 (2019)", bot.movies.posts[27205].jump_url)]
         row = await db.get_entry("letterboxd-review-3")
         assert row["state"] == "posted" and row["feed_message_id"] == feed_ch.sent[1].id
+    asyncio.run(closing(run))
+
+
+def test_review_added_to_a_logged_entry_updates_it_instead_of_logging_again(tmp_path):
+    async def run():
+        feeds = {"sam": feed()}
+        svc, bot, feed_ch, db = await make_service(tmp_path, feeds)
+        await svc.link(42, "sam")
+        feeds["sam"] = feed(item("letterboxd-watch-5", rating="3"))
+        assert await svc.poll_user(42) == 1
+        embed_msg = bot.spoilers.posts[496243].sent[0]
+        note = bot.movies.posts[496243].sent[0]
+        assert "Their rating is" in note.content
+        # A review is added to that same diary entry: review-5 appears next to watch-5.
+        feeds["sam"] = feed(item("letterboxd-review-5", rating="3.5",
+                                 desc="<p>Grew on me.</p>"), item("letterboxd-watch-5", rating="3"))
+        assert await svc.poll_user(42) == 0
+        assert await svc.poll_user(42) == 0
+        # Same messages, edited in place; nothing new posted anywhere.
+        assert len(bot.spoilers.posts[496243].sent) == 1 and len(feed_ch.sent) == 1
+        assert len(bot.movies.posts[496243].sent) == 1
+        assert "Grew on me." in embed_msg.embed.description and "★★★½" in embed_msg.embed.description
+        assert "Their rating and review are" in note.content
+        assert bot.spoilers.posts[496243].edits == [embed_msg.id]
+        row = await db.get_entry("letterboxd-watch-5")
+        assert row["kind"] == "review" and row["rating"] == 3.5 and row["state"] == "posted"
+        merged = await db.get_entry("letterboxd-review-5")
+        assert merged["state"] == "merged" and "letterboxd-watch-5" in merged["error"]
     asyncio.run(closing(run))
 
 
