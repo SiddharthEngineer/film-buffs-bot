@@ -58,7 +58,7 @@ Replace the in-post spoiler line with a separate spoiler post per movie.
 
 ### Phase 4 follow-ups (owner, 2026-11-11)
 - **Edit tracking:** editing an old entry doesn't bring it back to the top of the RSS feed (owner, 2026-11-11), so the poller can't see edits. The export sync (Phase 8) covers them.
-- **Watch → review:** not confirmed yet. Letterboxd gives each feed item an ID (`letterboxd-watch-N` or `letterboxd-review-N`); if adding a review later swaps the ID, the poller would treat it as a new entry and post the film twice. To check: log a film with no review, wait for the bot to post it, then add a review. Phase 8 guards against it anyway (same number → update, not repost).
+- **Watch → review:** settled (owner, 2026-11-12) without a live test. Whether or not Letterboxd swaps `letterboxd-watch-N` for `letterboxd-review-N` when a review is added later, the Phase 8 poller guard updates the stored entry and edits its messages in place instead of posting the film twice, so the answer no longer matters.
 
 ## Phase 5: weekly pick, votes, watchlists (built; see STATUS.md)
 
@@ -158,5 +158,7 @@ Answered 2026-11-11: In Theaters / Streaming are set automatically (Phase 9); ba
 Answered 2026-11-11 (Phase 8): entries deleted on Letterboxd have their post-watch embed deleted; `/watchlist import` is removed in favour of `/letterboxd sync`.
 
 Answered 2026-11-12 (Phase 8): `/letterboxd` becomes a group (`link`/`sync`/`unlink`); a deleted entry's `#movies` note and feed line are deleted too.
+
+Settled 2026-11-12: the Phase 4 watch → review question (the Phase 8 poller guard covers both cases).
 
 No open questions right now. Phase 10 (stats) needs a short design talk before it's built.

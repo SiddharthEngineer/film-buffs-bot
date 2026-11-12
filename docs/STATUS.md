@@ -14,7 +14,7 @@
 Built by `setup_server.py --apply` from `server.yaml`; a fresh `--plan` reports no changes.
 
 ```
-📢 Info       #welcome-and-rules (read-only, bot-maintained welcome + rules embed)
+📢 Info       #welcome-and-rules (read-only, bot-maintained "🎬 Welcome" embed, then a "📖 How to" embed)
               #announcements (read-only)
 💬 Chat       #general (the server's original channel, adopted), #trailers-and-news
 🎬 Movies     #movies (forum; only the bot creates posts, everyone can reply)
@@ -185,3 +185,7 @@ Bot version 0.9, schema 10. 138 unit tests pass. Rules narrowed with the owner a
 ## Known state / cleanup
 - Webhooks: only "Film Buffs spoiler moves" on `#post-watch-discussion` remains (used by Mark as spoiler). The unused "Film Buffs reposts" on `#movies` (original Phase 3) was deleted at the owner's request on 2026-11-11. Server Settings → Integrations → Webhooks shows 0 because Discord's server-wide list leaves out webhooks on forum channels; the API lists them.
 - `data/filmbuffs.db` holds the setup-script state (key → Discord ID) as well as movies; losing it means `setup_server.py` would no longer recognize the channels it manages. It is backed up nightly to `backups/` (Phase 7), but only on this machine; copy `backups/` elsewhere now and then for an off-machine copy.
+
+## Welcome page split (2026-11-12) ✅
+- `#welcome-and-rules` now has two bot-maintained embeds from `server.yaml` `messages:`. First, **🎬 Welcome to Film Buffs** (key `welcome_rules`, edited in place, same message ID): the owner's friendly overview (the weekly loop, pre-/post-watch discussions, Letterboxd, upcoming stats, ideas welcome, be nice). Second, **📖 How to** (new key `how_to`): the old detailed instructions (movies and 👍, weekly pick, spoiler policy, Letterboxd commands).
+- Applied with `setup_server.py --apply`; `--plan` reports no changes. Order holds because messages are applied in YAML order and the first one keeps its ID. If either message is deleted, reposting it would put it out of order.

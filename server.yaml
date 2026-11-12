@@ -188,7 +188,34 @@ messages:
     description: |
       A place to pick, watch and talk about movies together.
 
-      **How it works**
+      **Every week we:**
+      🍿 Watch the same movie
+      🗳️ Pick next week's movie together
+      • Mon–Thu → nominate
+      • Fri–Sun → vote
+
+      💬 **Every movie gets its own discussions**
+      • Pre-watch in {#movies}: hype, predictions, first impressions (no spoilers)
+      • Post-watch in {#movie_spoilers}: reviews, hot takes, spoilers allowed
+
+      📒 **Letterboxd is hooked up**, so everyone's reviews and watchlists post to the right channels automatically.
+
+      📊 **Coming next: stats!**
+      🎥 Movies: all-time rankings, most controversial picks, and more
+      🙋 Us: who reviews the most, who contributes the most, who's the harshest critic 👀
+
+      🤖 Siddharth is building this with Claude. Got an idea to make it better? Send it over!
+
+      **Be nice.** Disagree about movies, not about people.
+
+      👇 **How to do all of this is in the next message.**
+    color: 0xE5A00D
+
+  - key: how_to
+    channel: welcome
+    title: "📖 How to"
+    description: |
+      **Movies and 👍**
       • Every movie gets its own post in {#movies}. Add one with **/addmovie** from any channel: start typing a title and pick it from the list. Add a pitch if you want to sell it.
       • 👍 the first message of a post if you want to watch it. The pinned **🏆 Most wanted** message in {#watch_planning} (and **/top**) ranks every film by 👍.
 
@@ -206,8 +233,6 @@ messages:
       **Letterboxd**
       • Run **/letterboxd link** with your username to link your account. New diary entries show up in {#letterboxd_feed} and the movie's post; ratings and reviews go in its post-watch discussion. **/letterboxd unlink** to stop.
       • Optional: **/letterboxd sync** your Letterboxd export zip. It brings in your history, applies edits and deletions you made on Letterboxd, and each film on your watchlist counts toward the rankings like your 👍 would (shown as 📋 in **/top** and the leaderboard; the bot can't add a 👍 for you). Upload a fresh export whenever you want to update it.
-
-      **Be nice.** Disagree about movies, not about people.
     color: 0xE5A00D
 
 # Unmanaged channels to delete, by ID. The name must still match, text
