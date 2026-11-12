@@ -97,9 +97,12 @@ def load_config(path) -> dict:
         unique(f"message:{m['key']}")
         if m["channel"] not in channel_keys:
             raise ConfigError(f"message {m['key']}: unknown channel {m['channel']!r}")
-        for ref in re.findall(r"\{#(\w+)\}", m.get("description", "")):
+        for ref in re.findall(r"\{#([^{}]*)\}", m.get("description", "")):
             if ref not in channel_keys:
-                raise ConfigError(f"message {m['key']}: unknown channel ref {{#{ref}}}")
+                hint = ref.replace("-", "_")
+                raise ConfigError(
+                    f"message {m['key']}: unknown channel ref {{#{ref}}} (use a channel key"
+                    + (f", e.g. {{#{hint}}}" if hint in channel_keys else "") + ")")
     for r in cfg.get("retire", []):
         if not isinstance(r.get("id"), int) or not r.get("name"):
             raise ConfigError(f"retire entries need an integer id and a name: {r}")

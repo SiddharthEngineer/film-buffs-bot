@@ -79,7 +79,7 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
             f"✅ Resynced <#{row['thread_id']}>: info card re-rendered, tags "
             f"{', '.join(t.name for t in tags) or '(none)'}.", ephemeral=True)
 
-    @app_commands.command(name="pick", description="Set this or next week's movie (ends an open poll)")
+    @app_commands.command(name="pick", description="Set this or next week's movie (closes an open vote early)")
     @app_commands.describe(week="Which watch week", title="Start typing and pick the movie")
     @app_commands.choices(week=[app_commands.Choice(name="This week", value="this"),
                                 app_commands.Choice(name="Next week", value="next")])

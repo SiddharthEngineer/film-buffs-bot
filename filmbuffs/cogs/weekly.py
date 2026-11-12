@@ -1,5 +1,6 @@
 """Weekly pick, votes and watchlists: /nominate, /unnominate, /schedule, /top,
-/watchlist show|clear, 👍 reaction tracking, the leaderboard post and the weekly tick."""
+/watchlist show|clear, 👍 reaction tracking, the leaderboard post, the ranked-vote
+buttons and the weekly tick."""
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +14,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from ..tmdb import TMDBError, parse_choice
+from ..vote_ui import DYNAMIC_ITEMS
 from ..votes import ranked_line
 from ..weekly import ELIGIBLE
 
@@ -27,11 +29,13 @@ class Weekly(commands.Cog):
         self.bot = bot
 
     async def cog_load(self) -> None:
+        self.bot.add_dynamic_items(*DYNAMIC_ITEMS)
         self.tick.start()
         self.leaderboard.start()
         self._reconcile_task = asyncio.create_task(self._reconcile())
 
     async def cog_unload(self) -> None:
+        self.bot.remove_dynamic_items(*DYNAMIC_ITEMS)
         self.tick.cancel()
         self.leaderboard.cancel()
         self._reconcile_task.cancel()
@@ -147,7 +151,7 @@ class Weekly(commands.Cog):
             await self.bot.weekly.unnominate(interaction.user.id), ephemeral=True)
 
     @app_commands.command(name="schedule",
-                          description="This week's movie, next week's poll and the open ballot")
+                          description="This week's movie and next week's nominations or vote")
     @app_commands.guild_only()
     async def schedule(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(

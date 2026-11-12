@@ -5,7 +5,7 @@ A custom Discord bot plus an infrastructure-as-code setup script for **Film Buff
 - **Movies** live as posts in the `#movies` forum, one per film, created by the bot from TMDB data.
 - **Letterboxd** is where people log what they watch. The bot pulls those logs in and keeps everything in SQLite, so we can build engagement stats later.
 - **Spoilers** are kept out of `#movies` entirely; each film gets a companion post in `#post-watch-discussion` (created the first time someone opens it).
-- **Weekly pick**: a ballot (`/nominate` + the most-👍'd films) two weeks ahead, a native poll the week before, then the watch week with a server event. A pinned leaderboard ranks every film by 👍.
+- **Weekly pick**: next week's movie is decided this week. `/nominate` Mon–Thu (only nominated films are on the ballot), a ranked-choice vote Fri–Sun counted by instant runoff, then the watch week with a server event. A pinned leaderboard ranks every film by 👍.
 
 | Doc | What's in it |
 |---|---|
@@ -28,7 +28,8 @@ filmbuffs/            the bot package (python -m filmbuffs)
   tmdb.py             TMDB client: search, details, autocomplete
   movies.py           movie posts in #movies (create, embed, tags)
   votes.py            👍 vote tracking, the pinned leaderboard post
-  weekly.py           weekly pick: ballot, poll, watch week
+  weekly.py           weekly pick: ballot, ranked vote (instant runoff), watch week
+  vote_ui.py          the Vote button and the private ranking picker
   tags.py             which forum tags a post carries (5-tag limit)
   spoilers.py         post-watch discussions (companion posts, Mark as spoiler)
   letterboxd.py       Letterboxd RSS: linking, polling, posting entries
@@ -98,8 +99,9 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 |---|---|---|
 | `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#movies` (or links the existing one). Free text is rejected; pick from the autocomplete. |
 | 👍 on a movie's first message | `#movies` | Says you want to watch it. Ranks it on the leaderboard and the ballot. |
-| `/nominate [title]` / `/unnominate` | any channel (no title: inside a movie post) | One nomination per member on the open ballot; run again to swap. |
-| `/schedule` | any channel | This week's movie, next week's poll, the open ballot. |
+| `/nominate [title]` / `/unnominate` | any channel (no title: inside a movie post) | Mon–Thu: one nomination per member on the open ballot; run again to swap. |
+| **🗳️ Vote** on the ballot | `#watch-planning` | Fri–Sun: rank as many films as you like, best first, in a private picker (Undo last / Clear). Saved on every pick; click Vote again to see or change it. |
+| `/schedule` | any channel | This week's movie and next week's nominations or vote. |
 | `/top [genre] [include_watched]` | any channel | The most-wanted films. |
 | `/watchlist show` · `clear` | any channel | What the bot has from your last export upload; clear removes it (your 👍 stay). |
 | `/spoiler` | inside a movie post | Links the movie's post-watch discussion (creates it if needed); inside a post-watch post, links back. |
@@ -114,7 +116,7 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 | Command | What it does |
 |---|---|
 | `/admin resync [post]` | Re-renders a movie's info card (button, no-spoilers reminder) and re-applies its tags from the database; also refreshes its post-watch post's title and starter. Run it inside the `#movies` or post-watch post, or pick the post. Use it after editing a movie row by hand, or if a card or its tags look wrong. |
-| `/admin pick week:<This/Next week> title:` | Sets that week's movie. Ends an open poll early (its votes are kept), puts a previously picked film back to its old tag, updates the event and announces it. If the week has started, it's pinned right away. |
+| `/admin pick week:<This/Next week> title:` | Sets that week's movie. Closes an open vote early (its ballots are kept), puts a previously picked film back to its old tag, updates the event and announces it. If the week has started, it's pinned right away. |
 | `/admin letterboxd-unlink member:<member>` | Unlinks someone's Letterboxd account (e.g. a wrong link or they asked). Their stored entries stay. |
 
 **#bot-logs** (admins only) gets:

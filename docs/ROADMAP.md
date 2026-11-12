@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–8 are built (see [STATUS.md](STATUS.md)); Phases 9–10 below are planned and approved by the owner (2026-11-11), not started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–8 and 5R are built (see [STATUS.md](STATUS.md)); Phases 9–10 are planned and approved by the owner (2026-11-11), not started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 ## Guiding decisions (agreed with the owner)
 
@@ -62,6 +62,8 @@ Replace the in-post spoiler line with a separate spoiler post per movie.
 
 ## Phase 5: weekly pick, votes, watchlists (built; see STATUS.md)
 
+*The ballot → poll → watch pipeline below was replaced by Phase 5R; 👍 votes, the leaderboard, `/top`, pins and `/admin pick` stay.*
+
 Redesigned with the owner on 2026-11-11 (replaces the original "Monday poll from the top 10").
 - **Three-week pipeline**, every stage a full Mon 12:00 AM → Sun 11:59 PM week (America/Chicago). For watch week T: ballot in week T-2, poll in week T-1, watching in week T. Every week runs one of each.
 - **Ballot** (live bot message in `#watch-planning`): `/nominate` one film per member (swap by re-running, `/unnominate`), first come first served up to 10. The rest of the 10 slots are the most-wanted eligible films. Discord polls can't be edited, so the ballot is frozen at Sun 11:59 PM and becomes the poll.
@@ -111,6 +113,26 @@ Owner request (2026-11-11): each export upload is a full sync, so edits on Lette
 - **Poller guard:** a `review-N` item whose `watch-N` is already stored updates that entry instead of posting the film again.
 - Tests: diff (new/changed/gone, RSS ↔ export matching), embed edit, preview counts.
 
+## Phase 5R: one-week nominate → ranked vote (built; see STATUS.md)
+
+Owner (2026-11-12): two weeks from nominating to watching is too long, especially for films in theaters. Replaces Phase 5's ballot → poll → watch pipeline.
+- **Schedule** (America/Chicago). For watch week T (Mon–Sun), everything happens in week T-1:
+  - **Nominations** Mon 12:00 AM → Thu 11:59 PM. `/nominate` / `/unnominate` as now (one per member; swap or withdraw any time until Thu 11:59 PM). **Only nominated films are on the ballot** (owner, 2026-11-12): no fill from the most-wanted list, and no configurable size. The only cap is 25 nominations, Discord's dropdown limit.
+  - **Ranked vote** Fri 12:00 AM → Sun 11:59 PM, on the options frozen at Thu 11:59 PM.
+  - **Watch week** T: unchanged (Up Next, server event, announcement, pins, `#watch-log` line at the end).
+  - Each week runs one watch and one nominate/vote cycle. The `weeks` row keeps its states with new times; `poll` → `voting`. `weekly.poll_options` is removed.
+- **Ranked choice, instant runoff** (owner). Rankings can be changed any time until Sun 11:59 PM. Members rank **as many options as they like, up to all of them** (1st, 2nd, 3rd, …). Partial rankings are fine; ranking more only matters if your top picks are knocked out.
+- **Voting UI** (native polls can't rank): a **🗳️ Vote** button on the ballot message opens an ephemeral picker. One dropdown lists the films not yet ranked; picking one adds it as the next rank and the message updates to show "Your ranking: 1. … 2. …". Buttons: **Undo last**, **Clear**. Every change is saved immediately (no Submit to forget). Clicking Vote again shows the saved ranking. Changes allowed until Sun 11:59 PM. (A message can't hold 10 dropdowns, and multi-select order isn't guaranteed to be click order, so it's one pick at a time.)
+- **Secret until close:** the ballot shows only "N members have voted" while voting is open.
+- **Counting (IRV):** each round, every ballot counts for its highest-ranked film still in the race. A film with more than half of the non-exhausted ballots wins. Otherwise films with no votes go out together, or else the one with the fewest; ties for last are broken by fewest 1st choices, then `weekly.tie_break` (lowest interest, 👍, latest added goes out first). If the last two tie, the same rule decides which goes out. Zero voters → skip. At the Thursday close, no nominations → skip; a single nomination wins without a vote (owner, 2026-11-12).
+- **Results** in `#watch-planning` at close: the winner plus a short round-by-round summary (e.g. "Round 2: *Film* out, 2 votes moved to *Other*"). `#watch-log` line: `Wk <ISO> · <range> · <Title (Year)> · won X–Y after R rounds` (final-round counts; "after R rounds" left out when round 1 decides it).
+- **DB** (append-only migration): `ranked_votes(week_start, user_id, rank, tmdb_id, voted_at)`, one row per rank; the round-by-round result stored on the week for stats. Old poll columns/`poll_voters` stay for history.
+- **Transition:** the open ballot (one nomination) was moved to watch week 2026-11-16 at the owner's request, and `first_watch_week` with it: nominations close Thu 11-12, voting Fri 11-13 → Sun 11-15. No poll is ever posted.
+- **Text:** `/schedule`, the ballot embed, the `#watch-planning` topic and the welcome message describe the new week.
+- **Welcome links fix** (folded in): `{#watch-planning}`, `{#letterboxd-feed}`, `{#watch-log}` use channel *names* with hyphens; the `{#key}` regex is `\w+`, so they never matched and were posted as plain text (validation used the same regex, so it didn't complain). Use the keys (`watch_planning`, `letterboxd_feed`, `watch_log`) and make validation reject any `{#…}` that isn't a channel key. Then plan/apply.
+- **Tests:** schedule boundaries (Thu/Fri/Sun cutoffs, DST), IRV (majority in round 1, eliminations, exhausted ballots, every tie path, single voter), picker add/undo/clear, transition of an open ballot, unknown `{#…}` refs rejected.
+- **Owner by hand:** run through the picker in Discord once voting opens (or on a throwaway test week), and run `setup_server.py` plan/apply for the topic and welcome text.
+
 ## Phase 9: In Theaters / Streaming tags from TMDB (planned)
 
 Owner (2026-11-11): set them automatically. Both tags already exist as bot-only flag tags.
@@ -122,7 +144,7 @@ Owner (2026-11-11): set them automatically. Both tags already exist as bot-only 
 
 ## Phase 10: engagement stats (planned)
 
-From the SQLite data already stored: who watched what, rating spreads (per member, per film, group vs. solo), most active posts, weekly-pick participation (nominations, poll voters, turnout). Shape (slash commands, a monthly post, or both) to be agreed with the owner first.
+From the SQLite data already stored: who watched what, rating spreads (per member, per film, group vs. solo), most active posts, weekly-pick participation (nominations, voters, turnout, how far down rankings were used). Shape (slash commands, a monthly post, or both) to be agreed with the owner first.
 
 ## Later ideas
 - Off-machine backup copies (needs a destination from the owner).

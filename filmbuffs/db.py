@@ -233,6 +233,26 @@ MIGRATIONS = [
         counts           TEXT NOT NULL           -- JSON
     );
     """,
+    # Phase 5R: nominations Mon–Thu, ranked-choice vote Fri–Sun, counted by
+    # instant runoff. weeks.state: ballot -> ballot_closed -> voting -> picked ->
+    # done (or skipped); the old `poll` state is gone. For ranked weeks the poll_*
+    # columns are reused: poll_opened_at/poll_closed_at = voting opened/closed,
+    # total_votes = members who ranked at least one film, winner_votes /
+    # runner_up_votes = final-round counts, week_options.poll_votes = 1st choices.
+    #   ranked_votes: one row per rank of each member's ballot (1 = best).
+    #   vote_rounds: JSON list of rounds [{counts, out, exhausted}] (stats).
+    """
+    CREATE TABLE ranked_votes (
+        week_start  TEXT NOT NULL,
+        user_id     INTEGER NOT NULL,
+        rank        INTEGER NOT NULL,
+        tmdb_id     INTEGER NOT NULL,
+        voted_at    TEXT NOT NULL,
+        PRIMARY KEY (week_start, user_id, rank),
+        UNIQUE (week_start, user_id, tmdb_id)
+    );
+    ALTER TABLE weeks ADD COLUMN vote_rounds TEXT;
+    """,
 ]
 
 
@@ -588,7 +608,7 @@ class Database:
                        "poll_message_id", "poll_opened_at", "poll_closed_at", "winner_tmdb_id",
                        "winner_votes", "runner_up_votes", "total_votes", "event_id",
                        "announcement_id", "log_message_id", "skip_reason", "ended_at",
-                       "override_by", "winner_prev_status", "pinned_at"}
+                       "override_by", "winner_prev_status", "pinned_at", "vote_rounds"}
 
     async def update_week(self, week_start: str, **fields) -> None:
         bad = set(fields) - self._WEEK_UPDATABLE
@@ -636,18 +656,52 @@ class Database:
             "ORDER BY o.position", (week_start,))
         return list(await cur.fetchall())
 
-    async def record_poll_results(self, week_start: str, votes: dict[int, int],
-                                  voters: dict[int, list[int]]) -> None:
-        """votes/voters keyed by option position."""
-        opts = {r["position"]: r["tmdb_id"] for r in await self.options(week_start)}
+    async def record_first_choices(self, week_start: str, first: dict[int, int]) -> None:
         await self.conn.executemany(
-            "UPDATE week_options SET poll_votes=? WHERE week_start=? AND position=?",
-            [(votes.get(p, 0), week_start, p) for p in opts])
-        await self.conn.execute("DELETE FROM poll_voters WHERE week_start=?", (week_start,))
-        await self.conn.executemany(
-            "INSERT OR IGNORE INTO poll_voters(week_start, tmdb_id, user_id) VALUES (?,?,?)",
-            [(week_start, opts[p], u) for p, us in voters.items() if p in opts for u in us])
+            "UPDATE week_options SET poll_votes=? WHERE week_start=? AND tmdb_id=?",
+            [(n, week_start, tid) for tid, n in first.items()])
         await self.conn.commit()
+
+    # ranked votes ------------------------------------------------------------
+    async def ranking(self, week_start: str, user_id: int) -> list[int]:
+        cur = await self.conn.execute(
+            "SELECT tmdb_id FROM ranked_votes WHERE week_start=? AND user_id=? ORDER BY rank",
+            (week_start, user_id))
+        return [r[0] for r in await cur.fetchall()]
+
+    async def add_rank(self, week_start: str, user_id: int, tmdb_id: int) -> None:
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO ranked_votes(week_start, user_id, rank, tmdb_id, voted_at) "
+            "SELECT ?, ?, COALESCE(MAX(rank), 0) + 1, ?, ? FROM ranked_votes "
+            "WHERE week_start=? AND user_id=?",
+            (week_start, user_id, tmdb_id, utcnow(), week_start, user_id))
+        await self.conn.commit()
+
+    async def undo_rank(self, week_start: str, user_id: int) -> None:
+        await self.conn.execute(
+            "DELETE FROM ranked_votes WHERE week_start=? AND user_id=? AND rank = "
+            "(SELECT MAX(rank) FROM ranked_votes WHERE week_start=? AND user_id=?)",
+            (week_start, user_id, week_start, user_id))
+        await self.conn.commit()
+
+    async def clear_ranking(self, week_start: str, user_id: int) -> None:
+        await self.conn.execute("DELETE FROM ranked_votes WHERE week_start=? AND user_id=?",
+                                (week_start, user_id))
+        await self.conn.commit()
+
+    async def all_rankings(self, week_start: str) -> dict[int, list[int]]:
+        cur = await self.conn.execute(
+            "SELECT user_id, tmdb_id FROM ranked_votes WHERE week_start=? ORDER BY user_id, rank",
+            (week_start,))
+        out: dict[int, list[int]] = {}
+        for uid, tid in await cur.fetchall():
+            out.setdefault(uid, []).append(tid)
+        return out
+
+    async def voter_count(self, week_start: str) -> int:
+        cur = await self.conn.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM ranked_votes WHERE week_start=?", (week_start,))
+        return (await cur.fetchone())[0]
 
     async def set_status(self, tmdb_id: int, status: str) -> None:
         await self.conn.execute("UPDATE movies SET status=? WHERE tmdb_id=?", (status, tmdb_id))

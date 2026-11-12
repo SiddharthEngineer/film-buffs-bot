@@ -48,16 +48,14 @@ class Config:
         # Members with this role (or Manage Server) can use /admin commands.
         self.admin_role = str(ops.get("admin_role", "Moderator"))
 
-        # Weekly pick (Phase 5). Each watch week's ballot runs two weeks before it
-        # and its poll the week before. Nothing runs before first_watch_week.
+        # Weekly pick (Phase 5R). Each watch week's nominations run Mon–Thu of the
+        # week before it and its ranked vote Fri–Sun. Nothing runs before first_watch_week.
         wk = self.layout.get("weekly") or {}
         first = wk.get("first_watch_week")
         self.first_watch_week: date | None = (
             first if isinstance(first, date) else date.fromisoformat(first) if first else None)
         if self.first_watch_week and self.first_watch_week.weekday() != 0:
             raise RuntimeError("weekly.first_watch_week in server.yaml must be a Monday")
-        self.poll_options = min(int(wk.get("poll_options", 10)), 10)   # Discord: max 10 answers
-        self.min_options = max(int(wk.get("min_options", 2)), 1)
         self.tie_break: list[str] = list(wk.get("tie_break", ["interest", "thumbs", "added"]))
         for k in self.tie_break:
             if k not in ("interest", "thumbs", "added"):
