@@ -222,10 +222,10 @@ Owner requests. Schema 12, 141 unit tests pass (`tests/test_fixes_1115.py` new).
 - The "Votes", "Leaderboard", "Scores" and `/top` bullets in Phase 5 above are history now.
 
 
-## Phase 12: private groups with their own monthly movie ✅ (live 2026-11-15; applied and restarted 22:16 CT, OSU December vote open; waits for the owner's hands-on test)
+## Phase 12: private groups with their own monthly movie ✅ (live and owner-tested 2026-11-15; applied and restarted 4:16 PM CT, OSU December vote open)
 Bot version 0.12, schema 13. 144 unit tests pass. Decisions are in ROADMAP "Phase 12". Pre-migration copy: `data/pre-phase12.db`.
 - **The main server is weekly-only.** The main monthly vote, the rule that kept the weekly vote off the monthly leader, `@Monthly Movie` (and its How to button), and every public mention of a monthly movie are gone.
-  - On the restart (22:02 CT) the bot deleted the 🌙 December ballot and the "🌙 Monthly vote for December 2026 is open" notice in `#watch-planning`. Nobody had ranked it.
+  - On the restart (4:02 PM CT) the bot deleted the 🌙 December ballot and the "🌙 Monthly vote for December 2026 is open" notice in `#watch-planning`. Nobody had ranked it.
   - The two main nominations are unchanged.
 - **Groups** (`filmbuffs/groups.py`, `server.yaml` `groups:`). Each entry expands into:
   - a mentionable role (`role:group_<key>`), which is both the membership and the ping;
@@ -260,7 +260,7 @@ Bot version 0.12, schema 13. 144 unit tests pass. Decisions are in ROADMAP "Phas
 
   Until the apply and a restart, the bot has no groups, so no OSU vote is open yet.
 
-## Phase 12b: picks announced in #watch-planning, 🔔 Pings on the ballots ✅ (live 2026-11-15)
+## Phase 12b: picks announced in #watch-planning, 🔔 Pings on the ballots ✅ (live and owner-tested 2026-11-15; the first weekly close with the new announcement is Sun Nov 15, 11:59 PM CT)
 145 unit tests pass. Owner decisions are in ROADMAP "Phase 12b".
 - **Weekly picks are no longer posted to `#announcements`.** The vote close, a sole nomination winning, and `/admin pick` each make one post in `#watch-planning` that pings `@Weekly Movie`; its ID is `weeks.announcement_id`. The old separate "🏁 Weekly vote closed" note is folded into it. `#announcements` is "Server news." Groups already posted only in their own `#watch-planning`.
 - **🔔 Pings button** (`vote_ui.PingButton`, `pings:main` / `pings:<grp>`) on every open ballot, next to Vote and My nominations. Main toggles `@Weekly Movie`; a group's toggles its opt-in ping role, members only. The ballots mention it.

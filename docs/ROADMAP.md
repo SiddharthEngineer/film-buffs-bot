@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–10, 5R, 12 and 12b are built and live (see [STATUS.md](STATUS.md)). Phase 12 (private groups; the monthly movie moved out of the main server) went live 2026-11-15 and waits for the owner's `setup_server.py --apply`, a restart and a hands-on test. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–10, 5R, 12 and 12b are built and live (see [STATUS.md](STATUS.md)). Phases 12 and 12b (private groups with their own monthly movie; picks announced in each `#watch-planning`; 🔔 Pings on the ballots) went live and were owner-tested 2026-11-15. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 **2026-11-15 (owner):** 👍 reactions no longer count for anything; the leaderboard, `/top` and vote tracking are removed. `/nominate` also creates the movie's post (with a pitch), like `/addmovie`. See STATUS "Fixes of 2026-11-15".
 
