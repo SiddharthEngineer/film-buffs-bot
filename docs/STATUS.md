@@ -268,7 +268,7 @@ Bot version 0.12, schema 13. 144 unit tests pass. Decisions are in ROADMAP "Phas
 - **📖 How to:** the Pings paragraph and the role button are gone, and the watch-week bullet points to `#watch-planning` and 🔔 Pings. `RoleButton` (`role:<key>`) stays only for old messages.
 - No pinned instructions message (owner).
 
-## Phase 16: `#post-watch` redesign (built 2026-11-15 on branch `claude/phase16-postwatch-8c6418`; not deployed)
+## Phase 16: `#post-watch` redesign ✅ (deployed 2026-11-15: applied, restarted, 108 posts rewritten with posters and tags; awaiting owner test)
 Owner decisions are in ROADMAP "Phase 16". 155 unit tests pass (new: decade bucketing, the 5-tag cap, the starter embed, the rename/refresh path, Reviews retagging, `server.yaml` tags, schema 14). The schema-rollback tests in `test_weekly.py` and `test_phase10.py` now also drop `poster_url`.
 - **Rename:** `#post-watch-discussion` → **`#post-watch`** in `server.yaml` (key `movie_spoilers` unchanged). Bot wording (`spoilers.py`, `letterboxd.py`, `weekly.py`, `config.py`), the `#movies` guidelines and README say `#post-watch`. The welcome/How to text already uses `{#movie_spoilers}`, so it follows the rename (Phase 15 rewrites it). The card button stays "🔓 Post-watch discussion".
 - **Post title** `Title (Year)` (no "— Post-watch").
@@ -282,13 +282,13 @@ Owner decisions are in ROADMAP "Phase 16". 155 unit tests pass (new: decade buck
   2. `sudo systemctl restart film-buffs-bot`; the refresh of ~108 posts takes ~2 minutes (`journalctl -u film-buffs-bot` shows "Refreshing … post-watch starter message(s)").
   3. Check `#post-watch`: the forum list shows only title + poster (no starter text), posts carry decade/genre tags, posts with reviews carry 📓 Reviews, this week's post is still pinned.
 
-## Phase 13: roles and permissions ✅ (built on branch `claude/phase13-roles-b64597`; not merged or deployed)
+## Phase 13: roles and permissions ✅ (deployed 2026-11-15: role renamed; owner still deletes Moderator and turns off Mention Everyone)
 Owner decisions are in ROADMAP "Phase 13".
 - **`@Weekly Movie` → `@Weekly Pings`:** `server.yaml` `roles:` `weekly_ping` (key unchanged, so the role keeps its ID and members keep it). The ballot text, `vote_ui.py`, README and the test fixture say `@Weekly Pings`.
 - **`ops.admin_role` is optional** and now `null`: `/admin` is Manage Server / Administrator only. `Config.admin_role` is `None` when it's null or missing (it used to default to `Moderator`); `is_admin` matches no role then. Tests: `test_is_admin_without_role`.
 - **Owner by hand** after merge + deploy: `uv run setup_server.py --plan` (expect only the role rename), then `--apply`, then `sudo systemctl restart film-buffs-bot`. Then Discord → Server Settings → Roles: delete `Moderator`, and on `@everyone` turn off **Mention @everyone, @here, and All Roles** (keep Create Events and Create Expressions).
 
-## Phase 14: 📊 Recap category with #wrapped and #ideas (built on branch `claude/phase14-recap-445f58`; not deployed)
+## Phase 14: 📊 Recap category with #wrapped and #ideas ✅ (deployed 2026-11-15: channels created, ideas list posted; awaiting owner test)
 Owner decisions are in ROADMAP "Phase 14". Unit tests pass (`tests/test_ideas.py`, 13 tests).
 - **`server.yaml`:** new category `recap` "📊 Recap", declared just above 🔧 Admin. The private group categories (`groups.expand`) still go directly above Admin, so the order is … 🔊 Voice · 📊 Recap · 🎓 OSU · 🔧 Admin (members outside OSU see Recap right above Admin).
   - `#wrapped` (key `wrapped`): `read_only`, topic "Group stats and Film Buffs Wrapped. Coming soon." Empty until Phase 11.
