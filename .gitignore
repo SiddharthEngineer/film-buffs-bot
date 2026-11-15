@@ -6,3 +6,4 @@ data/
 backups/
 *.db
 *.db-*
+.claude/worktrees/
