@@ -434,6 +434,33 @@ MIGRATIONS = [
         PRIMARY KEY (grp, month, user_id, rank)
     );
     """,
+    # Migration 15 (Phase 14): the ideas list pinned in #ideas. Admins add a
+    # message with Apps → Add to ideas; /admin idea done|drop closes one.
+    #   suggested_by: the message's author (NULL for the seeded, already-planned
+    #     ideas). channel_id/message_id: the source message (NULL when seeded).
+    #   status: active | done | dropped. The pinned message's ID is bot_meta
+    #     'ideas_list_message'. Safe to re-run (tests replay old migrations).
+    """
+    CREATE TABLE IF NOT EXISTS ideas (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        text          TEXT NOT NULL,
+        suggested_by  INTEGER,
+        channel_id    INTEGER,
+        message_id    INTEGER UNIQUE,
+        status        TEXT NOT NULL DEFAULT 'active',
+        added_by      INTEGER,
+        added_at      TEXT NOT NULL,
+        closed_by     INTEGER,
+        closed_at     TEXT
+    );
+    INSERT INTO ideas(text, added_at)
+        SELECT t, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now') FROM (
+            SELECT 1 AS n, 'Stats page in #wrapped: group totals like films logged, group watches and top genres' AS t
+            UNION ALL SELECT 2, 'Private /me stats: your own numbers, only you can see them'
+            UNION ALL SELECT 3, 'Film Buffs Wrapped: a year-end slideshow of your movie year'
+            UNION ALL SELECT 4, 'Off-machine backups: keep a copy of the nightly backup somewhere other than the server')
+        WHERE NOT EXISTS (SELECT 1 FROM ideas) ORDER BY n;
+    """,
 ]
 
 
@@ -666,6 +693,41 @@ class Database:
             "INSERT INTO bot_meta(key, value) VALUES (?,?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
         await self.conn.commit()
+
+    # ideas (Phase 14) -------------------------------------------------------
+    async def add_idea(self, *, text: str, suggested_by: int | None, channel_id: int | None,
+                       message_id: int | None, added_by: int | None) -> int:
+        """Insert an active idea and return its ID. Raises aiosqlite.IntegrityError if
+        that message is already an idea."""
+        cur = await self.conn.execute(
+            "INSERT INTO ideas(text, suggested_by, channel_id, message_id, added_by, added_at) "
+            "VALUES (?,?,?,?,?,?)", (text, suggested_by, channel_id, message_id, added_by, utcnow()))
+        await self.conn.commit()
+        return cur.lastrowid
+
+    async def get_idea(self, idea_id: int) -> aiosqlite.Row | None:
+        cur = await self.conn.execute("SELECT * FROM ideas WHERE id=?", (idea_id,))
+        return await cur.fetchone()
+
+    async def get_idea_by_message(self, message_id: int) -> aiosqlite.Row | None:
+        cur = await self.conn.execute("SELECT * FROM ideas WHERE message_id=?", (message_id,))
+        return await cur.fetchone()
+
+    async def active_ideas(self) -> list[aiosqlite.Row]:
+        """Active ideas, oldest first."""
+        cur = await self.conn.execute(
+            "SELECT * FROM ideas WHERE status='active' ORDER BY added_at, id")
+        return list(await cur.fetchall())
+
+    async def close_idea(self, idea_id: int, status: str, by: int | None) -> bool:
+        """Mark an active idea done or dropped. False if it isn't active."""
+        if status not in ("done", "dropped"):
+            raise ValueError(f"bad idea status {status!r}")
+        cur = await self.conn.execute(
+            "UPDATE ideas SET status=?, closed_by=?, closed_at=? WHERE id=? AND status='active'",
+            (status, by, utcnow(), idea_id))
+        await self.conn.commit()
+        return cur.rowcount > 0
 
     async def movies_by_id(self) -> dict[int, aiosqlite.Row]:
         return {r["tmdb_id"]: r for r in await self.all_movies()}

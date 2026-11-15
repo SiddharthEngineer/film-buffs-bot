@@ -206,6 +206,21 @@ categories:
         type: voice
         adopt: Lounge           # existing voice channel, renamed
 
+  # Phase 14. Group categories (groups:) are inserted between this and Admin.
+  - key: recap
+    name: "📊 Recap"
+    channels:
+      - key: wrapped
+        name: wrapped
+        topic: "Group stats and Film Buffs Wrapped. Coming soon."
+        preset: read_only
+      - key: ideas
+        name: ideas
+        topic: "Ideas for the server and the bot: post them here and talk them over. The pinned message lists the active ones."
+        overwrites:
+          "@bot":
+            allow: [view_channel, send_messages, embed_links, read_message_history, pin_messages]
+
   - key: admin
     name: "🔧 Admin"
     channels:

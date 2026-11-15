@@ -280,7 +280,7 @@ Owner by hand, after `setup_server.py --apply` and a restart (Discord → Server
 - Delete `Moderator` (`setup_server.py` doesn't manage it, so it won't touch it).
 - `@everyone` → turn off **Mention @everyone, @here, and All Roles**. Bot pings keep working (its ping roles are mentionable).
 
-### Phase 14: 📊 Recap category with `#wrapped` and `#ideas`
+### Phase 14: 📊 Recap category with `#wrapped` and `#ideas` (built 2026-11-15 on its branch, not deployed; see STATUS.md)
 
 Owner (2026-11-15): a new category **📊 Recap**, placed **above 🔧 Admin**, with two channels:
 - **`#wrapped`**: read-only (`read_only` preset), only the bot posts. Home of Phase 11's stats page and Film Buffs Wrapped (replaces Phase 11's "stats channel, name TBD"). Until Phase 11 it only has its topic, e.g. "Group stats and Film Buffs Wrapped. Coming soon."
@@ -290,6 +290,7 @@ Owner (2026-11-15): a new category **📊 Recap**, placed **above 🔧 Admin**, 
   - Seeded with what's already planned (Phase 11 stats, Wrapped, and so on).
   - A text channel allows many pinned messages, so the list doesn't compete with anything.
 - Both through `server.yaml` + `setup_server.py` (plan, then apply).
+- Built as planned, plus one detail: Add to ideas opens a one-line box prefilled with the message text, so a rambling message becomes a short list entry. Group categories stay directly above Admin, so the order is Recap · OSU · Admin.
 
 ### Phase 15: `#welcome` as a readable page, and `/help`
 
