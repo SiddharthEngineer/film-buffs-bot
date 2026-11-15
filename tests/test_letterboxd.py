@@ -200,6 +200,9 @@ class FakeSpoilers:
             await self.db.set_spoiler_post(tmdb_id, self.posts[tmdb_id].id, 1)
         return self.posts[tmdb_id], True
 
+    async def retag(self, tmdb_id):
+        self.retags = getattr(self, "retags", []) + [tmdb_id]
+
 
 class FakeTMDB:
     async def movie(self, tmdb_id):

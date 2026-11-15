@@ -150,7 +150,8 @@ class MovieService:
             await self.bot.db.insert_movie(
                 tmdb_id=movie.id, thread_id=thread.id, starter_message_id=message.id,
                 title=movie.title, year=movie.year, status=status, flags=flags,
-                genre_tags=genres, added_by=uid, pitch=pitch, source=source)
+                genre_tags=genres, added_by=uid, pitch=pitch, source=source,
+                poster_url=movie.poster_url or "")
             await self.bot.db.set_card_version(movie.id, CARD_VERSION)
             if av is not None:
                 await self.bot.db.set_availability(movie.id, av.to_json(), flags)

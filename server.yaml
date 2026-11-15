@@ -132,7 +132,7 @@ categories:
         topic: |
           🚫 NO SPOILERS in this channel. Talk about trailers, hype and first impressions only.
           One post per movie, created by the bot. Want it picked? /nominate it from any channel (pick it from the autocomplete list): that adds its post here if it has none and puts it on the ballot in #watch-planning. /addmovie adds a post without nominating it. React however you like; reactions don't count as votes. This week's movie is pinned at the top of this channel.
-          Seen it? Every movie has a post-watch discussion in #post-watch-discussion where spoilers are allowed: click 🔓 Post-watch discussion on the movie's info card (or run /spoiler inside the post).
+          Seen it? Every movie has a post-watch discussion in #post-watch where spoilers are allowed: click 🔓 Post-watch discussion on the movie's info card (or run /spoiler inside the post).
           Slipped up? Right-click (long-press on mobile) a message → Apps → Mark as spoiler moves it to the post-watch discussion. Nothing else in the post moves.
         overwrites:
           "@everyone":
@@ -166,7 +166,7 @@ categories:
           # Was "this movie has a post-watch discussion"; the info card button shows that.
           - {key: spoilers, name: "Post-watch"}
       - key: movie_spoilers
-        name: post-watch-discussion
+        name: post-watch
         type: forum
         default_sort: latest_activity
         topic: |
@@ -178,6 +178,31 @@ categories:
             deny: [send_messages]          # only the bot creates posts
           "@bot":
             allow: [view_channel, send_messages, send_messages_in_threads, embed_links, manage_threads]
+        # Phase 16. All moderated: the bot recomputes them from the DB
+        # (filmbuffs/tags.py post_watch_tag_keys), at most 5 per post.
+        tags:
+          - {key: reviews,     name: "Reviews",     emoji: "📓", moderated: true}   # a Letterboxd review is posted here
+          # Genres: same keys and names as the #movies genre tags (their tmdb_genres mapping is reused).
+          - {key: g_action,    name: "Action",      moderated: true}
+          - {key: g_adventure, name: "Adventure",   moderated: true}
+          - {key: g_animation, name: "Animation",   moderated: true}
+          - {key: g_comedy,    name: "Comedy",      moderated: true}
+          - {key: g_crime,     name: "Crime",       moderated: true}
+          - {key: g_doc,       name: "Documentary", moderated: true}
+          - {key: g_drama,     name: "Drama",       moderated: true}
+          - {key: g_fantasy,   name: "Fantasy",     moderated: true}
+          - {key: g_horror,    name: "Horror",      moderated: true}
+          - {key: g_romance,   name: "Romance",     moderated: true}
+          - {key: g_scifi,     name: "Sci-Fi",      moderated: true}
+          - {key: g_thriller,  name: "Thriller",    moderated: true}
+          # Decades, one per post (from the release year).
+          - {key: d_pre1980,   name: "Pre-1980",    moderated: true}
+          - {key: d_1980s,     name: "1980s",       moderated: true}
+          - {key: d_1990s,     name: "1990s",       moderated: true}
+          - {key: d_2000s,     name: "2000s",       moderated: true}
+          - {key: d_2010s,     name: "2010s",       moderated: true}
+          - {key: d_2020s,     name: "2020s",       moderated: true}
+          # 19 of Discord's 20-tag limit used.
 
   - key: planning
     name: "📅 Planning"

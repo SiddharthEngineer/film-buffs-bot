@@ -1,7 +1,7 @@
 """Letterboxd: linked accounts, RSS polling, and posting new diary entries.
 
 Each new entry produces three messages, in this order:
-  1. #post-watch-discussion post: an embed with rating, ♥, rewatch, watched date, review.
+  1. #post-watch post: an embed with rating, ♥, rewatch, watched date, review.
   2. #movies post: a neutral one-liner ("X logged this") linking to (1). No rating.
   3. #letterboxd-feed: one line linking the #movies post. No rating, no review.
 Every entry is stored before anything is posted, and each message ID is saved as
@@ -516,6 +516,7 @@ class LetterboxdService:
                               allowed_mentions=discord.AllowedMentions.none())
         await self.bot.db.update_entry(row["guid"], spoiler_message_id=msg.id,
                                        embed_source=source)
+        await self.bot.spoilers.retag(row["tmdb_id"])     # 📓 Reviews
         return msg
 
     async def refresh_messages(self, row, member: discord.Member | None) -> bool:
@@ -535,7 +536,9 @@ class LetterboxdService:
             await thread.get_partial_message(row["spoiler_message_id"]).edit(embed=embed)
         except discord.NotFound:
             await db.update_entry(row["guid"], spoiler_message_id=None)
+            await self.bot.spoilers.retag(row["tmdb_id"])
             return False
+        await self.bot.spoilers.retag(row["tmdb_id"])     # a review may have been added or removed
         if row["movies_message_id"] and mrow:
             text = movies_note(row["discord_user_id"],
                                self._jump(thread.id, row["spoiler_message_id"]),
@@ -573,6 +576,8 @@ class LetterboxdService:
                 except discord.NotFound:
                     pass
             await db.update_entry(row["guid"], **{col: None})
+        if row["spoiler_message_id"] and row["tmdb_id"]:
+            await self.bot.spoilers.retag(row["tmdb_id"])     # 📓 Reviews may come off
         return n
 
     # posting -----------------------------------------------------------------
@@ -634,6 +639,7 @@ class LetterboxdService:
                 embed=spoiler_embed(row, member.display_name, member.display_avatar.url),
                 allowed_mentions=quiet)
             await db.update_entry(guid, spoiler_message_id=msg.id, embed_source="feed")
+            await self.bot.spoilers.retag(tmdb_id)            # 📓 Reviews
             spoiler_url = msg.jump_url
 
         if not row["movies_message_id"]:

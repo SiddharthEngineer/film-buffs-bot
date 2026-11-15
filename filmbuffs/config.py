@@ -67,6 +67,7 @@ class Config:
         state = State()
         self.channels: dict[str, int] = {}
         forum_spec = None
+        post_watch_spec = None
         for cat in self.layout["categories"]:
             for ch in cat["channels"]:
                 cid = state.get(f"channel:{ch['key']}")
@@ -74,10 +75,12 @@ class Config:
                     self.channels[ch["key"]] = cid
                 if ch["key"] == "movies":
                     forum_spec = ch
+                elif ch["key"] == "movie_spoilers":
+                    post_watch_spec = ch
         if "movies" not in self.channels or forum_spec is None:
             raise RuntimeError("The #movies forum (key: movies) is not set up. Run setup_server.py --apply first.")
         if "movie_spoilers" not in self.channels:
-            raise RuntimeError("The #post-watch-discussion forum (key: movie_spoilers) is not set up. Run setup_server.py --apply first.")
+            raise RuntimeError("The #post-watch forum (key: movie_spoilers) is not set up. Run setup_server.py --apply first.")
 
         # Opt-in ping roles (Phase 10), by key (weekly_ping), plus group roles.
         self.roles: dict[str, int] = {}
@@ -109,6 +112,26 @@ class Config:
         for k in STATUS_TAGS + FLAG_TAGS:
             if k not in self.tags:
                 raise RuntimeError(f"server.yaml is missing the {k!r} forum tag")
+
+        # #post-watch tags (Phase 16): Reviews, the #movies genre keys, decades.
+        # Unlike #movies, missing IDs don't stop the bot (the forum may not have
+        # its tags yet, before setup_server.py --apply); post_watch_tags_ready says
+        # whether every declared tag exists, and the one-off post-watch refresh
+        # only marks itself done once they do.
+        self.post_watch_tags: dict[str, TagDef] = {}
+        self.post_watch_tags_ready = True
+        for t in (post_watch_spec or {}).get("tags", []):
+            tid = state.get(f"tag:movie_spoilers:{t['key']}")
+            if tid is None:
+                self.post_watch_tags_ready = False
+                continue
+            self.post_watch_tags[t["key"]] = TagDef(t["key"], t["name"], tid)
+        movie_genres = {k for k in self.tags if k.startswith("g_")}
+        pw_genres = {t["key"] for t in (post_watch_spec or {}).get("tags", [])
+                     if t["key"].startswith("g_")}
+        if pw_genres and pw_genres != movie_genres:
+            raise RuntimeError("server.yaml: the #post-watch genre tags must use the same keys "
+                               "as the #movies genre tags")
 
         # TMDB genre name -> genre tag key, in server.yaml order.
         self.genre_map: dict[str, str] = {}

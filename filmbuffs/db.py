@@ -434,6 +434,14 @@ MIGRATIONS = [
         PRIMARY KEY (grp, month, user_id, rank)
     );
     """,
+    # 14 — Phase 16: #post-watch posts show the poster (starter embed thumbnail).
+    #   poster_url: TMDB poster, set when the #movies post is created; older rows
+    #     are filled from TMDB by the post-watch refresh. '' = TMDB has none.
+    #   Post-watch tags need nothing else: genres and year are already here, and
+    #   📓 Reviews comes from letterboxd_entries (spoiler_message_id + review_text).
+    """
+    ALTER TABLE movies ADD COLUMN poster_url TEXT;
+    """,
 ]
 
 
@@ -480,13 +488,28 @@ class Database:
     async def insert_movie(self, *, tmdb_id: int, thread_id: int, starter_message_id: int,
                            title: str, year: int | None, status: str, flags: list[str],
                            genre_tags: list[str], added_by: int | None, pitch: str | None,
-                           source: str) -> None:
+                           source: str, poster_url: str | None = None) -> None:
         await self.conn.execute(
             "INSERT INTO movies(tmdb_id, thread_id, starter_message_id, title, year, status, "
-            "flags, genre_tags, added_by, added_at, pitch, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "flags, genre_tags, added_by, added_at, pitch, source, poster_url) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (tmdb_id, thread_id, starter_message_id, title, year, status, json.dumps(flags),
-             json.dumps(genre_tags), added_by, utcnow(), pitch, source))
+             json.dumps(genre_tags), added_by, utcnow(), pitch, source, poster_url))
         await self.conn.commit()
+
+    async def set_poster(self, tmdb_id: int, poster_url: str) -> None:
+        """'' records that TMDB has no poster, so it isn't looked up again."""
+        await self.conn.execute("UPDATE movies SET poster_url=? WHERE tmdb_id=?",
+                                (poster_url, tmdb_id))
+        await self.conn.commit()
+
+    async def has_posted_review(self, tmdb_id: int) -> bool:
+        """Is at least one Letterboxd review (an entry with text) posted in the
+        movie's post-watch post? Drives the 📓 Reviews tag."""
+        cur = await self.conn.execute(
+            "SELECT 1 FROM letterboxd_entries WHERE tmdb_id=? AND spoiler_message_id IS NOT NULL "
+            "AND review_text IS NOT NULL AND TRIM(review_text) != '' LIMIT 1", (tmdb_id,))
+        return await cur.fetchone() is not None
 
     async def set_flags(self, tmdb_id: int, flags: list[str]) -> None:
         await self.conn.execute("UPDATE movies SET flags=? WHERE tmdb_id=?",

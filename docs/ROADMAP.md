@@ -254,7 +254,7 @@ Owner (2026-11-15):
 
 Where the buttons go (owner confirmed 2026-11-15): a **🔔 Pings** toggle button on each open ballot, next to 🗳️ Vote and 📋 My nominations. It toggles `@Weekly Movie` on the weekly ballot and `@<Name> Pings` on a group's. A ballot is always open, and each new one gets the button. The reply is private: "🔔 Added / 🔕 Removed".
 
-## Phases 13–16: cleanup and a Recap category (planned 2026-11-15, not started)
+## Phases 13–16: cleanup and a Recap category (planned 2026-11-15; Phase 16 built, see STATUS.md)
 
 Four small phases, one at a time, in this order. Recap comes before the welcome rewrite so the welcome message can link `#ideas` and `#wrapped`.
 
@@ -305,7 +305,7 @@ Either way:
 - `how_to` is removed; `setup_server.py` gains `retire_messages:` (key + title; deletes a message it posted) and `pin: true`.
 - **`/help`** (anyone, ephemeral): every command a member can use, grouped (Movies · Picking · Spoilers · Letterboxd · Groups), one line each, built from the bot's registered command tree so it never goes stale; `/admin` shows only for admins. Ends with a link to `#welcome`.
 
-### Phase 16: `#post-watch` redesign
+### Phase 16: `#post-watch` redesign (built 2026-11-15, not deployed; see STATUS.md)
 
 Owner (2026-11-15): posts should look like `#movies`: title, year and poster in the forum list. **The weekly pin stays** (a forum allows one pinned post). Rename the forum to **`#post-watch`**.
 - **Rename** `#post-watch-discussion` → `#post-watch` in `server.yaml` (key `movie_spoilers` unchanged). Bot wording that names the channel (`spoilers.py`, `letterboxd.py`, `weekly.py`, `config.py`, README, welcome) says `#post-watch`. The card button stays "🔓 Post-watch discussion".

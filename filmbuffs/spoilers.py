@@ -1,4 +1,4 @@
-"""Post-watch discussions: one companion post per movie in #post-watch-discussion.
+"""Post-watch discussions: one companion post per movie in #post-watch.
 
 #movies posts stay spoiler-free. A movie's post-watch post is
 created lazily (the info card button, /spoiler, Mark as spoiler, or a Letterboxd
@@ -13,6 +13,7 @@ custom_ids) predate the rename and are kept so existing IDs keep working.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from collections import defaultdict
@@ -20,7 +21,9 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from .movies import truncate
+from .movies import EMBED_COLOR, truncate
+from .tags import post_watch_tag_keys
+from .tmdb import TMDBError
 
 if TYPE_CHECKING:
     from .bot import FilmBuffsBot
@@ -38,17 +41,40 @@ MAX_FILES = 10
 # ------------------------------------------------------------------ pure logic
 
 def spoiler_post_name(display: str) -> str:
-    return truncate(f"{display} — Post-watch", 100)
+    """`Title (Year)`, like the #movies post (Phase 16 dropped "— Post-watch")."""
+    return truncate(display, 100)
 
 
-# Bump when starter_text changes; existing post-watch starters are rewritten once.
-STARTER_VERSION = "2"   # 2: links back to "#movies" (was "pre-watch discussion")
+# Bump when the title, starter or tags change; existing post-watch posts are
+# rewritten once at startup.
+#   2: links back to "#movies" (was "pre-watch discussion")
+#   3: Phase 16: title `Title (Year)`, embed-only starter with poster, tags
+STARTER_VERSION = "3"
 
 
-def starter_text(display: str, movies_url: str) -> str:
+def starter_description(display: str, movies_url: str) -> str:
     return (f"⚠️ **Post-watch discussion for {display}. Spoilers allowed.** "
-            f"Everything here may spoil the film, so only read on once you've seen it.\n"
-            f"← Back to the spoiler-free post in #movies: {movies_url}")
+            f"Everything here may spoil the film, so only read on once you've seen it.\n\n"
+            f"← [Back to the spoiler-free post in #movies]({movies_url})")
+
+
+def starter_embed(display: str, movies_url: str, poster_url: str | None) -> discord.Embed:
+    """The starter is this embed and no plain text: a forum's post list shows a
+    starter's text but not its embeds, so the list shows just title + poster
+    (like #movies)."""
+    e = discord.Embed(description=starter_description(display, movies_url), color=EMBED_COLOR)
+    if poster_url:
+        e.set_thumbnail(url=poster_url)
+    return e
+
+
+def starter_is_current(message, embed: discord.Embed) -> bool:
+    """Does an existing starter already match `embed` (and carry no text)?"""
+    if message.content or not message.embeds:
+        return False
+    have = message.embeds[0]
+    return (have.description == embed.description
+            and (have.thumbnail.url or None) == (embed.thumbnail.url or None))
 
 
 def split_text(text: str, first_room: int, room: int = MESSAGE_LIMIT) -> list[str]:
@@ -126,7 +152,7 @@ class SpoilerService:
     def forum(self) -> discord.ForumChannel:
         ch = self.bot.get_channel(self.bot.config.channels["movie_spoilers"])
         if not isinstance(ch, discord.ForumChannel):
-            raise RuntimeError("#post-watch-discussion forum not found")
+            raise RuntimeError("#post-watch forum not found")
         return ch
 
     # lookups -----------------------------------------------------------------
@@ -176,7 +202,9 @@ class SpoilerService:
                 return existing, False
 
             display = display_of(row)
-            thread, starter = await self._create_post(display, movies_post.jump_url)
+            thread, starter = await self._create_post(
+                display, movies_post.jump_url, await self.poster_url(row),
+                await self.applied_tags(row))
             await self.bot.db.set_spoiler_post(tmdb_id, thread.id, starter.id)
             log.info("Created spoiler post %s for TMDB %s (%s)", thread.id, tmdb_id, display)
             # Cosmetic follow-up: the post exists and is recorded even if this fails.
@@ -188,29 +216,97 @@ class SpoilerService:
                                   step.__name__, tmdb_id)
             return thread, True
 
+    # poster and tags ----------------------------------------------------------
+    async def poster_url(self, row) -> str | None:
+        """The movie's poster. Rows from before Phase 16 have none stored; it is
+        looked up on TMDB once and saved ('' when TMDB has none)."""
+        if row["poster_url"] is not None:
+            return row["poster_url"] or None
+        if getattr(self.bot, "tmdb", None) is None:
+            return None
+        try:
+            movie = await self.bot.tmdb.movie(row["tmdb_id"])
+        except TMDBError:
+            log.warning("TMDB lookup for the poster of %s failed; trying again later",
+                        row["tmdb_id"], exc_info=True)
+            return None
+        url = (movie.poster_url if movie else None) or ""
+        await self.bot.db.set_poster(row["tmdb_id"], url)
+        return url or None
+
+    async def tag_keys(self, row) -> list[str]:
+        return post_watch_tag_keys(row["year"], json.loads(row["genre_tags"] or "[]"),
+                                   await self.bot.db.has_posted_review(row["tmdb_id"]),
+                                   self.bot.config.max_genre_tags)
+
+    async def applied_tags(self, row) -> list[discord.ForumTag]:
+        """The post-watch tags for a movie, recomputed from the DB. Tags that
+        aren't set up yet (setup_server.py --apply) are left out."""
+        defs = getattr(self.bot.config, "post_watch_tags", {})
+        forum = self.forum
+        tags = []
+        for k in await self.tag_keys(row):
+            tag = forum.get_tag(defs[k].id) if k in defs else None
+            if tag is not None:
+                tags.append(tag)
+            else:
+                log.warning("#post-watch tag %s is missing; run setup_server.py --apply", k)
+        return tags
+
+    async def retag(self, tmdb_id: int) -> None:
+        """Re-apply the post-watch post's tags from the DB (after a Letterboxd
+        review is posted or deleted). Never raises for Discord errors."""
+        try:
+            row = await self.bot.db.get_movie(tmdb_id)
+            thread = await self.find_spoiler_post(row) if row else None
+            if thread is None:
+                return
+            tags = await self.applied_tags(row)
+            if {t.id for t in tags} == {t.id for t in thread.applied_tags}:
+                return
+            # Archived posts must be un-archived in the same edit, or Discord refuses it.
+            extra = {"archived": False} if thread.archived else {}
+            await thread.edit(applied_tags=tags, reason="Post-watch tags", **extra)
+        except (discord.HTTPException, RuntimeError):
+            log.exception("Could not retag the post-watch post for TMDB %s", tmdb_id)
+
     async def refresh_post(self, row) -> None:
-        """Bring an existing post-watch post's title and first message up to date."""
+        """Bring an existing post-watch post's title, tags and starter up to date."""
         thread = await self.find_spoiler_post(row)
         movies_post = await self.bot.movies.find_post(row["tmdb_id"])
         if thread is None or movies_post is None:
             return
+        row = await self.bot.db.get_movie(row["tmdb_id"]) or row
         display = display_of(row)
+        edits: dict = {}
         name = spoiler_post_name(display)
         if thread.name != name:
-            await thread.edit(name=name, archived=False, reason="Post-watch rename")
+            edits["name"] = name
+        tags = await self.applied_tags(row)
+        if {t.id for t in tags} != {t.id for t in thread.applied_tags}:
+            edits["applied_tags"] = tags
+        if edits:
+            # One edit, un-archiving in the same call (Discord refuses edits to
+            # archived threads otherwise). Pinning is untouched.
+            await thread.edit(archived=False, reason="Post-watch title and tags", **edits)
         if row["spoiler_starter_message_id"]:
-            text = starter_text(display, movies_post.jump_url)
+            embed = starter_embed(display, movies_post.jump_url, await self.poster_url(row))
             try:
                 starter = await thread.fetch_message(row["spoiler_starter_message_id"])
             except discord.NotFound:
                 return
-            if starter.content != text:
-                if getattr(thread, "archived", False):
+            if not starter_is_current(starter, embed):
+                if not edits and getattr(thread, "archived", False):
                     await thread.edit(archived=False, reason="Updating the starter message")
-                await starter.edit(content=text, allowed_mentions=discord.AllowedMentions.none())
+                # content=None clears the old plain-text starter.
+                await starter.edit(content=None, embed=embed,
+                                   allowed_mentions=discord.AllowedMentions.none())
 
     async def refresh_starters(self) -> None:
-        """Once per STARTER_VERSION: rewrite existing post-watch starters and titles."""
+        """Once per STARTER_VERSION: rewrite existing post-watch titles, starters and
+        tags (backfilling posters from TMDB). ~1 s per post. Only marked done once
+        every #post-watch tag is set up, so running before setup_server.py
+        --apply just repeats next startup."""
         db = self.bot.db
         if await db.get_meta("post_watch_starter_version") == STARTER_VERSION:
             return
@@ -224,17 +320,23 @@ class SpoilerService:
             except discord.HTTPException:
                 log.exception("Could not refresh post-watch post for TMDB %s", row["tmdb_id"])
             await asyncio.sleep(1)
-        await db.set_meta("post_watch_starter_version", STARTER_VERSION)
+        if getattr(self.bot.config, "post_watch_tags_ready", True):
+            await db.set_meta("post_watch_starter_version", STARTER_VERSION)
+        else:
+            log.warning("Some #post-watch tags aren't set up (run setup_server.py --apply); "
+                        "the post-watch refresh runs again at the next start")
 
-    async def _create_post(self, display: str, movies_url: str):
+    async def _create_post(self, display: str, movies_url: str, poster_url: str | None,
+                           tags: list[discord.ForumTag]):
         created = await self.forum.create_thread(
-            name=spoiler_post_name(display), content=starter_text(display, movies_url),
-            allowed_mentions=discord.AllowedMentions.none(), reason="Post-watch discussion")
+            name=spoiler_post_name(display), embed=starter_embed(display, movies_url, poster_url),
+            applied_tags=tags, allowed_mentions=discord.AllowedMentions.none(),
+            reason="Post-watch discussion")
         return created.thread, created.message
 
     # moving a message --------------------------------------------------------
     async def webhook(self) -> discord.Webhook:
-        """The bot's own webhook on #post-watch-discussion (created once, reused)."""
+        """The bot's own webhook on #post-watch (created once, reused)."""
         if self._webhook is None:
             forum = self.forum
             for wh in await forum.webhooks():

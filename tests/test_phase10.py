@@ -463,6 +463,7 @@ def test_migration_moves_open_5r_ballot_into_the_pool(tmp_path):
         # Undo migration 12 too (it drops these again).
         await db.conn.execute("CREATE TABLE votes (tmdb_id INTEGER)")
         await db.conn.execute("ALTER TABLE week_options ADD COLUMN thumbs INTEGER")
+        await db.conn.execute("ALTER TABLE movies DROP COLUMN poster_url")   # migration 14
         await db.conn.execute("DELETE FROM schema_version WHERE version >= 11")
         await db.conn.execute("INSERT INTO weeks(week_start, state) VALUES ('2026-11-23', 'ballot')")
         await db.conn.execute("INSERT INTO weeks(week_start, state) VALUES ('2026-11-16', 'picked')")
@@ -500,6 +501,7 @@ def test_migration_13_moves_monthly_into_groups(tmp_path):
             INSERT INTO ballot_entries VALUES (5, 10, '2026-11-13T00:00:00+00:00');
             INSERT INTO months VALUES ('2026-12', 'voting', 777);
             INSERT INTO track_rankings VALUES ('monthly', 20, 1, 5, 'x'), ('weekly', 20, 1, 5, 'x');
+            ALTER TABLE movies DROP COLUMN poster_url;   -- migration 14
             DELETE FROM schema_version WHERE version >= 13;
         """)
         await db.conn.commit()

@@ -545,7 +545,7 @@ class WeeklyService(RankedTrack):
     # watch week ------------------------------------------------------------
     async def start_watch(self, row, now: datetime) -> None:
         """Pin the week's movie in #movies and its post-watch discussion in
-        #post-watch-discussion. A forum has one pinned post, so this replaces
+        #post-watch. A forum has one pinned post, so this replaces
         last week's pins."""
         tmdb_id = row["winner_tmdb_id"]
         post = await self.bot.movies.find_post(tmdb_id) if tmdb_id else None

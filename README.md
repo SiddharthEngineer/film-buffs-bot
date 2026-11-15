@@ -4,7 +4,7 @@ A custom Discord bot plus an infrastructure-as-code setup script for **Film Buff
 
 - **Movies** live as posts in the `#movies` forum, one per film, created by the bot from TMDB data.
 - **Letterboxd** is where people log what they watch. The bot pulls those logs in and keeps everything in SQLite, so we can build engagement stats later.
-- **Spoilers** are kept out of `#movies` entirely; each film gets a companion post in `#post-watch-discussion` (created the first time someone opens it).
+- **Spoilers** are kept out of `#movies` entirely; each film gets a companion post in `#post-watch` (created the first time someone opens it), tagged with its genres, its decade and 📓 Reviews once a Letterboxd review is posted there.
 - **Weekly movie**: members keep up to 3 ranked nominations (`/nominate`); each member's highest one that's still available is on the ballot in `#watch-planning`. The 🎬 weekly vote is always open and closes Sunday night (ranked choice, instant runoff; rankings carry over week to week), then the watch week with a server event. Picks are announced in `#watch-planning`; opt-in `@Weekly Movie` pings with the 🔔 Pings button on the ballot. Reactions on posts don't count as votes.
 - **Private groups** (`server.yaml` `groups:`): a role-gated category per group of friends (`#watch-planning`, `#chat`, `#voice`) with its own nominations and its own 🌙 monthly vote: it closes on the last day of the month before, the film is watched during its month and discussed in the group's `#voice` on the 1st. Its picks are announced in its `#watch-planning`, pinging an opt-in `@<Group> Pings` role (🔔 Pings on its ballot). Nothing about a group shows outside its category; a group can pick any film it hasn't picked before.
 

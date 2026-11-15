@@ -102,6 +102,9 @@ class Client:
                 await db.set_spoiler_post(tid, ch.id, 1)
                 return ch, True
 
+            async def retag(self, tid):
+                pass
+
         self.movies, self.spoilers = Movies(), Spoilers()
         self.letterboxd = LetterboxdService(self)
         member = SimpleNamespace(id=UID, display_name="Sam",
