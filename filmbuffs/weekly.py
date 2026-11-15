@@ -391,7 +391,7 @@ class WeeklyService(RankedTrack):
                     f"**{n} member{' has' if n == 1 else 's have'} a ranking.** Results are "
                     f"posted when voting closes.\n"
                     f"-# **/nominate** adds a film (up to 3 each, ranked; your highest one is "
-                    f"on the ballot). 🔔 **Pings**: get @Weekly Movie when it's picked. 🆕 = joined in the last 2 days.")
+                    f"on the ballot). 🔔 **Pings**: get @Weekly Pings when it's picked. 🆕 = joined in the last 2 days.")
         elif row["override_by"] and row["winner_tmdb_id"]:
             m = movies.get(row["winner_tmdb_id"])
             head = (f"🎬 An admin picked {self.link(m)} for this "
@@ -498,7 +498,7 @@ class WeeklyService(RankedTrack):
 
     async def _crown(self, row, w, now: datetime, *, how: str, line: str, **fields) -> None:
         """Make option row `w` the week's movie: Up Next, event, an announcement in
-        #watch-planning pinging @Weekly Movie (not #announcements, owner 2026-11-15),
+        #watch-planning pinging @Weekly Pings (not #announcements, owner 2026-11-15),
         state picked. It leaves the pool."""
         week = row["week_start"]
         db = self.bot.db

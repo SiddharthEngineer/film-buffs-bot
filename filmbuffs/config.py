@@ -47,8 +47,10 @@ class Config:
         self.backup_time = (int(hh), int(mm))
         self.backup_keep = int(ops.get("backup_keep", 3))
         self.backups_dir = ROOT / "backups"
-        # Members with this role (or Manage Server) can use /admin commands.
-        self.admin_role = str(ops.get("admin_role", "Moderator"))
+        # Members with this role (or Manage Server / Administrator) can use /admin
+        # commands. Optional: null or missing = no role (Phase 13).
+        role = ops.get("admin_role")
+        self.admin_role: str | None = (str(role).strip() or None) if role is not None else None
 
         # Weekly pick (Phase 5R). Each watch week's nominations run Mon–Thu of the
         # week before it and its ranked vote Fri–Sun. Nothing runs before first_watch_week.

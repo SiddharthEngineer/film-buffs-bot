@@ -1,5 +1,5 @@
 """/admin commands: a few ephemeral fixes for members with Manage Server or the
-admin role (server.yaml `ops.admin_role`)."""
+optional admin role (server.yaml `ops.admin_role`; null = none)."""
 from __future__ import annotations
 
 import json
@@ -24,11 +24,13 @@ SLOTS = [app_commands.Choice(name="This week / month", value="this"),
 GROUP_HELP = "main (the weekly vote) or a private group (its monthly vote)"
 
 
-def is_admin(member, admin_role: str) -> bool:
-    """Manage Server (or Administrator), or the configured admin role."""
+def is_admin(member, admin_role: str | None = None) -> bool:
+    """Manage Server (or Administrator), or the configured admin role if any."""
     perms = getattr(member, "guild_permissions", None)
     if perms is not None and (perms.manage_guild or perms.administrator):
         return True
+    if not admin_role:
+        return False
     return any(r.name == admin_role for r in getattr(member, "roles", []))
 
 

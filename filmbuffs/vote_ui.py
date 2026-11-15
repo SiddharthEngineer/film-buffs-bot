@@ -2,7 +2,7 @@
 
 Each ballot message (🎬 weekly in #watch-planning, 🌙 monthly in each private
 group's #watch-planning) has a 🗳️ Vote button, a 📋 My nominations button and
-a 🔔 Pings button (toggles @Weekly Movie, or the group's opt-in ping role). Vote sends the member a private
+a 🔔 Pings button (toggles @Weekly Pings, or the group's opt-in ping role). Vote sends the member a private
 (ephemeral) picker: one dropdown with the films they haven't ranked yet, so
 each pick becomes their next rank, plus Undo last / Clear. Discord can't fit
 a dropdown per rank (5 per message) and doesn't promise multi-select values
@@ -250,7 +250,7 @@ async def toggle_role(interaction: discord.Interaction, rid: int | None, why: st
 
 class PingButton(discord.ui.DynamicItem[discord.ui.Button],
                  template=r"pings:(?P<grp>[a-z][a-z0-9]*)"):
-    """🔔 Pings on a ballot: main → @Weekly Movie; a group → its opt-in ping role."""
+    """🔔 Pings on a ballot: main → @Weekly Pings; a group → its opt-in ping role."""
     def __init__(self, grp: str | None = None):
         grp = grp or "main"
         super().__init__(discord.ui.Button(label="Pings", emoji="🔔",

@@ -6,7 +6,7 @@
 
 ### Phase 0: connection ✅
 - Discord app "Film Buffs Bot" (Film Buffs Bot#4646) is in the Film Buffs server with exactly the 13 permissions in the README, no Administrator.
-- Role order: `Moderator` (the owner's admin role) above the bot's role, above `@everyone`.
+- Role order: the bot's role above its ping roles, above `@everyone`. (A `Moderator` admin role existed until Phase 13; the owner deletes it.)
 - Server is **not** a Community server; nothing so far needs it (forums work without it).
 - `.env` on the VPS holds the token, guild ID and TMDB key (chmod 600, gitignored).
 
@@ -20,7 +20,7 @@ Built by `setup_server.py --apply` from `server.yaml`; a fresh `--plan` reports 
 🎬 Movies     #movies (forum; only the bot creates posts, everyone can reply)
 📅 Planning   #watch-planning, #watch-log (read-only), #letterboxd-feed (read-only)
 🔊 Voice      Watch Party, Discussions (the original voice channels, adopted + renamed)
-🔧 Admin      #bot-logs (hidden from @everyone; Moderator sees it as admin)
+🔧 Admin      #bot-logs (hidden from @everyone; admins see it)
 ```
 
 - The original `#games`, `#music` and the default "Text Channels"/"Voice Channels" categories were deleted via the `retire:` list (they were empty).
@@ -109,7 +109,7 @@ Deployed 2026-11-11: clean restart, startup notice seen in `#bot-logs`, first ba
   - Covered: app command errors (now with command, user and channel), unhandled errors in events, views and task loops (discord.py logs them at ERROR), backup failures, and the Letterboxd poller.
   - Letterboxd: one ERROR when a feed fails 4 polls in a row or Letterboxd refuses 4 rounds in a row, one "works again" notice on recovery. Per-attempt entry posting failures are now WARNING (journal only); the 5th (giving up) is an ERROR.
   - Admin permission failures (`/admin` by a non-admin) get an ephemeral "admins only" and are not logged as errors.
-- **`/admin`** (`filmbuffs/cogs/admin.py`), a command group with `default_member_permissions` = Manage Server, plus a runtime check (Manage Server, Administrator, or the `ops.admin_role` role, Moderator). Both ephemeral:
+- **`/admin`** (`filmbuffs/cogs/admin.py`), a command group with `default_member_permissions` = Manage Server, plus a runtime check (Manage Server, Administrator, or the optional `ops.admin_role` role, `null` since Phase 13). Both ephemeral:
   - `/admin resync [post]`: `update_card` + `retag`, and refreshes the post-watch post. Works from the pre- or post-watch post.
   - `/admin letterboxd-unlink member:` unlinks a member's account (entries stay).
 - README has an admin cheat sheet (commands, what lands in `#bot-logs`, backups and how to restore). The README command table was also brought up to date.
@@ -267,3 +267,9 @@ Bot version 0.12, schema 13. 144 unit tests pass. Decisions are in ROADMAP "Phas
 - **Group ping roles:** `groups.expand` adds `<role> Pings` (key `group_<key>_ping`, mentionable; name override `ping_role:`). Group announcements ping it instead of the membership role (`Group.ping_role_id`). OSU: `@OSU Pings`.
 - **📖 How to:** the Pings paragraph and the role button are gone, and the watch-week bullet points to `#watch-planning` and 🔔 Pings. `RoleButton` (`role:<key>`) stays only for old messages.
 - No pinned instructions message (owner).
+
+## Phase 13: roles and permissions ✅ (built on branch `claude/phase13-roles-b64597`; not merged or deployed)
+Owner decisions are in ROADMAP "Phase 13".
+- **`@Weekly Movie` → `@Weekly Pings`:** `server.yaml` `roles:` `weekly_ping` (key unchanged, so the role keeps its ID and members keep it). The ballot text, `vote_ui.py`, README and the test fixture say `@Weekly Pings`.
+- **`ops.admin_role` is optional** and now `null`: `/admin` is Manage Server / Administrator only. `Config.admin_role` is `None` when it's null or missing (it used to default to `Moderator`); `is_admin` matches no role then. Tests: `test_is_admin_without_role`.
+- **Owner by hand** after merge + deploy: `uv run setup_server.py --plan` (expect only the role rename), then `--apply`, then `sudo systemctl restart film-buffs-bot`. Then Discord → Server Settings → Roles: delete `Moderator`, and on `@everyone` turn off **Mention @everyone, @here, and All Roles** (keep Create Events and Create Expressions).

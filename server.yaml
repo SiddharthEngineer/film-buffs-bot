@@ -71,7 +71,7 @@ groups:
 # role must stay above them (new roles are created at the bottom).
 roles:
   - key: weekly_ping
-    name: Weekly Movie
+    name: Weekly Pings
     mentionable: true
 
 # Roles this script created that should be deleted (key + current name).
@@ -80,11 +80,12 @@ retire_roles:
 
 # Ops (Phase 7). Nightly SQLite backup into backups/ at backup_time (local time,
 # see `timezone`), keeping the newest backup_keep of them. /admin commands are for
-# members with Manage Server or the admin_role.
+# members with Manage Server (or Administrator), plus admin_role if set
+# (null = no extra role).
 ops:
   backup_time: "04:00"
   backup_keep: 3
-  admin_role: Moderator
+  admin_role: null
 
 # Reusable permission sets.
 presets:
