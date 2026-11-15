@@ -147,6 +147,17 @@ def test_is_admin():
     assert not is_admin(SimpleNamespace(), "Moderator")     # a User outside the guild
 
 
+def test_is_admin_without_role():
+    # Phase 13: ops.admin_role is null -> only Manage Server / Administrator count.
+    for role in (None, ""):
+        assert is_admin(_member(manage=True), role)
+        assert is_admin(_member(admin=True), role)
+        assert not is_admin(_member(roles=["Moderator", "Film Buff"]), role)
+        assert not is_admin(_member(roles=[""]), role)       # an unnamed role never matches
+        assert not is_admin(SimpleNamespace(), role)
+    assert not is_admin(_member(roles=["Moderator"]))         # default: no role
+
+
 def test_handler_posts_errors_once_and_ignores_warnings():
     import asyncio
 

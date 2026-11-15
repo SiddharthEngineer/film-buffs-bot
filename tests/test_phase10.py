@@ -525,7 +525,7 @@ def test_server_yaml_roles_groups_and_buttons(tmp_path):
     import setup_server
     cfg = setup_server.load_config("server.yaml")
     assert {(r["key"], r["name"]) for r in cfg["roles"]} == {
-        ("weekly_ping", "Weekly Movie"), ("group_osu", "OSU"), ("group_osu_ping", "OSU Pings")}
+        ("weekly_ping", "Weekly Pings"), ("group_osu", "OSU"), ("group_osu_ping", "OSU Pings")}
     assert [r["key"] for r in cfg["retire_roles"]] == ["monthly_ping"]
     how = next(m for m in cfg["messages"] if m["key"] == "how_to")
     assert not how.get("buttons")                     # 🔔 Pings lives on the ballots now
