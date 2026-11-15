@@ -5,8 +5,8 @@ A custom Discord bot plus an infrastructure-as-code setup script for **Film Buff
 - **Movies** live as posts in the `#movies` forum, one per film, created by the bot from TMDB data.
 - **Letterboxd** is where people log what they watch. The bot pulls those logs in and keeps everything in SQLite, so we can build engagement stats later.
 - **Spoilers** are kept out of `#movies` entirely; each film gets a companion post in `#post-watch-discussion` (created the first time someone opens it).
-- **Weekly movie**: members keep up to 3 ranked nominations (`/nominate`); each member's highest one that's still available is on the ballot in `#watch-planning`. The 🎬 weekly vote is always open and closes Sunday night (ranked choice, instant runoff; rankings carry over week to week), then the watch week with a server event. Opt-in `@Weekly Movie` pings. Reactions on posts don't count as votes.
-- **Private groups** (`server.yaml` `groups:`): a role-gated category per group of friends (`#watch-planning`, `#chat`, `#voice`) with its own nominations and its own 🌙 monthly vote: it closes on the last day of the month before, the film is watched during its month and discussed in the group's `#voice` on the 1st. Nothing about a group shows outside its category; a group can pick any film it hasn't picked before.
+- **Weekly movie**: members keep up to 3 ranked nominations (`/nominate`); each member's highest one that's still available is on the ballot in `#watch-planning`. The 🎬 weekly vote is always open and closes Sunday night (ranked choice, instant runoff; rankings carry over week to week), then the watch week with a server event. Picks are announced in `#watch-planning`; opt-in `@Weekly Movie` pings with the 🔔 Pings button on the ballot. Reactions on posts don't count as votes.
+- **Private groups** (`server.yaml` `groups:`): a role-gated category per group of friends (`#watch-planning`, `#chat`, `#voice`) with its own nominations and its own 🌙 monthly vote: it closes on the last day of the month before, the film is watched during its month and discussed in the group's `#voice` on the 1st. Its picks are announced in its `#watch-planning`, pinging an opt-in `@<Group> Pings` role (🔔 Pings on its ballot). Nothing about a group shows outside its category; a group can pick any film it hasn't picked before.
 
 | Doc | What's in it |
 |---|---|
@@ -102,7 +102,7 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 | `/unnominate film:` | any channel | Withdraws one of your nominations (autocomplete lists yours). |
 | `/nominations` (or **📋 My nominations** on a ballot) | any channel | Your nominations, privately, with ⬆️ move-up and 🗑️ withdraw buttons. |
 | **🗳️ Vote** on the 🎬 or a group's 🌙 ballot | `#watch-planning` (main or a group's) | Any time: rank as many films as you like, best first, in a private picker (Undo last / Clear). Each vote's rankings are separate and carry over to its next vote; films that leave the ballot drop out and later ranks move up. 🆕 marks films that joined since you last ranked. |
-| Role buttons on **📖 How to** | `#welcome-and-rules` | Toggle the `@Weekly Movie` ping role. Group roles are assigned by an admin in Discord. |
+| **🔔 Pings** on a ballot | `#watch-planning` (main or a group's) | Toggles `@Weekly Movie` on the weekly ballot, or the group's `@<Group> Pings` on a group's ballot (members only). Group membership roles are assigned by an admin in Discord. |
 | `/schedule` | any channel | This and next week's movie or vote and your nominations. In a group's channels: that group's this and next month's movie or vote (with the discussion time) and your nominations there. |
 | `/watchlist show` · `clear` | any channel | What the bot has from your last export upload; clear removes it. |
 | `/spoiler` | inside a movie post | Links the movie's post-watch discussion (creates it if needed); inside a post-watch post, links back. |

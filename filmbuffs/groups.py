@@ -1,8 +1,9 @@
 """Private groups (Phase 12): role-gated friend groups, each with its own monthly movie.
 
 A group is one entry under `groups:` in server.yaml. `expand()` turns each
-entry into the layout setup_server.py manages: a role (membership and the
-group's ping), a category, and #watch-planning, #chat and #voice channels that
+entry into the layout setup_server.py manages: a membership role, an opt-in
+ping role (`<role> Pings`, toggled with the 🔔 Pings button on the group's
+ballot; group announcements ping it), a category, and #watch-planning, #chat and #voice channels that
 only the role and the bot can see. Discord always shows them to the server
 owner and to Administrator roles; that can't be turned off.
 
@@ -33,6 +34,10 @@ class GroupConfigError(Exception):
 
 def role_key(key: str) -> str:
     return f"group_{key}"
+
+
+def ping_role_key(key: str) -> str:
+    return f"group_{key}_ping"
 
 
 def category_key(key: str) -> str:
@@ -69,6 +74,8 @@ def expand(cfg: dict) -> None:
         role_name = g.get("role") or g["name"]
         roles.append({"key": role_key(key), "name": role_name, "mentionable": True,
                       "_group": key})
+        roles.append({"key": ping_role_key(key), "name": g.get("ping_role") or f"{role_name} Pings",
+                      "mentionable": True, "_group": key})
         who = f"role:{role_key(key)}"
         hidden = {"@everyone": {"deny": ["view_channel"]}}
         cats.insert(at, {
@@ -78,8 +85,8 @@ def expand(cfg: dict) -> None:
             "channels": [
                 {"key": channel_key(key, "watch_planning"), "name": "watch-planning",
                  "topic": (f"{g['name']}'s monthly movie. /nominate up to 3 films here (your #1 is "
-                           f"on the ballot), then click Vote on the 🌙 ballot and rank them. The "
-                           f"vote closes on the last day of the month; the discussion is in the "
+                           f"on the ballot), then click Vote on the 🌙 ballot and rank them; 🔔 Pings "
+                           f"toggles pings when a movie is picked. The vote closes on the last day of the month; the discussion is in the "
                            f"voice channel on the 1st. Only {role_name} members can see this "
                            f"category."),
                  "overwrites": {**hidden, who: {"allow": ["view_channel"]},
@@ -105,6 +112,7 @@ class Group:
     discussion_at: time = time(20, 0)
     discussion_minutes: int = 120
     role_id: int | None = None
+    ping_role_id: int | None = None
     category_id: int | None = None
     channels: dict[str, int] = field(default_factory=dict)   # part -> channel id
 

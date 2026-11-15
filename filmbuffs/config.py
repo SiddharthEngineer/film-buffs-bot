@@ -92,6 +92,7 @@ class Config:
         self.group_by_category: dict[int, str] = {}
         for g in grp.parse(self.layout):
             g.role_id = self.roles.get(grp.role_key(g.key))
+            g.ping_role_id = self.roles.get(grp.ping_role_key(g.key))
             g.category_id = state.get(f"category:{grp.category_key(g.key)}")
             g.channels = {p: self.channels[grp.channel_key(g.key, p)] for p in grp.PARTS
                           if grp.channel_key(g.key, p) in self.channels}

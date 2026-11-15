@@ -11,7 +11,7 @@ Every group in server.yaml `groups:` has one GroupVoteService. For month M
   end         at the end of M the month is marked done.
 
 Everything is posted in the group's #watch-planning and pings only the group's
-role. A group's pick never changes the film's tags or status in #movies, is
+opt-in ping role. A group's pick never changes the film's tags or status in #movies, is
 never logged in #watch-log and never announced in #announcements. The group
 can't pick the same film twice (its months with a winner are its history);
 other groups and the weekly vote don't matter.
@@ -139,7 +139,8 @@ class GroupVoteService(RankedTrack):
         return self.bot.get_channel(cid) if cid else None
 
     def ping(self) -> tuple[str, discord.AllowedMentions]:
-        rid = self.group.role_id
+        """The group's opt-in ping role (members who clicked 🔔 Pings)."""
+        rid = self.group.ping_role_id
         if not rid:
             return "", discord.AllowedMentions.none()
         return f"<@&{rid}> ", discord.AllowedMentions(everyone=False, users=False,
@@ -243,7 +244,7 @@ class GroupVoteService(RankedTrack):
                     f"when voting closes.\n"
                     f"-# **/nominate** here adds a film (up to 3 each, ranked; your highest one is "
                     f"on the ballot). Any film {g} hasn't picked before can be nominated. "
-                    f"🆕 = joined in the last 2 days.")
+                    f"🔔 **Pings**: get pinged when it's picked. 🆕 = joined in the last 2 days.")
         else:
             films = await db.month_options(self.grp, month)
             lines = [f"`{i:>2}.` {self.link(o)} · nominated by <@{o['nominated_by']}>"

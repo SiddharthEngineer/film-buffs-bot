@@ -9,7 +9,8 @@ For a watch week starting Monday T (America/Chicago):
          whatever is on the ballot at the close. Rankings carry over from the
          week before; a film that joins late is just unranked.
   watch  T Mon 12:00 AM → T+6 Sun 11:59 PM     winner tagged Up Next, server event,
-         announcement; at the end it's tagged Watched and logged in #watch-log.
+         announcement in #watch-planning; at the end it's tagged Watched and logged
+         in #watch-log.
 So every week runs this week's watch and next week's vote. Sunday night ends
 this week's watch, then closes the vote for next week.
 
@@ -390,7 +391,7 @@ class WeeklyService(RankedTrack):
                     f"**{n} member{' has' if n == 1 else 's have'} a ranking.** Results are "
                     f"posted when voting closes.\n"
                     f"-# **/nominate** adds a film (up to 3 each, ranked; your highest one is "
-                    f"on the ballot). 🆕 = joined in the last 2 days.")
+                    f"on the ballot). 🔔 **Pings**: get @Weekly Movie when it's picked. 🆕 = joined in the last 2 days.")
         elif row["override_by"] and row["winner_tmdb_id"]:
             m = movies.get(row["winner_tmdb_id"])
             head = (f"🎬 An admin picked {self.link(m)} for this "
@@ -472,10 +473,7 @@ class WeeklyService(RankedTrack):
             w = by_id[candidates[0]["tmdb_id"]]
             await self._crown(
                 row, w, now, how=SOLE_NOMINATION,
-                announce="It was the only film on the ballot, so it wins without a vote.",
-                planning=(f"🏁 **{display(w)}** was the only film on the ballot, so it wins and "
-                          f"is up next ({date_range(self.sched(week).week)}) → "
-                          f"{self.link(w, '#movies post')}"),
+                line="It was the only film on the ballot, so it wins without a vote.",
                 poll_closed_at=utcnow(), total_votes=len(ballots))
             return
         result = instant_runoff(list(ballots.values()), candidates, self.bot.config.tie_break)
@@ -493,18 +491,15 @@ class WeeklyService(RankedTrack):
         how = won_text(won, ru, n_rounds)
         await self._crown(
             row, w, now, how=how,
-            announce=f"Winner of the ranked vote ({how}, {voters} voter{'s' * (voters != 1)}).",
-            planning=(f"🏁 **Weekly vote closed: {display(w)} wins** and is up next "
-                      f"({date_range(self.sched(week).week)}) → {self.link(w, '#movies post')}\n"
-                      f"-# {voters} voter{'s' * (voters != 1)}. Instant runoff: each round, "
-                      f"every ballot counts for its highest-ranked film still in the race.\n"
-                      + runoff_text(result, names)),
+            line=(f"Winner of the ranked vote ({how}, {voters} voter{'s' * (voters != 1)}).\n"
+                  f"-# Instant runoff: each round, every ballot counts for its highest-ranked "
+                  f"film still in the race.\n" + runoff_text(result, names)),
             winner_votes=won, runner_up_votes=ru)
 
-    async def _crown(self, row, w, now: datetime, *, how: str, announce: str, planning: str,
-                     **fields) -> None:
-        """Make option row `w` the week's movie: Up Next, event, announcement,
-        a note in #watch-planning, state picked. It leaves the pool."""
+    async def _crown(self, row, w, now: datetime, *, how: str, line: str, **fields) -> None:
+        """Make option row `w` the week's movie: Up Next, event, an announcement in
+        #watch-planning pinging @Weekly Movie (not #announcements, owner 2026-11-15),
+        state picked. It leaves the pool."""
         week = row["week_start"]
         db = self.bot.db
         winner = {"tmdb_id": w["tmdb_id"], "title": display(w), "thread_id": w["thread_id"]}
@@ -518,17 +513,14 @@ class WeeklyService(RankedTrack):
         s = self.sched(week)
         event_link = f"\n📅 Event: {event.url}" if event else ""
         ping, mentions = role_ping(self.bot, "weekly_ping")
-        text = (f"{ping}🎬 **Weekly movie · {date_range(s.week)}: {winner['title']}**\n"
-                f"{announce} Watch it any time from **{when(s.watch_start, self.tz)}** to "
+        text = (f"{ping}🎬 **Weekly movie · {date_range(s.week)}: "
+                f"{self.link(winner, esc(winner['title']))}**\n"
+                f"Watch it any time from **{when(s.watch_start, self.tz)}** to "
                 f"**{when(s.watch_end, self.tz)}**, then talk about it in the post-watch "
-                f"discussion.\nPost: {self.link(winner, esc(winner['title']))}{event_link}")
-        ann = self.channel("announcements")
-        ann_msg = await self._safe(ann.send(text, allowed_mentions=mentions),
-                                   "announce") if ann else None
+                f"discussion.{event_link}\n{line}")
         ch = self.channel("watch_planning")
-        if ch:
-            await self._safe(ch.send(truncate(planning, 2000),
-                                     allowed_mentions=discord.AllowedMentions.none()), "pick notice")
+        ann_msg = await self._safe(ch.send(truncate(text, 2000), allowed_mentions=mentions),
+                                   "announce") if ch else None
         await db.update_week(week, state="picked", event_id=event.id if event else None,
                              announcement_id=ann_msg.id if ann_msg else None)
         log.info("Watch week %s: %s, %s", week, winner["title"], how)
@@ -669,19 +661,12 @@ class WeeklyService(RankedTrack):
             await db.update_week(ws, event_id=event.id if event else None)
             event_link = f"\n📅 Event: {event.url}" if event else ""
             ping, mentions = role_ping(self.bot, "weekly_ping")
-            text = (f"{ping}🎬 **Weekly movie · {date_range(week)}: {display(movie)}** (picked by "
-                    f"an admin)\nWatch it any time until **{when(s.watch_end, self.tz)}**, then "
-                    f"talk about it in the post-watch discussion.\nPost: {self.link(movie)}"
-                    f"{event_link}")
-            ann = self.channel("announcements")
-            if ann:
-                await self._safe(ann.send(text, allowed_mentions=mentions), "announce")
+            text = (f"{ping}🎬 **Weekly movie · {date_range(week)}: {self.link(movie)}** (picked "
+                    f"by an admin)\nWatch it any time until **{when(s.watch_end, self.tz)}**, "
+                    f"then talk about it in the post-watch discussion.{event_link}")
             planning = self.channel("watch_planning")
             if planning:
-                await self._safe(planning.send(
-                    f"🎬 An admin picked **{display(movie)}** for {date_range(week)} → "
-                    f"{self.link(movie, '#movies post')}", allowed_mentions=discord.AllowedMentions.none()),
-                    "pick notice")
+                await self._safe(planning.send(text, allowed_mentions=mentions), "announce")
             row = await db.get_week(ws)
             if now >= s.watch_start:
                 await self.start_watch(row, now)

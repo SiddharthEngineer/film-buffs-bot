@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–10, 5R and 12 are built and live (see [STATUS.md](STATUS.md)). Phase 12 (private groups; the monthly movie moved out of the main server) went live 2026-11-15 and waits for the owner's `setup_server.py --apply`, a restart and a hands-on test. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–10, 5R, 12 and 12b are built and live (see [STATUS.md](STATUS.md)). Phase 12 (private groups; the monthly movie moved out of the main server) went live 2026-11-15 and waits for the owner's `setup_server.py --apply`, a restart and a hands-on test. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 **2026-11-15 (owner):** 👍 reactions no longer count for anything; the leaderboard, `/top` and vote tracking are removed. `/nominate` also creates the movie's post (with a pitch), like `/addmovie`. See STATUS "Fixes of 2026-11-15".
 
@@ -244,6 +244,16 @@ Owner (2026-11-15): the monthly movie moves out of the main server into **privat
 - **Channel names:** every group gets `#watch-planning`, `#chat` and `#voice` inside its own category (duplicate names are allowed; keys tell them apart). Only OSU for now.
 - **`@Monthly Movie` is deleted** (with its How to button); a fresh `@OSU` role is created.
 
+## Phase 12b: picks announced in #watch-planning, ping buttons on the ballots (built; see STATUS.md)
+
+Owner (2026-11-15):
+- **No pick posts in `#announcements`.** Each pick is announced in its own `#watch-planning`: the main one for the weekly movie, a group's for its monthly movie. That result post pings the matching role. Group picks already work this way. For the weekly, the `#announcements` post and the `#watch-planning` note become one post in `#watch-planning` that pings `@Weekly Movie`. Applies to the weekly close, a sole nomination winning, and `/admin pick`. `#announcements` stays for server news; its topic is updated to say so.
+- **Ping buttons move out of `#welcome-and-rules`.** The Pings paragraph and the role buttons come off 📖 How to.
+- **Opt-in group pings.** Each group gets a second role, `@<Name> Pings` (e.g. `@OSU Pings`, key `group_<key>_ping`, mentionable), created by `setup_server.py` from `groups:`. Group announcements ping it instead of the membership role, so members choose whether they're pinged. The button only works for members of the group.
+- **No pinned instructions message** (owner: the channels are fine as they are).
+
+Where the buttons go (owner confirmed 2026-11-15): a **🔔 Pings** toggle button on each open ballot, next to 🗳️ Vote and 📋 My nominations. It toggles `@Weekly Movie` on the weekly ballot and `@<Name> Pings` on a group's. A ballot is always open, and each new one gets the button. The reply is private: "🔔 Added / 🔕 Removed".
+
 ## Phase 11: stats page, private member views, Film Buffs Wrapped (defined, not planned)
 
 Owner (2026-11-13): each member's own stats stay **private**; **group-wide totals are public**. No website: everything happens inside Discord (a web page would need Discord login, a domain with HTTPS and a public port, which is more to run and secure than a private server needs). Details still to be worked out with the owner before a step-by-step plan is written.
@@ -287,5 +297,7 @@ Answered 2026-11-13 (Phase 10): rankings roll over; no late cutoff; monthly vote
 Answered 2026-11-15 (Phase 12): monthly moves into private, role-gated groups (OSU first); main is weekly-only; group repeats allowed except a film that group already watched; no group stats; no `#watch-log` for groups; `/admin` takes a group.
 
 Answered 2026-11-15 (Phase 12): group channels are `#watch-planning` / `#chat` / `#voice`; `@Monthly Movie` is deleted and `@OSU` created fresh.
+
+Answered 2026-11-15 (Phase 12b): no pinned instructions; picks announced in each `#watch-planning`, not `#announcements`; opt-in group ping roles; 🔔 Pings button on each ballot.
 
 Open: Phase 11 needs more brainstorming before a plan is written (see its points). Phase 12 leftover: whether to remind a group a few days before its discussion.

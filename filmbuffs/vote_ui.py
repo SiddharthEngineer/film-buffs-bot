@@ -1,7 +1,8 @@
 """Buttons and private pickers for the ranked votes and nominations (Phases 5R, 10).
 
 Each ballot message (🎬 weekly in #watch-planning, 🌙 monthly in each private
-group's #watch-planning) has a 🗳️ Vote button and a 📋 My nominations button. Vote sends the member a private
+group's #watch-planning) has a 🗳️ Vote button, a 📋 My nominations button and
+a 🔔 Pings button (toggles @Weekly Movie, or the group's opt-in ping role). Vote sends the member a private
 (ephemeral) picker: one dropdown with the films they haven't ranked yet, so
 each pick becomes their next rank, plus Undo last / Clear. Discord can't fit
 a dropdown per rank (5 per message) and doesn't promise multi-select values
@@ -227,8 +228,56 @@ class NominationButton(discord.ui.DynamicItem[discord.ui.Button],
 
 
 # ping roles ----------------------------------------------------------------------
+async def toggle_role(interaction: discord.Interaction, rid: int | None, why: str) -> None:
+    role = interaction.guild.get_role(rid) if (rid and interaction.guild) else None
+    member = interaction.user
+    if role is None or not isinstance(member, discord.Member):
+        await interaction.response.send_message("That role isn't set up yet.", ephemeral=True)
+        return
+    try:
+        if role in member.roles:
+            await member.remove_roles(role, reason=why)
+            msg = f"🔕 Removed **@{role.name}**. You won't be pinged when a movie is picked."
+        else:
+            await member.add_roles(role, reason=why)
+            msg = f"🔔 Added **@{role.name}**: you'll be pinged when a movie is picked. Click again to stop."
+    except discord.Forbidden:
+        log.error("Can't change role %s: the bot's role must be above it with Manage Roles",
+                  role.name)
+        msg = "⚠️ The bot isn't allowed to change that role. The admins were told."
+    await interaction.response.send_message(msg, ephemeral=True)
+
+
+class PingButton(discord.ui.DynamicItem[discord.ui.Button],
+                 template=r"pings:(?P<grp>[a-z][a-z0-9]*)"):
+    """🔔 Pings on a ballot: main → @Weekly Movie; a group → its opt-in ping role."""
+    def __init__(self, grp: str | None = None):
+        grp = grp or "main"
+        super().__init__(discord.ui.Button(label="Pings", emoji="🔔",
+                                           style=discord.ButtonStyle.secondary,
+                                           custom_id=f"pings:{grp}"))
+        self.grp = grp
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match: re.Match[str], /):
+        return cls(match["grp"])
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        cfg = interaction.client.config
+        if self.grp == "main":
+            await toggle_role(interaction, cfg.roles.get("weekly_ping"), "Pings button")
+            return
+        g = cfg.groups.get(self.grp)
+        if g is None or not in_group(interaction.client, interaction.user, self.grp):
+            await interaction.response.send_message("🔒 That's only for members of this group.",
+                                                    ephemeral=True)
+            return
+        await toggle_role(interaction, g.ping_role_id, "Pings button")
+
+
 class RoleButton(discord.ui.DynamicItem[discord.ui.Button], template=r"role:(?P<key>\w+)"):
-    """Toggles an opt-in ping role. The buttons are posted by setup_server.py."""
+    """Toggles an opt-in ping role (`role:<key>`, posted by setup_server.py on a
+    message's `buttons:`; none are configured since Phase 12b, kept for old messages)."""
     def __init__(self, key: str):
         super().__init__(discord.ui.Button(label=key, custom_id=f"role:{key}"))
         self.key = key
@@ -238,34 +287,19 @@ class RoleButton(discord.ui.DynamicItem[discord.ui.Button], template=r"role:(?P<
         return cls(match["key"])
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        rid = interaction.client.config.roles.get(self.key)
-        role = interaction.guild.get_role(rid) if (rid and interaction.guild) else None
-        member = interaction.user
-        if role is None or not isinstance(member, discord.Member):
-            await interaction.response.send_message("That role isn't set up yet.", ephemeral=True)
-            return
-        try:
-            if role in member.roles:
-                await member.remove_roles(role, reason="Ping role button")
-                msg = f"🔕 Removed **@{role.name}**. You won't be pinged for it any more."
-            else:
-                await member.add_roles(role, reason="Ping role button")
-                msg = f"🔔 Added **@{role.name}**. Click again to remove it."
-        except discord.Forbidden:
-            log.error("Can't change role %s: the bot's role must be above it with Manage Roles",
-                      role.name)
-            msg = "⚠️ The bot isn't allowed to change that role. The admins were told."
-        await interaction.response.send_message(msg, ephemeral=True)
+        await toggle_role(interaction, interaction.client.config.roles.get(self.key),
+                          "Ping role button")
 
 
 DYNAMIC_ITEMS = (VoteButton, RankSelect, UndoButton, ClearButton, MyNominationsButton,
-                 NominationButton, RoleButton)
+                 NominationButton, PingButton, RoleButton)
 
 
 def ballot_view(vid: str, grp: str | None = None) -> discord.ui.View:
     view = discord.ui.View(timeout=None)
     view.add_item(VoteButton(vid))
     view.add_item(MyNominationsButton(grp))
+    view.add_item(PingButton(grp))
     return view
 
 

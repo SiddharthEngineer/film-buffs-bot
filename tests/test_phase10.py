@@ -238,6 +238,39 @@ def test_weekly_close_ignores_groups(tmp_path):
     assert osu == [3]                                     # still on OSU's ballot
 
 
+class FakeChannel:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, content=None, **kw):
+        self.sent.append((content, kw.get("allowed_mentions")))
+        return SimpleNamespace(id=900 + len(self.sent))
+
+
+def test_weekly_pick_is_announced_in_watch_planning(tmp_path):
+    async def run():
+        db, bot = await make(tmp_path)
+        planning, ann = FakeChannel(), FakeChannel()
+        chans = {1: planning, 2: ann}
+        bot.config.channels = {"watch_planning": 1, "announcements": 2}
+        bot.config.roles = {"weekly_ping": 77}
+        bot.get_channel = chans.get
+        bot.weekly.channel = lambda key: chans.get(bot.config.channels.get(key))
+        bot.weekly.refresh_ballot = lambda week: asyncio.sleep(0)
+        await open_week(db, bot)
+        await db.set_track_ranking("weekly", 20, [3])
+        await bot.weekly.close_vote(await db.get_week(WK), local(2026, 11, 22, 23, 59))
+        w = dict(await db.get_week(WK))
+        await settle()
+        await db.close()
+        return planning.sent, ann.sent, w
+    planning, ann, w = asyncio.run(run())
+    assert ann == []
+    assert len(planning) == 1 and planning[0][0].startswith("<@&77> 🎬 **Weekly movie · Nov 23–29")
+    assert "Winner of the ranked vote" in planning[0][0]
+    assert [r.id for r in planning[0][1].roles] == [77] and w["announcement_id"] == 901
+
+
 def test_weekly_close_edge_cases(tmp_path):
     async def run():
         db, bot = await make(tmp_path)
@@ -404,6 +437,10 @@ def test_vote_ids_carry_the_group():
     assert MyNominationsButton("osu").item.custom_id == "noms:osu:show"
     assert MyNominationsButton().item.custom_id == "noms:show"
     assert NominationButton("up", 2, "osu").item.custom_id == "noms:osu:up:2"
+    from filmbuffs.vote_ui import PingButton, ballot_view
+    assert PingButton().item.custom_id == "pings:main"
+    assert [c.custom_id for c in ballot_view("osu:2026-12", "osu").children] == [
+        "vote:osu:2026-12", "noms:osu:show", "pings:osu"]
     for cls, cid, want in ((VoteButton, "vote:osu:2026-12", "osu"),
                            (VoteButton, "vote:2026-11-23", None),
                            (NominationButton, "noms:up:2", None),
@@ -485,10 +522,11 @@ def test_migration_13_moves_monthly_into_groups(tmp_path):
 def test_server_yaml_roles_groups_and_buttons(tmp_path):
     import setup_server
     cfg = setup_server.load_config("server.yaml")
-    assert {r["key"] for r in cfg["roles"]} == {"weekly_ping", "group_osu"}
+    assert {(r["key"], r["name"]) for r in cfg["roles"]} == {
+        ("weekly_ping", "Weekly Movie"), ("group_osu", "OSU"), ("group_osu_ping", "OSU Pings")}
     assert [r["key"] for r in cfg["retire_roles"]] == ["monthly_ping"]
     how = next(m for m in cfg["messages"] if m["key"] == "how_to")
-    assert [b["role"] for b in how["buttons"]] == ["weekly_ping"]
+    assert not how.get("buttons")                     # 🔔 Pings lives on the ballots now
     assert len(how["description"]) <= 4096
     text = " ".join(m["description"] for m in cfg["messages"])
     assert "onthly" not in text and "OSU" not in text            # nothing public about groups
@@ -504,9 +542,6 @@ def test_server_yaml_roles_groups_and_buttons(tmp_path):
         assert "view_channel" in ows["role:group_osu"]["allow"]
         assert "view_channel" in ows["@bot"]["allow"]
     bad = tmp_path / "s.yaml"
-    bad.write_text(Path("server.yaml").read_text().replace("{role: weekly_ping", "{role: nope", 1))
-    with pytest.raises(setup_server.ConfigError, match="unknown role 'nope'"):
-        setup_server.load_config(bad)
     bad.write_text(Path("server.yaml").read_text().replace("- key: osu", "- key: main", 1))
     with pytest.raises(setup_server.ConfigError, match="group key 'main'"):
         setup_server.load_config(bad)
