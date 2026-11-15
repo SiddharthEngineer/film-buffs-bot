@@ -20,14 +20,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 EMBED_COLOR = 0xE5A00D
-VOTE_EMOJI = "👍"
 # Field added by the old (pre-3R) spoiler-line design; removed from cards on refresh.
 LEGACY_SPOILER_FIELD = "Spoiler line"
 # Last field on every info card: the no-spoilers reminder.
 REMINDER_NAME = "🚫 No spoilers in this post"
 REMINDER_VALUE = ("Trailers, hype and first impressions only. Seen it? Spoilers go in the "
                   "**🔓 Post-watch discussion** (button below).")
-VOTE_FOOTER = f"{VOTE_EMOJI} this message to vote for it in the weekly pick"
 
 
 def set_reminder(e: discord.Embed) -> discord.Embed:
@@ -47,7 +45,11 @@ def set_availability(e: discord.Embed, av: Availability | None) -> discord.Embed
     text = card_line(av)
     if text:
         e.add_field(name=WATCH_FIELD, value=text, inline=False)
-    e.set_footer(text=f"{VOTE_FOOTER} · {JUSTWATCH_CREDIT}" if text else VOTE_FOOTER)
+    # The footer used to say "👍 this message to vote for it"; 👍 no longer count.
+    if text:
+        e.set_footer(text=JUSTWATCH_CREDIT)
+    else:
+        e.remove_footer()
     return set_reminder(e)
 
 

@@ -7,7 +7,11 @@
 Safe to re-run. Objects are tracked by key -> Discord ID in data/filmbuffs.db,
 so renames in server.yaml rename in Discord instead of creating duplicates.
 Unmanaged channels are only reported. The one exception is the `retire:` list
-in server.yaml: channels named there by ID are deleted, with safety checks.
+in server.yaml: channels named there by ID are deleted, with safety checks,
+and `retire_roles:`, which deletes roles this script created (by key).
+
+Private groups (`groups:`, Phase 12) are expanded into a role, a category and
+three hidden channels each; see filmbuffs/groups.py.
 """
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ import discord
 import yaml
 from dotenv import load_dotenv
 
+from filmbuffs import groups as grp
 from filmbuffs.state import ROOT, State
 
 REASON = "Film Buffs setup_server.py"
@@ -53,6 +58,10 @@ class ConfigError(Exception):
 def load_config(path) -> dict:
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
+    try:
+        grp.expand(cfg)
+    except grp.GroupConfigError as e:
+        raise ConfigError(str(e)) from e
     presets = cfg.get("presets", {})
     valid = set(discord.Permissions.VALID_FLAGS)
     seen: set[str] = set()
@@ -92,6 +101,12 @@ def load_config(path) -> dict:
                     raise ConfigError(f"{ch['key']}: forum guidelines are limited to 4096 characters")
             elif len(ch.get("topic", "")) > 1024:
                 raise ConfigError(f"{ch['key']}: text channel topics are limited to 1024 characters")
+    role_keys = set()
+    for r in cfg.get("roles", []):
+        unique(f"role:{r['key']}")
+        role_keys.add(r["key"])
+        if not r.get("name"):
+            raise ConfigError(f"role {r['key']}: needs a name")
     channel_keys = {ch["key"] for cat in cfg["categories"] for ch in cat["channels"]}
     for m in cfg.get("messages", []):
         unique(f"message:{m['key']}")
@@ -103,10 +118,34 @@ def load_config(path) -> dict:
                 raise ConfigError(
                     f"message {m['key']}: unknown channel ref {{#{ref}}} (use a channel key"
                     + (f", e.g. {{#{hint}}}" if hint in channel_keys else "") + ")")
+        buttons = m.get("buttons") or []
+        if len(buttons) > 5:
+            raise ConfigError(f"message {m['key']}: at most 5 buttons")
+        for b in buttons:
+            if b.get("role") not in role_keys:
+                raise ConfigError(f"message {m['key']}: button for unknown role {b.get('role')!r}")
+            if not b.get("label") or len(b["label"]) > 80:
+                raise ConfigError(f"message {m['key']}: button labels are 1-80 characters")
     for r in cfg.get("retire", []):
         if not isinstance(r.get("id"), int) or not r.get("name"):
             raise ConfigError(f"retire entries need an integer id and a name: {r}")
+    for r in cfg.get("retire_roles", []):
+        if not r.get("key") or not r.get("name"):
+            raise ConfigError(f"retire_roles entries need a key and a name: {r}")
+        if r["key"] in role_keys:
+            raise ConfigError(f"role {r['key']!r} is both declared and retired")
+    for cat in cfg["categories"]:
+        for ch in cat["channels"]:
+            for target in ch["_overwrites"]:
+                if target.startswith("role:") and target[5:] not in role_keys:
+                    raise ConfigError(f"{ch['key']}: overwrite for unknown role key {target!r}")
     return cfg
+
+
+class PendingRole:
+    """A managed role the plan creates before any channel that refers to it."""
+    def __init__(self, key: str, name: str):
+        self.key, self.name, self.id = key, name, None
 
 
 def build_overwrite(spec: dict) -> discord.PermissionOverwrite:
@@ -189,6 +228,17 @@ class Reconciler:
         return None
 
     def target(self, name: str):
+        """An overwrite target: @everyone, @bot, role:<key> (a managed role) or a role name."""
+        if name.startswith("role:"):
+            key = name[5:]
+            rid = self.state.get(f"role:{key}")
+            role = self.guild.get_role(rid) if rid else None
+            if role is None:
+                r = next(r for r in self.cfg.get("roles", []) if r["key"] == key)
+                role = discord.utils.get(self.guild.roles, name=r["name"])
+                if role is None or role.id in self.state.all_ids():
+                    return PendingRole(key, r["name"])
+            return role
         if name == "@everyone":
             return self.guild.default_role
         if name == "@bot":
@@ -247,7 +297,19 @@ class Reconciler:
                 "voice": discord.VoiceChannel}[ch["type"]]
         cat_key = f"category:{cat['key']}"
         desired_ows = {self.target(t): build_overwrite(s) for t, s in ch["_overwrites"].items()}
-        target_ids = [t.id for t in desired_ows]
+        pending = [t for t in desired_ows if isinstance(t, PendingRole)]
+        target_ids = [t.id for t in desired_ows if not isinstance(t, PendingRole)]
+
+        def resolved():
+            """Overwrites with roles created earlier in this apply filled in."""
+            out = {}
+            for t, ow in desired_ows.items():
+                if isinstance(t, PendingRole):
+                    t = self.guild.get_role(self.state.get(f"role:{t.key}") or 0)
+                    if t is None:
+                        raise RuntimeError("a role this channel needs wasn't created")
+                out[t] = ow
+            return out
 
         obj = self.lookup(key)
         if obj is None and ch.get("adopt"):
@@ -272,8 +334,9 @@ class Reconciler:
 
             async def create():
                 category = self.guild.get_channel(self.state.get(cat_key))
+                ows = resolved()
                 kwargs = dict(name=ch["name"], category=category,
-                              overwrites=desired_ows, reason=REASON)
+                              overwrites=ows, reason=REASON)
                 if "topic" in ch:
                     kwargs["topic"] = ch["topic"].strip()
                 if is_forum:
@@ -289,8 +352,13 @@ class Reconciler:
                     c = await self.guild.create_voice_channel(**kwargs)
                 else:
                     c = await self.guild.create_text_channel(**kwargs)
-                self.state.set(key, "channel", c.id, {"targets": target_ids})
+                self.state.set(key, "channel", c.id, {"targets": [t.id for t in ows]})
             self.add("+", f"#{ch['name']}", details, create)
+            return
+
+        if pending:
+            self.notes.append(f"#{obj.name}: role(s) {', '.join(t.name for t in pending)} will be "
+                              "created; run --apply again to set this channel's permissions")
             return
 
         if not isinstance(obj, kind):
@@ -485,15 +553,73 @@ class Reconciler:
         if payload:
             self.add("~", "channel order", desc, run)
 
+    # roles -----------------------------------------------------------------
+    def plan_role(self, r: dict) -> None:
+        key = f"role:{r['key']}"
+        rid = self.state.get(key)
+        role = self.guild.get_role(rid) if rid else None
+        if rid and role is None:
+            self.notes.append(f"{key}: tracked role {rid} no longer exists; it will be recreated")
+        mentionable = bool(r.get("mentionable", False))
+        if role is None:
+            managed = self.state.all_ids()
+            same = [x for x in self.guild.roles if x.name == r["name"] and x.id not in managed]
+            if len(same) > 1:
+                raise ConfigError(f"role {r['name']!r}: {len(same)} roles with that name")
+            if same:
+                role = same[0]
+                self.add(">", f'role "{role.name}"', ["existing role, recorded by key"],
+                         self._record_role(key, role.id))
+        if role is None:
+            async def create():
+                new = await self.guild.create_role(name=r["name"], mentionable=mentionable,
+                                                   reason=REASON)
+                self.state.set(key, "role", new.id)
+            self.add("+", f'role "{r["name"]}"', [f"mentionable: {mentionable}"], create)
+            return
+        edits = {}
+        if role.name != r["name"]:
+            edits["name"] = r["name"]
+        if role.mentionable != mentionable:
+            edits["mentionable"] = mentionable
+        if edits:
+            async def update(role=role, edits=edits):
+                await role.edit(reason=REASON, **edits)
+            self.add("~", f'role "{role.name}"', [f"{k}: {v}" for k, v in edits.items()], update)
+        me = self.guild.me.top_role if self.guild.me else None
+        if me is not None and role >= me:
+            self.notes.append(f'role "{role.name}" is above the bot\'s role; move the bot\'s '
+                              "role above it so the role buttons work")
+
+    def _record_role(self, key, rid):
+        async def run():
+            self.state.set(key, "role", rid)
+        return run
+
     # messages --------------------------------------------------------------
     def render(self, m: dict, live: bool) -> tuple[discord.Embed, str]:
         desc = re.sub(r"\{#(\w+)\}", lambda x: self.channel_ref(x.group(1), live),
                       m.get("description", "").strip())
         embed = discord.Embed(title=m.get("title"), description=desc,
                               color=m.get("color"))
-        digest = hashlib.sha256(json.dumps(embed.to_dict(), sort_keys=True)
+        payload = embed.to_dict()
+        if m.get("buttons"):
+            payload = {"embed": payload, "buttons": m["buttons"]}
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True)
                                 .encode()).hexdigest()
         return embed, digest
+
+    @staticmethod
+    def view(m: dict) -> discord.ui.View | None:
+        """Role buttons. The running bot handles clicks (custom_id role:<key>)."""
+        if not m.get("buttons"):
+            return None
+        v = discord.ui.View(timeout=None)
+        for b in m["buttons"]:
+            v.add_item(discord.ui.Button(label=b["label"], emoji=b.get("emoji"),
+                                         style=discord.ButtonStyle.secondary,
+                                         custom_id=f"role:{b['role']}"))
+        return v
 
     async def plan_message(self, m: dict) -> None:
         key = f"message:{m['key']}"
@@ -520,10 +646,11 @@ class Reconciler:
                     msg = await ch.fetch_message(self.state.get(key))
                 except discord.NotFound:
                     msg = None
+            view = self.view(m)
             if msg:
-                await msg.edit(content=None, embed=embed)
+                await msg.edit(content=None, embed=embed, view=view)
             else:
-                msg = await ch.send(embed=embed)
+                msg = await ch.send(embed=embed, view=view)
             self.state.set(key, "message", msg.id, {"hash": live_digest})
 
         if existing is None:
@@ -578,8 +705,35 @@ class Reconciler:
                 await fresh.delete(reason=REASON)
             self.add("-", label, details, run)
 
+    def plan_retire_roles(self) -> None:
+        """Delete roles this script created, listed under `retire_roles:` (key + name)."""
+        for r in self.cfg.get("retire_roles", []):
+            key = f"role:{r['key']}"
+            rid = self.state.get(key)
+            role = self.guild.get_role(rid) if rid else None
+            if role is None:
+                if rid:
+                    async def forget(key=key):
+                        self.state.delete(key)
+                    self.add(">", f'role "{r["name"]}"', ["already deleted; forget its key"], forget)
+                continue
+            if role.name != r["name"]:
+                raise ConfigError(f"retire_roles {r['key']}: role is named {role.name!r}, not "
+                                  f"{r['name']!r}; refusing to delete")
+            n = len(role.members)
+
+            async def run(role=role, key=key):
+                await role.delete(reason=REASON)
+                self.state.delete(key)
+            self.add("-", f'role "{role.name}"',
+                     [f"{n} member{'s' * (n != 1)} have it" if n else "nobody has it"
+                      if self.guild.chunked else "(member count unknown)"], run)
+
     # ---------------------------------------------------------------------
     async def build(self) -> None:
+        # Roles first: group channels' permissions refer to group roles.
+        for r in self.cfg.get("roles", []):
+            self.plan_role(r)
         for cat in self.cfg["categories"]:
             self.plan_category(cat)
         for cat in self.cfg["categories"]:
@@ -589,6 +743,7 @@ class Reconciler:
         for m in self.cfg.get("messages", []):
             await self.plan_message(m)
         await self.plan_retire()
+        self.plan_retire_roles()
 
         managed = (self.state.all_ids() | self.adopted
                    | {r["id"] for r in self.cfg.get("retire", [])})
@@ -618,7 +773,7 @@ def print_plan(guild: discord.Guild, r: Reconciler) -> None:
     counts = {op: sum(1 for c in r.changes if c.op == op) for op in "+~>-"}
     print()
     print(f"Plan: {counts['+']} to create, {counts['~']} to change, "
-          f"{counts['>']} to adopt/record, {counts['-']} to delete (retire list only).")
+          f"{counts['>']} to adopt/record, {counts['-']} to delete (retire lists only).")
 
 
 async def apply_plan(r: Reconciler) -> int:

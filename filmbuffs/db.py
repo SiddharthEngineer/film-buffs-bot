@@ -260,6 +260,180 @@ MIGRATIONS = [
     ALTER TABLE movies ADD COLUMN availability TEXT;
     ALTER TABLE movies ADD COLUMN availability_checked_at TEXT;
     """,
+    # Phase 10: rolling nominations, one always-open weekly vote, monthly movie.
+    #   pool_nominations: each member's up to 3 active nominations, ranked 1-3,
+    #     shared by both tracks. A film is in at most one member's list.
+    #   ballot_entries: the live ballot both tracks show: each member's
+    #     highest-ranked eligible nomination (joined_at = when it got on).
+    #   track_rankings: each member's ranking per track (weekly | monthly). They
+    #     roll over between votes; a film that leaves the ballot drops out of
+    #     every ranking and later ranks move up.
+    #   weeks: votes open Mon of the week before and close Sun 11:59 PM (state
+    #     voting -> picked -> done, or skipped). excluded_tmdb_id = the film left
+    #     out of the weekly count because it was leading the monthly vote.
+    #     ranked_votes keeps a snapshot of the weekly rankings at each close.
+    #   months: one row per monthly movie (month = YYYY-MM, watched during that
+    #     month, discussed on the 1st of the next). month_options/month_votes
+    #     are the snapshot at close.
+    """
+    CREATE TABLE pool_nominations (
+        user_id       INTEGER NOT NULL,
+        rank          INTEGER NOT NULL,
+        tmdb_id       INTEGER NOT NULL UNIQUE,
+        nominated_at  TEXT NOT NULL,
+        PRIMARY KEY (user_id, rank)
+    );
+    CREATE TABLE ballot_entries (
+        tmdb_id    INTEGER PRIMARY KEY,
+        user_id    INTEGER NOT NULL,
+        joined_at  TEXT NOT NULL
+    );
+    CREATE TABLE track_rankings (
+        track     TEXT NOT NULL,
+        user_id   INTEGER NOT NULL,
+        rank      INTEGER NOT NULL,
+        tmdb_id   INTEGER NOT NULL,
+        voted_at  TEXT NOT NULL,
+        PRIMARY KEY (track, user_id, rank),
+        UNIQUE (track, user_id, tmdb_id)
+    );
+    CREATE TABLE months (
+        month               TEXT PRIMARY KEY,     -- YYYY-MM
+        state               TEXT NOT NULL,        -- voting -> picked -> done, or skipped
+        ballot_message_id   INTEGER,
+        vote_opened_at      TEXT,
+        vote_closed_at      TEXT,
+        winner_tmdb_id      INTEGER,
+        winner_prev_status  TEXT,
+        winner_votes        INTEGER,
+        runner_up_votes     INTEGER,
+        total_votes         INTEGER,
+        vote_rounds         TEXT,
+        event_id            INTEGER,
+        announcement_id     INTEGER,
+        log_message_id      INTEGER,
+        skip_reason         TEXT,
+        override_by         INTEGER,
+        ended_at            TEXT
+    );
+    CREATE TABLE month_options (
+        month          TEXT NOT NULL,
+        position       INTEGER NOT NULL,
+        tmdb_id        INTEGER NOT NULL,
+        nominated_by   INTEGER,
+        interest       INTEGER NOT NULL,
+        thumbs         INTEGER NOT NULL,
+        first_choices  INTEGER,
+        PRIMARY KEY (month, position)
+    );
+    CREATE TABLE month_votes (
+        month     TEXT NOT NULL,
+        user_id   INTEGER NOT NULL,
+        rank      INTEGER NOT NULL,
+        tmdb_id   INTEGER NOT NULL,
+        PRIMARY KEY (month, user_id, rank)
+    );
+    ALTER TABLE weeks ADD COLUMN excluded_tmdb_id INTEGER;
+    INSERT OR IGNORE INTO pool_nominations(user_id, rank, tmdb_id, nominated_at)
+        SELECT n.user_id, 1, n.tmdb_id, n.nominated_at FROM nominations n
+        JOIN weeks w ON w.week_start = n.week_start WHERE w.state IN ('ballot', 'ballot_closed');
+    INSERT OR IGNORE INTO track_rankings(track, user_id, rank, tmdb_id, voted_at)
+        SELECT 'weekly', r.user_id, r.rank, r.tmdb_id, r.voted_at FROM ranked_votes r
+        JOIN weeks w ON w.week_start = r.week_start WHERE w.state = 'voting';
+    UPDATE weeks SET state = 'voting' WHERE state IN ('ballot', 'ballot_closed');
+    """,
+    # 👍 reactions no longer count for anything (owner, 2026-11-15): drop the votes
+    # table and the 👍 counts frozen with each ballot. The leaderboard message's ID
+    # stays in bot_meta until the bot has deleted the message.
+    """
+    DROP TABLE votes;
+    DROP INDEX IF EXISTS movies_starter;
+    ALTER TABLE week_options DROP COLUMN thumbs;
+    ALTER TABLE month_options DROP COLUMN thumbs;
+    """,
+    # Phase 12: the monthly movie moves from the main server into private groups.
+    #   grp: 'main' (the main server's weekly vote) or a group key from
+    #     server.yaml `groups:`. Each group has its own pool, ballot and months;
+    #     a film can be in several groups' pools at once.
+    #   track_rankings.track: 'weekly' (main) or 'group:<key>'. The main
+    #     server's 'monthly' rankings are dropped.
+    #   months: one row per group per month; the main server's December vote
+    #     (nobody had ranked it) is deleted. Its ballot message ID is kept in
+    #     bot_meta until the bot has deleted the message. A group's watched
+    #     films are its months with a winner (state picked or done).
+    """
+    CREATE TABLE pool_nominations_new (
+        grp           TEXT NOT NULL,
+        user_id       INTEGER NOT NULL,
+        rank          INTEGER NOT NULL,
+        tmdb_id       INTEGER NOT NULL,
+        nominated_at  TEXT NOT NULL,
+        PRIMARY KEY (grp, user_id, rank),
+        UNIQUE (grp, tmdb_id)
+    );
+    INSERT INTO pool_nominations_new(grp, user_id, rank, tmdb_id, nominated_at)
+        SELECT 'main', user_id, rank, tmdb_id, nominated_at FROM pool_nominations;
+    DROP TABLE pool_nominations;
+    ALTER TABLE pool_nominations_new RENAME TO pool_nominations;
+
+    CREATE TABLE ballot_entries_new (
+        grp        TEXT NOT NULL,
+        tmdb_id    INTEGER NOT NULL,
+        user_id    INTEGER NOT NULL,
+        joined_at  TEXT NOT NULL,
+        PRIMARY KEY (grp, tmdb_id)
+    );
+    INSERT INTO ballot_entries_new(grp, tmdb_id, user_id, joined_at)
+        SELECT 'main', tmdb_id, user_id, joined_at FROM ballot_entries ORDER BY joined_at, rowid;
+    DROP TABLE ballot_entries;
+    ALTER TABLE ballot_entries_new RENAME TO ballot_entries;
+
+    DELETE FROM track_rankings WHERE track = 'monthly';
+
+    INSERT OR REPLACE INTO bot_meta(key, value)
+        SELECT 'retired_monthly_ballots', group_concat(ballot_message_id)
+        FROM months WHERE ballot_message_id IS NOT NULL HAVING COUNT(*) > 0;
+    DROP TABLE months;
+    DROP TABLE month_options;
+    DROP TABLE month_votes;
+    CREATE TABLE months (
+        grp                 TEXT NOT NULL,
+        month               TEXT NOT NULL,        -- YYYY-MM
+        state               TEXT NOT NULL,        -- voting -> picked -> done, or skipped
+        ballot_message_id   INTEGER,
+        vote_opened_at      TEXT,
+        vote_closed_at      TEXT,
+        winner_tmdb_id      INTEGER,
+        winner_votes        INTEGER,
+        runner_up_votes     INTEGER,
+        total_votes         INTEGER,
+        vote_rounds         TEXT,
+        event_id            INTEGER,
+        announcement_id     INTEGER,
+        skip_reason         TEXT,
+        override_by         INTEGER,
+        ended_at            TEXT,
+        PRIMARY KEY (grp, month)
+    );
+    CREATE TABLE month_options (
+        grp            TEXT NOT NULL,
+        month          TEXT NOT NULL,
+        position       INTEGER NOT NULL,
+        tmdb_id        INTEGER NOT NULL,
+        nominated_by   INTEGER,
+        interest       INTEGER NOT NULL,
+        first_choices  INTEGER,
+        PRIMARY KEY (grp, month, position)
+    );
+    CREATE TABLE month_votes (
+        grp       TEXT NOT NULL,
+        month     TEXT NOT NULL,
+        user_id   INTEGER NOT NULL,
+        rank      INTEGER NOT NULL,
+        tmdb_id   INTEGER NOT NULL,
+        PRIMARY KEY (grp, month, user_id, rank)
+    );
+    """,
 ]
 
 
@@ -493,80 +667,16 @@ class Database:
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
         await self.conn.commit()
 
-    # votes and interest ----------------------------------------------------
-    async def get_movie_by_starter(self, message_id: int) -> aiosqlite.Row | None:
-        cur = await self.conn.execute("SELECT * FROM movies WHERE starter_message_id=?",
-                                      (message_id,))
-        return await cur.fetchone()
+    async def movies_by_id(self) -> dict[int, aiosqlite.Row]:
+        return {r["tmdb_id"]: r for r in await self.all_movies()}
 
-    async def add_vote(self, tmdb_id: int, user_id: int) -> None:
-        await self.conn.execute(
-            "INSERT OR IGNORE INTO votes(tmdb_id, user_id, voted_at) VALUES (?,?,?)",
-            (tmdb_id, user_id, utcnow()))
-        await self.conn.commit()
-
-    async def remove_vote(self, tmdb_id: int, user_id: int | None = None) -> None:
-        """Remove one member's vote, or all votes for the movie (user_id None)."""
-        if user_id is None:
-            await self.conn.execute("DELETE FROM votes WHERE tmdb_id=?", (tmdb_id,))
-        else:
-            await self.conn.execute("DELETE FROM votes WHERE tmdb_id=? AND user_id=?",
-                                    (tmdb_id, user_id))
-        await self.conn.commit()
-
-    async def set_votes(self, tmdb_id: int, user_ids: set[int]) -> None:
-        """Make the stored votes match `user_ids` (keeps existing vote times)."""
-        cur = await self.conn.execute("SELECT user_id FROM votes WHERE tmdb_id=?", (tmdb_id,))
-        have = {r[0] for r in await cur.fetchall()}
-        now = utcnow()
-        await self.conn.executemany("DELETE FROM votes WHERE tmdb_id=? AND user_id=?",
-                                    [(tmdb_id, u) for u in have - user_ids])
-        await self.conn.executemany("INSERT INTO votes(tmdb_id, user_id, voted_at) VALUES (?,?,?)",
-                                    [(tmdb_id, u, now) for u in user_ids - have])
-        await self.conn.commit()
-
-    # Interest = distinct members who 👍'd the post or have the film on their
-    # uploaded watchlist. Ranked by interest, then 👍, then earliest added.
-    _RANKED = """
-        WITH interest AS (
-            SELECT tmdb_id, user_id, 1 AS thumb, 0 AS listed FROM votes
-            UNION ALL
-            SELECT tmdb_id, user_id, 0, 1 FROM watchlist_items)
-        SELECT m.*, COUNT(DISTINCT i.user_id) AS interest,
-               COALESCE(SUM(i.thumb), 0) AS thumbs, COALESCE(SUM(i.listed), 0) AS listed
-        FROM movies m LEFT JOIN interest i ON i.tmdb_id = m.tmdb_id
-        {where}
-        GROUP BY m.tmdb_id
-        ORDER BY interest DESC, thumbs DESC, m.added_at ASC, m.tmdb_id ASC
-    """
-
-    async def ranked_movies(self, statuses: tuple[str, ...] | None = None,
-                            genre: str | None = None, limit: int | None = None,
-                            min_interest: int = 0) -> list[aiosqlite.Row]:
-        conds, params = [], []
-        if statuses:
-            conds.append(f"m.status IN ({','.join('?' * len(statuses))})")
-            params += statuses
-        if genre:
-            conds.append("EXISTS (SELECT 1 FROM json_each(m.genre_tags) WHERE value = ?)")
-            params.append(genre)
-        sql = self._RANKED.format(where=("WHERE " + " AND ".join(conds)) if conds else "")
-        if min_interest:
-            sql = f"SELECT * FROM ({sql}) WHERE interest >= ?"
-            params.append(min_interest)
-        if limit:
-            sql += " LIMIT ?"
-            params.append(limit)
-        cur = await self.conn.execute(sql, params)
-        return list(await cur.fetchall())
-
-    async def movie_interest(self, tmdb_id: int) -> tuple[int, int, int]:
-        """(interest, thumbs, listed) for one movie."""
+    # interest --------------------------------------------------------------
+    # Interest = members with the film on their uploaded Letterboxd watchlist. Only
+    # used as a tie-break in the ranked votes (weekly.tie_break).
+    async def movie_interest(self, tmdb_id: int) -> int:
         cur = await self.conn.execute(
-            f"SELECT interest, thumbs, listed FROM ({self._RANKED.format(where='WHERE m.tmdb_id = ?')})",
-            (tmdb_id,))
-        row = await cur.fetchone()
-        return (row[0], row[1], row[2]) if row else (0, 0, 0)
+            "SELECT COUNT(DISTINCT user_id) FROM watchlist_items WHERE tmdb_id=?", (tmdb_id,))
+        return (await cur.fetchone())[0]
 
     # watchlists ------------------------------------------------------------
     async def replace_watchlist(self, user_id: int, items: list[tuple[int, str, int | None]],
@@ -617,16 +727,18 @@ class Database:
             "ORDER BY week_start", states)
         return list(await cur.fetchall())
 
-    async def create_week(self, week_start: str) -> None:
+    async def create_week(self, week_start: str, state: str = "voting") -> None:
         await self.conn.execute(
-            "INSERT OR IGNORE INTO weeks(week_start, state) VALUES (?, 'ballot')", (week_start,))
+            "INSERT OR IGNORE INTO weeks(week_start, state, ballot_opened_at, poll_opened_at) "
+            "VALUES (?, ?, ?, ?)", (week_start, state, utcnow(), utcnow()))
         await self.conn.commit()
 
     _WEEK_UPDATABLE = {"state", "ballot_message_id", "ballot_opened_at", "ballot_closed_at",
                        "poll_message_id", "poll_opened_at", "poll_closed_at", "winner_tmdb_id",
                        "winner_votes", "runner_up_votes", "total_votes", "event_id",
                        "announcement_id", "log_message_id", "skip_reason", "ended_at",
-                       "override_by", "winner_prev_status", "pinned_at", "vote_rounds"}
+                       "override_by", "winner_prev_status", "pinned_at", "vote_rounds",
+                       "excluded_tmdb_id"}
 
     async def update_week(self, week_start: str, **fields) -> None:
         bad = set(fields) - self._WEEK_UPDATABLE
@@ -662,9 +774,9 @@ class Database:
         await self.conn.execute("DELETE FROM week_options WHERE week_start=?", (week_start,))
         await self.conn.executemany(
             "INSERT INTO week_options(week_start, position, tmdb_id, source, nominated_by, "
-            "interest, thumbs) VALUES (?,?,?,?,?,?,?)",
-            [(week_start, i, o["tmdb_id"], o["source"], o.get("nominated_by"), o["interest"],
-              o["thumbs"]) for i, o in enumerate(options, start=1)])
+            "interest) VALUES (?,?,?,?,?,?)",
+            [(week_start, i, o["tmdb_id"], o["source"], o.get("nominated_by"), o["interest"])
+             for i, o in enumerate(options, start=1)])
         await self.conn.commit()
 
     async def options(self, week_start: str) -> list[aiosqlite.Row]:
@@ -723,4 +835,193 @@ class Database:
 
     async def set_status(self, tmdb_id: int, status: str) -> None:
         await self.conn.execute("UPDATE movies SET status=? WHERE tmdb_id=?", (status, tmdb_id))
+        await self.conn.commit()
+
+    # Phase 10/12: nomination pools, live ballots, rolling rankings ----------
+    # grp is 'main' (the weekly vote) or a group key.
+    async def pool(self, user_id: int | None = None, grp: str = "main") -> list[aiosqlite.Row]:
+        """A pool's nominations with their movie, by member then rank."""
+        where, params = "WHERE p.grp=?", [grp]
+        if user_id is not None:
+            where += " AND p.user_id=?"
+            params.append(user_id)
+        cur = await self.conn.execute(
+            "SELECT p.*, m.title, m.year, m.status, m.thread_id FROM pool_nominations p "
+            f"LEFT JOIN movies m ON m.tmdb_id = p.tmdb_id {where} "
+            "ORDER BY p.user_id, p.rank", params)
+        return list(await cur.fetchall())
+
+    async def pool_owner(self, tmdb_id: int, grp: str = "main") -> int | None:
+        cur = await self.conn.execute(
+            "SELECT user_id FROM pool_nominations WHERE grp=? AND tmdb_id=?", (grp, tmdb_id))
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+    async def set_pool(self, user_id: int, items: list[tuple[int, str]],
+                       grp: str = "main") -> None:
+        """Replace a member's list in a pool: [(tmdb_id, nominated_at)] best first."""
+        await self.conn.execute("DELETE FROM pool_nominations WHERE grp=? AND user_id=?",
+                                (grp, user_id))
+        await self.conn.executemany(
+            "INSERT INTO pool_nominations(grp, user_id, rank, tmdb_id, nominated_at) "
+            "VALUES (?,?,?,?,?)",
+            [(grp, user_id, i, t, at) for i, (t, at) in enumerate(items, 1)])
+        await self.conn.commit()
+
+    async def remove_from_pool(self, tmdb_id: int, grp: str = "main") -> int | None:
+        """Take a film out of a pool (it won, or was picked). Returns its nominator."""
+        owner = await self.pool_owner(tmdb_id, grp)
+        if owner is None:
+            return None
+        rest = [(r["tmdb_id"], r["nominated_at"]) for r in await self.pool(owner, grp)
+                if r["tmdb_id"] != tmdb_id]
+        await self.set_pool(owner, rest, grp)
+        return owner
+
+    async def ballot_entries(self, grp: str = "main") -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT b.*, m.title, m.year, m.status, m.thread_id, m.added_at FROM ballot_entries b "
+            "LEFT JOIN movies m ON m.tmdb_id = b.tmdb_id WHERE b.grp=? "
+            "ORDER BY b.joined_at, b.rowid", (grp,))
+        return list(await cur.fetchall())
+
+    async def set_ballot_entries(self, add: list[tuple[int, int]], remove: list[int],
+                                 owner_changes: list[tuple[int, int]] = (),
+                                 grp: str = "main") -> None:
+        now = utcnow()
+        await self.conn.executemany("DELETE FROM ballot_entries WHERE grp=? AND tmdb_id=?",
+                                    [(grp, t) for t in remove])
+        await self.conn.executemany(
+            "INSERT OR REPLACE INTO ballot_entries(grp, tmdb_id, user_id, joined_at) "
+            "VALUES (?,?,?,?)", [(grp, t, u, now) for t, u in add])
+        await self.conn.executemany(
+            "UPDATE ballot_entries SET user_id=? WHERE grp=? AND tmdb_id=?",
+            [(u, grp, t) for t, u in owner_changes])
+        await self.conn.commit()
+
+    async def track_ranking(self, track: str, user_id: int) -> list[int]:
+        cur = await self.conn.execute(
+            "SELECT tmdb_id FROM track_rankings WHERE track=? AND user_id=? ORDER BY rank",
+            (track, user_id))
+        return [r[0] for r in await cur.fetchall()]
+
+    async def last_ranked_at(self, track: str, user_id: int) -> str | None:
+        cur = await self.conn.execute(
+            "SELECT MAX(voted_at) FROM track_rankings WHERE track=? AND user_id=?",
+            (track, user_id))
+        return (await cur.fetchone())[0]
+
+    async def set_track_ranking(self, track: str, user_id: int, tmdb_ids: list[int],
+                                voted_at: str | None = None) -> None:
+        """Replace a member's ranking for a track (best first)."""
+        old = {r[0]: r[1] for r in await (await self.conn.execute(
+            "SELECT tmdb_id, voted_at FROM track_rankings WHERE track=? AND user_id=?",
+            (track, user_id))).fetchall()}
+        now = utcnow()
+        await self.conn.execute("DELETE FROM track_rankings WHERE track=? AND user_id=?",
+                                (track, user_id))
+        await self.conn.executemany(
+            "INSERT INTO track_rankings(track, user_id, rank, tmdb_id, voted_at) VALUES (?,?,?,?,?)",
+            [(track, user_id, i, t, old.get(t) if voted_at is None and t in old else (voted_at or now))
+             for i, t in enumerate(tmdb_ids, 1)])
+        await self.conn.commit()
+
+    async def all_track_rankings(self, track: str) -> dict[int, list[int]]:
+        cur = await self.conn.execute(
+            "SELECT user_id, tmdb_id FROM track_rankings WHERE track=? ORDER BY user_id, rank",
+            (track,))
+        out: dict[int, list[int]] = {}
+        for uid, tid in await cur.fetchall():
+            out.setdefault(uid, []).append(tid)
+        return out
+
+    async def drop_from_rankings(self, tmdb_ids: list[int], track: str) -> None:
+        """Remove films from every ranking on one track; later ranks move up."""
+        if not tmdb_ids:
+            return
+        marks = ",".join("?" * len(tmdb_ids))
+        cur = await self.conn.execute(
+            f"SELECT DISTINCT track, user_id FROM track_rankings WHERE track=? "
+            f"AND tmdb_id IN ({marks})", [track, *tmdb_ids])
+        for track, uid in await cur.fetchall():
+            rows = await (await self.conn.execute(
+                "SELECT tmdb_id, voted_at FROM track_rankings WHERE track=? AND user_id=? "
+                "ORDER BY rank", (track, uid))).fetchall()
+            keep = [(t, at) for t, at in rows if t not in tmdb_ids]
+            await self.conn.execute("DELETE FROM track_rankings WHERE track=? AND user_id=?",
+                                    (track, uid))
+            await self.conn.executemany(
+                "INSERT INTO track_rankings(track, user_id, rank, tmdb_id, voted_at) "
+                "VALUES (?,?,?,?,?)", [(track, uid, i, t, at) for i, (t, at) in enumerate(keep, 1)])
+        await self.conn.commit()
+
+    async def snapshot_week_rankings(self, week_start: str, rankings: dict[int, list[int]]) -> None:
+        await self.conn.execute("DELETE FROM ranked_votes WHERE week_start=?", (week_start,))
+        now = utcnow()
+        await self.conn.executemany(
+            "INSERT INTO ranked_votes(week_start, user_id, rank, tmdb_id, voted_at) VALUES (?,?,?,?,?)",
+            [(week_start, u, i, t, now) for u, ts in rankings.items() for i, t in enumerate(ts, 1)])
+        await self.conn.commit()
+
+    # months (Phase 12: one row per group per month) -----------------------------
+    async def get_month(self, grp: str, month: str) -> aiosqlite.Row | None:
+        cur = await self.conn.execute("SELECT * FROM months WHERE grp=? AND month=?", (grp, month))
+        return await cur.fetchone()
+
+    async def months_in_state(self, grp: str, *states: str) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            f"SELECT * FROM months WHERE grp=? AND state IN ({','.join('?' * len(states))}) "
+            "ORDER BY month", (grp, *states))
+        return list(await cur.fetchall())
+
+    async def all_months(self, grp: str) -> set[str]:
+        cur = await self.conn.execute("SELECT month FROM months WHERE grp=?", (grp,))
+        return {r[0] for r in await cur.fetchall()}
+
+    async def group_watched(self, grp: str) -> dict[int, str]:
+        """Films a group has picked (picked or done) -> the month."""
+        cur = await self.conn.execute(
+            "SELECT winner_tmdb_id, month FROM months WHERE grp=? AND state IN ('picked', 'done') "
+            "AND winner_tmdb_id IS NOT NULL", (grp,))
+        return {r[0]: r[1] for r in await cur.fetchall()}
+
+    async def create_month(self, grp: str, month: str) -> None:
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO months(grp, month, state, vote_opened_at) "
+            "VALUES (?, ?, 'voting', ?)", (grp, month, utcnow()))
+        await self.conn.commit()
+
+    _MONTH_UPDATABLE = {"state", "ballot_message_id", "vote_opened_at", "vote_closed_at",
+                        "winner_tmdb_id", "winner_votes", "runner_up_votes", "total_votes",
+                        "vote_rounds", "event_id", "announcement_id", "skip_reason",
+                        "override_by", "ended_at"}
+
+    async def update_month(self, grp: str, month: str, **fields) -> None:
+        bad = set(fields) - self._MONTH_UPDATABLE
+        if bad:
+            raise ValueError(f"not updatable: {bad}")
+        sets = ", ".join(f"{k}=?" for k in fields)
+        await self.conn.execute(f"UPDATE months SET {sets} WHERE grp=? AND month=?",
+                                (*fields.values(), grp, month))
+        await self.conn.commit()
+
+    async def month_options(self, grp: str, month: str) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT o.*, m.title, m.year, m.thread_id FROM month_options o LEFT JOIN movies m "
+            "ON m.tmdb_id = o.tmdb_id WHERE o.grp=? AND o.month=? ORDER BY o.position",
+            (grp, month))
+        return list(await cur.fetchall())
+
+    async def snapshot_month(self, grp: str, month: str, options: list[dict],
+                             rankings: dict[int, list[int]], first: dict[int, int]) -> None:
+        await self.conn.execute("DELETE FROM month_options WHERE grp=? AND month=?", (grp, month))
+        await self.conn.execute("DELETE FROM month_votes WHERE grp=? AND month=?", (grp, month))
+        await self.conn.executemany(
+            "INSERT INTO month_options(grp, month, position, tmdb_id, nominated_by, interest, "
+            "first_choices) VALUES (?,?,?,?,?,?,?)",
+            [(grp, month, i, o["tmdb_id"], o.get("nominated_by"), o.get("interest", 0),
+              first.get(o["tmdb_id"])) for i, o in enumerate(options, 1)])
+        await self.conn.executemany(
+            "INSERT INTO month_votes(grp, month, user_id, rank, tmdb_id) VALUES (?,?,?,?,?)",
+            [(grp, month, u, i, t) for u, ts in rankings.items() for i, t in enumerate(ts, 1)])
         await self.conn.commit()

@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ..tmdb import TMDBError, parse_choice
+from ..tmdb import Movie, TMDBError, parse_choice
 
 if TYPE_CHECKING:
     from ..bot import FilmBuffsBot
@@ -20,43 +20,20 @@ class Movies(commands.Cog):
     def __init__(self, bot: "FilmBuffsBot"):
         self.bot = bot
 
-    @app_commands.command(name="addmovie", description="Add a movie to the backlog (creates its post in #movies)")
+    @app_commands.command(name="addmovie",
+                          description="Add a movie to the backlog without nominating it (creates its post)")
     @app_commands.describe(title="Start typing, then pick the movie from the list",
                            pitch="Why we should watch it (optional)")
     @app_commands.guild_only()
     async def addmovie(self, interaction: discord.Interaction, title: str,
                        pitch: app_commands.Range[str, 1, 1000] | None = None) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
-
-        tmdb_id = parse_choice(title)
-        if tmdb_id is None:
-            await interaction.followup.send(
-                f"❌ **{discord.utils.escape_markdown(title)[:100]}** isn't a movie from the list. "
-                "Start typing the title, wait for suggestions, and pick one. No post was created.",
-                ephemeral=True)
+        movie, thread, created, err = await add_movie(self.bot, interaction.user, title, pitch,
+                                                      source="addmovie")
+        if err:
+            await interaction.followup.send(err + " No post was created.", ephemeral=True)
             return
-        try:
-            movie = await self.bot.tmdb.movie(tmdb_id)
-        except TMDBError:
-            log.exception("TMDB lookup failed for %s", tmdb_id)
-            await interaction.followup.send(
-                "❌ Couldn't reach TMDB right now. Please try again in a minute. No post was created.",
-                ephemeral=True)
-            return
-        if movie is None:
-            await interaction.followup.send(
-                f"❌ TMDB has no movie with ID {tmdb_id}. No post was created.", ephemeral=True)
-            return
-
-        thread, created = await self.bot.movies.ensure_post(
-            movie, added_by=interaction.user, pitch=pitch, status="backlog", source="addmovie")
-        if created:
-            await interaction.followup.send(
-                f"✅ Added **{movie.display}** → {thread.jump_url}", ephemeral=True)
-        else:
-            extra = " Post your pitch there as a message." if pitch else ""
-            await interaction.followup.send(
-                f"**{movie.display}** already has a post → {thread.jump_url}{extra}", ephemeral=True)
+        await interaction.followup.send(post_note(movie, thread, created, pitch), ephemeral=True)
 
     @addmovie.autocomplete("title")
     async def title_autocomplete(self, interaction: discord.Interaction,
@@ -70,6 +47,35 @@ class Movies(commands.Cog):
             log.warning("Autocomplete search failed: %s", e)
             return []
         return [app_commands.Choice(name=label, value=value) for label, value in pairs[:25]]
+
+
+async def add_movie(bot: "FilmBuffsBot", user: discord.abc.User, title: str, pitch: str | None,
+                    source: str) -> tuple[Movie | None, discord.Thread | None, bool, str | None]:
+    """The /addmovie part, shared with /nominate: read the autocomplete pick, look the
+    film up on TMDB and make sure it has a #movies post (Backlog, added by `user`).
+    Returns (movie, post, created, None), or (None, None, False, error)."""
+    tmdb_id = parse_choice(title)
+    if tmdb_id is None:
+        return None, None, False, (
+            f"❌ **{discord.utils.escape_markdown(title)[:100]}** isn't a movie from the list. "
+            "Start typing the title, wait for suggestions, and pick one.")
+    try:
+        movie = await bot.tmdb.movie(tmdb_id)
+    except TMDBError:
+        log.exception("TMDB lookup failed for %s", tmdb_id)
+        return None, None, False, "❌ Couldn't reach TMDB right now. Please try again in a minute."
+    if movie is None:
+        return None, None, False, f"❌ TMDB has no movie with ID {tmdb_id}."
+    thread, created = await bot.movies.ensure_post(movie, added_by=user, pitch=pitch,
+                                                   status="backlog", source=source)
+    return movie, thread, created, None
+
+
+def post_note(movie: Movie, thread: discord.Thread, created: bool, pitch: str | None) -> str:
+    if created:
+        return f"✅ Added **{movie.display}** → {thread.jump_url}"
+    extra = " Post your pitch there as a message." if pitch else ""
+    return f"**{movie.display}** already has a post → {thread.jump_url}{extra}"
 
 
 async def setup(bot: "FilmBuffsBot") -> None:

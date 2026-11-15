@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import yaml
 from dotenv import load_dotenv
 
+from . import groups as grp
 from .state import DB_PATH, ROOT, State
 
 # Status tags the bot sets. Exactly one of STATUS_TAGS is on a post at a time.
@@ -34,6 +35,7 @@ class Config:
 
         with open(ROOT / "server.yaml", encoding="utf-8") as f:
             self.layout = yaml.safe_load(f)
+        grp.expand(self.layout)        # group roles, categories and channels (Phase 12)
         self.tz = ZoneInfo(self.layout.get("timezone", "America/Chicago"))
         self.max_genre_tags = int(self.layout.get("max_genre_tags", 3))
         lb = self.layout.get("letterboxd") or {}
@@ -56,11 +58,11 @@ class Config:
             first if isinstance(first, date) else date.fromisoformat(first) if first else None)
         if self.first_watch_week and self.first_watch_week.weekday() != 0:
             raise RuntimeError("weekly.first_watch_week in server.yaml must be a Monday")
-        self.tie_break: list[str] = list(wk.get("tie_break", ["interest", "thumbs", "added"]))
+        self.tie_break: list[str] = list(wk.get("tie_break", ["interest", "added"]))
         for k in self.tie_break:
-            if k not in ("interest", "thumbs", "added"):
-                raise RuntimeError(f"weekly.tie_break: unknown key {k!r}")
-        self.leaderboard_size = int(wk.get("leaderboard_size", 25))
+            if k not in ("interest", "added"):
+                raise RuntimeError(f"weekly.tie_break: unknown key {k!r} (👍 no longer count, "
+                                   "so `thumbs` is gone)")
 
         state = State()
         self.channels: dict[str, int] = {}
@@ -76,6 +78,26 @@ class Config:
             raise RuntimeError("The #movies forum (key: movies) is not set up. Run setup_server.py --apply first.")
         if "movie_spoilers" not in self.channels:
             raise RuntimeError("The #post-watch-discussion forum (key: movie_spoilers) is not set up. Run setup_server.py --apply first.")
+
+        # Opt-in ping roles (Phase 10), by key (weekly_ping), plus group roles.
+        self.roles: dict[str, int] = {}
+        for r in self.layout.get("roles") or []:
+            rid = state.get(f"role:{r['key']}")
+            if rid:
+                self.roles[r["key"]] = rid
+
+        # Private groups (Phase 12), each with its own monthly movie. A group
+        # whose channels aren't set up yet (setup_server.py --apply) is left out.
+        self.groups: dict[str, grp.Group] = {}
+        self.group_by_category: dict[int, str] = {}
+        for g in grp.parse(self.layout):
+            g.role_id = self.roles.get(grp.role_key(g.key))
+            g.category_id = state.get(f"category:{grp.category_key(g.key)}")
+            g.channels = {p: self.channels[grp.channel_key(g.key, p)] for p in grp.PARTS
+                          if grp.channel_key(g.key, p) in self.channels}
+            if g.category_id and "watch_planning" in g.channels:
+                self.groups[g.key] = g
+                self.group_by_category[g.category_id] = g.key
 
         self.tags: dict[str, TagDef] = {}
         for t in forum_spec.get("tags", []):

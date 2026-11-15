@@ -14,7 +14,7 @@ import discord
 log = logging.getLogger(__name__)
 
 # Bump when the card layout changes; old cards are refreshed once at startup.
-CARD_VERSION = 2   # 2: "Post-watch discussion" label + no-spoilers reminder
+CARD_VERSION = 3   # 2: "Post-watch discussion" label + no-spoilers reminder; 3: no 👍 footer
 SPOILER_BUTTON_LABEL = "Post-watch discussion"
 SPOILER_BUTTON_EMOJI = "🔓"
 

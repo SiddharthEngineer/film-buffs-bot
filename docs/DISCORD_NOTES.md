@@ -28,6 +28,11 @@ Things checked against current docs or live tests while building. Re-check anyth
 - **Scheduled events** (checked 2026-11-11): EXTERNAL events go ACTIVE at their start time and COMPLETED at their end time automatically. Name 1–100 chars, description ≤ 1000, location ≤ 100. Max 100 SCHEDULED/ACTIVE events per server.
 - **Reactions** are in the non-privileged `GUILD_MESSAGE_REACTIONS` intent (in `Intents.default()`): add, remove, remove-all, remove-emoji events. A bot can only add **its own** reaction; it can't react on a member's behalf.
 - Text channel topic ≤ 1024 chars; forum guidelines ≤ 4096.
+- **Owner/admin see everything** (checked 2026-11-15, permissions topic): ADMINISTRATOR "bypasses channel permission overwrites", and the guild owner gets all permissions (`compute_base_permissions`). A private group's channels can't be hidden from them.
+- **Events in hidden channels** (checked 2026-11-15, guild-scheduled-event): for VOICE/STAGE events, "Get Permissions" lists VIEW_CHANNEL on the event's channel, which implies members who can't see the channel don't get the event. The docs don't say the event list is filtered. **Re-verify live** with a non-member, non-admin account.
+- **Duplicate channel names** are allowed (no uniqueness rule in the docs; common in practice). setup_server.py tracks channels by key, so each group's `#watch-planning` is separate.
+- **Thread mentions on mobile** (owner report, 2026-11-15): `<#thread_id>` for a forum post renders as **"#unknown"** in the phone app when the client hasn't loaded that thread (archived posts especially); desktop resolves it. Link movie posts with a masked link `[Title](https://discord.com/channels/<guild>/<thread>)` instead (bot messages and embeds support masked links). Channel mentions of normal channels are fine.
+- **discord.py 2.7:** `InteractionResponse.send_message(view=None)` raises `AttributeError` (it calls `view.is_finished()`); leave `view` out instead. `edit_message(view=None)` is fine and removes components.
 - Message Content intent is needed for anything reading message text in listeners (bots in < 100 servers just toggle it on).
 
 ## TMDB
@@ -44,3 +49,9 @@ Things checked against current docs or live tests while building. Re-check anyth
 - `https://letterboxd.com/tmdb/<id>` redirects to the film page in a real browser (confirmed by the owner).
 - **List and watchlist feeds are blocked** (checked 2026-11-11): `/<user>/list/<slug>/rss/`, `/<user>/lists/rss/` and `/<user>/watchlist/rss/` return Cloudflare's 403 challenge to the bot's honest User-Agent, while `/<user>/rss/` still works. A new list does show up in the main feed as a `letterboxd-list-<n>` item, but with only the first few films, no TMDB IDs, and only once. So watchlists come from the member's data export (`/letterboxd sync` since Phase 8; was `/watchlist import`).
 - **Official API:** private beta, access by application (letterboxd.com/api-beta). Its pages also block automated readers, so its terms weren't checked from here.
+
+## Phase 10 checks (2026-11-13)
+- **Scheduled events, VOICE** (guild-scheduled-event): `channel_id` required, `entity_metadata` null, `scheduled_end_time` optional. Creating needs CREATE_EVENTS plus VIEW_CHANNEL and CONNECT on the channel. Editing/deleting an event the bot created: CREATE_EVENTS or MANAGE_EVENTS for the bot; other members need MANAGE_EVENTS (plus View/Connect). Voice events **don't auto-start** (only EXTERNAL ones do); a SCHEDULED event left unstarted is set to CANCELED some hours after its start time; an ACTIVE voice event ends a few minutes after the last person leaves.
+- **Role pings:** a role is pinged if it's `mentionable` (or the sender has MENTION_EVERYONE); `allowed_mentions.roles` takes role IDs. The ping roles are created mentionable.
+- **Role hierarchy** (permissions, Permission Hierarchy): "A bot can grant roles to other users that are of a lower position than its own highest role." Needs MANAGE_ROLES. Create Guild Role has no position parameter; new roles land at the bottom (above @everyone), so below the bot's role. `setup_server.py --plan` warns if a ping role is above the bot's role.
+- **Heads-up from the docs:** "Starting November 16, 2026, channels will be obfuscated if your bot doesn't have permissions to view them." The bot only uses channels it can see, so nothing to change.

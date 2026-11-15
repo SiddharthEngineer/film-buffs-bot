@@ -4,18 +4,24 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from ..pool import post_link
 from ..tmdb import TMDBError, parse_choice
 
 if TYPE_CHECKING:
     from ..bot import FilmBuffsBot
 
 log = logging.getLogger(__name__)
+
+SLOTS = [app_commands.Choice(name="This week / month", value="this"),
+         app_commands.Choice(name="Next week / month", value="next")]
+GROUP_HELP = "main (the weekly vote) or a private group (its monthly vote)"
 
 
 def is_admin(member, admin_role: str) -> bool:
@@ -76,16 +82,38 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
                                    json.loads(row["genre_tags"]))
         log.info("%s resynced TMDB %s", interaction.user.id, tmdb_id)
         await interaction.followup.send(
-            f"✅ Resynced <#{row['thread_id']}>: info card re-rendered, tags "
+            f"✅ Resynced {post_link(self.bot.config.guild_id, row)}: info card re-rendered, tags "
             f"{', '.join(t.name for t in tags) or '(none)'}.", ephemeral=True)
 
-    @app_commands.command(name="pick", description="Set this or next week's movie (closes an open vote early)")
-    @app_commands.describe(week="Which watch week", title="Start typing and pick the movie")
-    @app_commands.choices(week=[app_commands.Choice(name="This week", value="this"),
-                                app_commands.Choice(name="Next week", value="next")])
+    def _service(self, group: str):
+        """The vote service for /admin's group option, or None if unknown."""
+        if group == "main":
+            return self.bot.weekly
+        return self.bot.group_votes.get(group)
+
+    async def _group_choices(self, interaction: discord.Interaction, current: str):
+        out = [app_commands.Choice(name="main (weekly vote)", value="main")]
+        out += [app_commands.Choice(name=f"{g.pool.name} (monthly vote)", value=k)
+                for k, g in self.bot.group_votes.items()]
+        cur = current.lower()
+        return [c for c in out if cur in c.name.lower()][:25]
+
+    async def _unknown_group(self, interaction: discord.Interaction, group: str) -> bool:
+        if self._service(group) is not None:
+            return False
+        await interaction.response.send_message(
+            f"❌ Unknown group {group!r}. Pick one from the list.", ephemeral=True)
+        return True
+
+    @app_commands.command(name="pick", description="Set a week's or month's movie (closes an open vote early)")
+    @app_commands.describe(group=GROUP_HELP, slot="This or next week (main) / month (a group)",
+                           title="Start typing and pick the movie")
+    @app_commands.choices(slot=SLOTS)
     @admin_only()
-    async def pick(self, interaction: discord.Interaction, week: app_commands.Choice[str],
-                   title: str) -> None:
+    async def pick(self, interaction: discord.Interaction, group: str,
+                   slot: app_commands.Choice[str], title: str) -> None:
+        if await self._unknown_group(interaction, group):
+            return
         await interaction.response.defer(ephemeral=True, thinking=True)
         tmdb_id = parse_choice(title)
         if tmdb_id is None:
@@ -105,9 +133,62 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
                 return
             await self.bot.movies.ensure_post(movie, added_by=interaction.user, pitch=None,
                                               status="backlog", source="admin")
-        reply = await self.bot.weekly.admin_pick(interaction.user.id, week.value, tmdb_id)
+        reply = await self._service(group).admin_pick(interaction.user.id, slot.value, tmdb_id)
         await interaction.followup.send(reply, ephemeral=True,
                                         allowed_mentions=discord.AllowedMentions.none())
+
+    @app_commands.command(name="clear", description="Undo a weekly or monthly pick (no movie then)")
+    @app_commands.describe(group=GROUP_HELP, slot="This or next week (main) / month (a group)")
+    @app_commands.choices(slot=SLOTS)
+    @admin_only()
+    async def clear(self, interaction: discord.Interaction, group: str,
+                    slot: app_commands.Choice[str]) -> None:
+        if await self._unknown_group(interaction, group):
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        reply = await self._service(group).admin_clear(interaction.user.id, slot.value)
+        await interaction.followup.send(reply, ephemeral=True,
+                                        allowed_mentions=discord.AllowedMentions.none())
+
+    @app_commands.command(name="discussion",
+                          description="Move a group's monthly discussion event (Central time)")
+    @app_commands.describe(group="Which private group", month="Whose discussion",
+                           date="YYYY-MM-DD", time="HH:MM, 24-hour (default 20:00)")
+    @app_commands.choices(month=[app_commands.Choice(name="This month's movie", value="this"),
+                                 app_commands.Choice(name="Next month's movie", value="next")])
+    @admin_only()
+    async def discussion(self, interaction: discord.Interaction, group: str,
+                         month: app_commands.Choice[str], date: str, time: str = "20:00") -> None:
+        svc = self.bot.group_votes.get(group)
+        if svc is None:
+            await interaction.response.send_message(
+                "❌ Pick a private group from the list (the weekly vote has no discussion event).",
+                ephemeral=True)
+            return
+        tz = self.bot.config.tz
+        try:
+            start = datetime.strptime(f"{date.strip()} {time.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Use `date:` like 2027-01-02 and `time:` like 19:30.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        reply = await svc.reschedule(month.value, start)
+        log.info("%s rescheduled the %s %s discussion to %s", interaction.user.id, group,
+                 month.value, start)
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @pick.autocomplete("group")
+    async def _pick_group(self, interaction: discord.Interaction, current: str):
+        return await self._group_choices(interaction, current)
+
+    @clear.autocomplete("group")
+    async def _clear_group(self, interaction: discord.Interaction, current: str):
+        return await self._group_choices(interaction, current)
+
+    @discussion.autocomplete("group")
+    async def _discussion_group(self, interaction: discord.Interaction, current: str):
+        return [c for c in await self._group_choices(interaction, current) if c.value != "main"]
 
     @pick.autocomplete("title")
     async def _pick_title(self, interaction: discord.Interaction, current: str):

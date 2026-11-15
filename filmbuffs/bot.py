@@ -17,15 +17,16 @@ from .botlogs import DiscordLogHandler
 from .config import Config
 from .db import MIGRATIONS, Database
 from .letterboxd import LetterboxdService
+from .monthly import GroupVoteService
 from .movies import MovieService
+from .pool import PoolService
 from .spoilers import SpoilerService
 from .tmdb import TMDB
-from .votes import VoteService
 from .weekly import WeeklyService
 
 log = logging.getLogger("filmbuffs")
 
-VERSION = "0.9"
+VERSION = "0.12"
 USER_AGENT = f"FilmBuffsBot/{VERSION} (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd",
               "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly",
@@ -55,10 +56,20 @@ class FilmBuffsBot(commands.Bot):
         self.availability = AvailabilityService(self)
         self.spoilers = SpoilerService(self)
         self.letterboxd = LetterboxdService(self)
-        self.votes = VoteService(self)
+        self.pool = PoolService(self)
         self.weekly = WeeklyService(self)
+        # Private groups (Phase 12): one monthly vote (with its own pool) per group.
+        self.group_votes = {k: GroupVoteService(self, g) for k, g in config.groups.items()}
         self.botlogs = DiscordLogHandler(self)
         self._announced = False
+
+    def group_of(self, channel) -> str | None:
+        """The private group whose category a channel (or a thread in one) is in."""
+        if channel is None:
+            return None
+        parent = getattr(channel, "parent", None)
+        cat = getattr(parent or channel, "category_id", None)
+        return self.config.group_by_category.get(cat) if cat else None
 
     async def setup_hook(self) -> None:
         self.botlogs.start()

@@ -2,7 +2,9 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–9 and 5R are built and live (see [STATUS.md](STATUS.md)); only 5R's vote picker waits for the first vote (Fri 2026-11-13). Phase 9 went live 2026-11-12; Phase 10 is planned, not started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–10, 5R and 12 are built and live (see [STATUS.md](STATUS.md)). Phase 12 (private groups; the monthly movie moved out of the main server) went live 2026-11-15 and waits for the owner's `setup_server.py --apply`, a restart and a hands-on test. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+
+**2026-11-15 (owner):** 👍 reactions no longer count for anything; the leaderboard, `/top` and vote tracking are removed. `/nominate` also creates the movie's post (with a pitch), like `/addmovie`. See STATUS "Fixes of 2026-11-15".
 
 ## Guiding decisions (agreed with the owner)
 
@@ -143,9 +145,124 @@ Owner (2026-11-11): set them automatically. Both tags already exist as bot-only 
 - Tags use up the 5-tag budget before genres, so a film In Theaters or Streaming shows one fewer genre.
 - **Narrowed by the owner after the first dry run (2026-11-12):** the tags are only for new films. In Theaters = first US run within 60 days and not out at home; re-releases are ignored (they vary by theater chain). Streaming = first released within the last year and now watchable at home (digital release, subscription, rent or buy). Every card still lists subscription services ("📺 Streaming on …") even without the tag.
 
-## Phase 10: engagement stats (planned)
+## Phase 10: rolling nominations, one always-open vote, monthly movie (built; see STATUS.md)
 
-From the SQLite data already stored: who watched what, rating spreads (per member, per film, group vs. solo), most active posts, weekly-pick participation (nominations, voters, turnout, how far down rankings were used). Shape (slash commands, a monthly post, or both) to be agreed with the owner first.
+Owner (2026-11-13): replace Phase 5R's split week (nominate Mon–Thu, vote Fri–Sun) with **one period where nominations and votes update as they happen**.
+
+- Each member keeps up to **3 active nominations, ranked 1–3** (owner, 2026-11-13), in **one shared pool** used by both the weekly and the monthly ballot (below).
+- **The weekly ballot uses one nomination per member**, their highest-ranked one that's still eligible. The other two are backups: when a member's film wins (either track) or is otherwise removed, their next nomination moves up and next week's ballot updates by itself. This also keeps the ballot within the 25-option dropdown limit (one film per member).
+- **Nominations roll over** from week to week until the member withdraws them or the film wins. Most of the ballot is expected to carry over, so voting can start right away.
+- **Voting is open the whole week**, closing Sun 11:59 PM. Members can rank and re-rank any time, so they can react to nominations that arrive later in the week.
+- Still ranked choice (IRV, same counting and tie-breaks as 5R); partial rankings are already fine, so a late nomination is just unranked on older ballots.
+- The private member view from Phase 11 could double as "my nominations + my ranking".
+- **Managing nominations** (owner, 2026-11-13; exact UI not decided): **managing them only by typing commands is fine** (e.g. `/nominate film: rank:`, `/unnominate`, and a command that shows "your nominations 1–3" privately). Buttons in `#watch-planning` that open a private (ephemeral) view are a nice extra, not required. Discord limit: buttons and modals can't offer the TMDB search-as-you-type that `/nominate` has, so adding a film stays a command either way. Check the current modal docs before deciding.
+- To decide when planned: whether rankings also roll over to the next week; what happens to a ranking when a film is withdrawn or nominated late (drop it and close the gap? notify voters?); whether there's a late-nomination cutoff for fairness; whether "N members have voted" stays the only thing shown while open; how the switch-over from 5R works mid-cycle; and updated `/schedule`, ballot, topic and welcome text.
+- Comes before the stats phase (owner, 2026-11-13).
+
+### Monthly movie (owner, 2026-11-13)
+
+Interest in the club varies, so there are two tracks: a **weekly movie** for invested members and a **monthly movie** that casual members can plan around.
+
+Agreed (owner, 2026-11-13):
+- The monthly movie is **on top of** the weekly movies; the weekly track never pauses. In the monthly film's week, invested members have two films.
+- **No separate nominations:** both tracks draw from the same pool of up to 3 active nominations per member.
+- `#watch-planning` always has **two ballots open: next week and next month**, both using the ranked-choice (IRV) picker.
+- **The monthly vote takes precedence.** The weekly pick may never take the film that is **currently winning the monthly vote**; the weekly gets second pick. Proposed mechanism (Claude, to confirm): when the weekly vote closes, count the monthly vote as it stands; if its leader is on the weekly ballot, that film is dropped from the weekly count and its votes go to the voters' next choices. The rule only applies at the weekly close; the monthly leader is never shown during the week, because votes are secret until each vote closes and removing it live would reveal the monthly standings.
+- **The monthly ballot also uses each member's #1** (highest-ranked eligible) nomination (owner, 2026-11-13), so both ballots show the same films; voters rank them separately for each. Because the monthly vote runs for weeks, its ballot changes as weekly winners leave and backups move up. A film that joins mid-month is just unranked on existing monthly ballots, so voters may want a nudge to look again.
+- **A film picked for the weekly leaves the monthly vote** right away: it drops off the monthly ballot and out of everyone's monthly rankings (later ranks move up), and its nominator's next nomination moves up. Same when the monthly winner is picked: it leaves the pool.
+
+Proposed by Claude, still to confirm:
+- **A real watch party:** the monthly film gets a fixed date and time (e.g. the last Saturday of the month, evening) in the Watch Party voice channel, as a Discord scheduled event with a start time. The weekly event spans the whole week.
+- **Longer lead time:** the monthly vote closes well before the watch party (e.g. about 2 weeks), so casual members can find, rent or buy the film.
+- Voters who had ranked a film that left the monthly ballot may need a heads-up.
+- Option: limit the monthly ballot to films that are easy to watch (TMDB's Streaming / In Theaters / rent-or-buy data from Phase 9).
+- **Opt-in ping roles**, so casual members only hear about what they care about: e.g. `@Weekly Movie` and `@Monthly Movie`, self-assigned with buttons. Announcements ping the matching role instead of everyone. Roles go through `server.yaml`; the bot already has Manage Roles, but its role must sit above these roles.
+- **Labelling:** "🌙 Monthly movie" vs "🎬 Weekly movie" in the announcement, event name, `#watch-log` line and `/schedule`. Possibly a forum tag (19 of 20 tag slots are used, so one is left).
+- Later variation: a rotating member curates the monthly options.
+- To decide: whether the "monthly leader" check at the weekly close is right; watch-party day/time; when the monthly vote opens and closes; whether the monthly ballot is limited to easy-to-watch films; role names and where the role buttons go; how `/admin pick` and `/admin clear` handle the monthly movie; stats for each track (Phase 11).
+
+### Phase 10 decisions (owner, 2026-11-13, before the build)
+- **Rankings carry over** from one vote to the next on each track. A film that leaves the ballot (won either track, withdrawn, its nominator's #1 changed) drops out of every ranking and later ranks move up. A film that joins is unranked; the picker marks it 🆕 ("N films joined since you last ranked"). No DMs.
+- **No late-nomination cutoff**: whatever is on the ballot at Sun 11:59 PM is counted.
+- **"N members have a ranking"** stays the only thing shown while a vote is open.
+- **Monthly schedule:** month M is voted on during M-1 and **closes on the last day of M-1 at 11:59 PM** (the next month's vote opens right away). The film is watched any time during M. **Discussion: a voice event in Watch Party on the 1st of M+1 at 8 PM CT** (2 h). Admins can move it (edit the event in Discord, or `/admin discussion`); the bot never resets its time. At the end of M the film is tagged Watched and logged.
+- **First monthly movie: December 2026** (vote open now → Mon Nov 30 11:59 PM; discussion Fri Jan 1 2027, 8 PM).
+- **Monthly leader rule confirmed:** at each weekly close, the film currently winning the monthly vote is left out of the weekly count (its votes go to next choices); it stays on the ballot. Never shown while voting. When both close at the same minute (a month ending on a Sunday), the monthly vote is counted first.
+- **Ping roles:** `@Weekly Movie` / `@Monthly Movie`, mentionable, created through `server.yaml` `roles:`; toggle buttons on the 📖 How to page. Weekly pick announcements ping `@Weekly Movie`, monthly ones `@Monthly Movie`.
+- Claude's defaults (not asked): no easy-to-watch filter on the monthly ballot; no new forum tag (the monthly film uses Up Next and isn't pinned, since a forum has one pin and the weekly film has it); nominating = commands plus a private 📋 My nominations view with ⬆️/🗑️ buttons; `/admin pick|clear` take a `slot` (this/next week or month).
+
+## Phase 12: private groups with their own monthly movie (built; see STATUS.md)
+
+Owner (2026-11-15): the monthly movie moves out of the main server into **private groups** of friends. The first group is **OSU**. More can be added later (e.g. high-school friends, a partner's friends). The main server keeps only the weekly vote. Each group's vote is fully independent of the main vote and of every other group.
+
+### Main server
+- **Weekly only.** The monthly track, the monthly-leader rule at the weekly close, the 🌙 ballot in `#watch-planning` and the monthly wording in topics and the How to page are removed.
+- **The December main monthly vote is deleted**, along with its ballot message. Nobody had ranked it.
+- The two existing pool nominations stay with the main weekly vote.
+- `@Monthly Movie` role: see the open questions below.
+
+### Groups (config)
+- A `groups:` list in `server.yaml`, one entry per group (`key`, display name, role name). From each entry, `setup_server.py` makes:
+  - a **role**, which is both the membership and the group's ping;
+  - a **category**, hidden from `@everyone` and visible to the role and `@bot`;
+  - a **planning** channel (ballot, results, announcements), a **chat** channel and a **voice** channel.
+
+  Adding a group means adding an entry, then `--plan` / `--apply`.
+- **Membership is the Discord role.** The owner assigns it in Discord (Server Settings → Roles, or right-click a member → Roles). There is no bot command for it.
+- **Admins can't be left out.** Discord always shows every channel to the server owner and to any role with Administrator, including Moderator. Docs checked 2026-11-15: Administrator "bypasses channel permission overwrites" and the owner gets all permissions. The owner can mute or hide a group's category in their own client.
+- **Context comes from the channel.** `/nominate`, `/unnominate`, `/nominations`, `/schedule` and the ballot buttons act on a group when used in a channel (or a thread of one) in that group's category. Anywhere else, they act on the main server. Ballot button IDs carry the group key.
+
+### Group voting
+- Each group has its **own pool** (up to 3 ranked nominations per member, separate from the main pool and other groups), its **own ballot** (each member's #1) and its own rolling rankings.
+- It uses the **same monthly schedule as Phase 10**:
+  - month M is voted on all through M-1 and closes on the last day of M-1 at 11:59 PM;
+  - the film is watched during M;
+  - discussion is a voice event in the **group's voice channel** on the 1st of M+1 at 8 PM CT.
+- **Eligibility for a group's ballot:** any film with a `#movies` post that **this group** hasn't already watched. A film's main status (Backlog, Watched, …) doesn't matter. Films the main weekly or another group already watched are fine, and the same film can sit in several pools at once.
+- **Watch history lives in the DB** (one row per group per monthly winner). It isn't read back from the planning channel, where messages can be edited or deleted and reading them back means paging through the whole history. The result posts in the planning channel are the visible log.
+- **Privacy: nothing about a group shows outside its category.**
+  - No `#watch-log` line, no `#announcements` post, no tag or status change and no pin on the `#movies` post.
+  - `/schedule` outside the group doesn't mention it.
+  - No group stats in Phase 11.
+  - Nominating a film that has no post creates the normal `#movies` post, which looks like any other add and doesn't name the group.
+  - Members are free to talk in the public movie threads; that's their choice.
+- **`/admin pick|clear|discussion`** take a `group:` (`main` or any configured group key, with autocomplete). Main uses this/next week; groups use this/next month.
+
+### Data
+- An append-only migration adds `group_key` (`main` for existing rows) to the pool, ballot, rankings and months tables, and a group watch-history table.
+- The same migration deletes the main December month and its (empty) rankings.
+
+### Rollout
+- **First OSU vote:** December 2026, opens on deploy, closes **Mon Nov 30, 11:59 PM CT**. Discussion Fri Jan 1 2027, 8 PM, in the OSU voice channel.
+- After the owner's `setup_server.py --apply`: restart, then assign `@OSU` to the friends.
+
+### To verify during the build (record in DISCORD_NOTES)
+- That a VOICE event in a hidden channel is invisible to members without View Channel. The docs list View Channel as the "Get" permission for such events, which implies it is hidden, but they don't say the events list filters by it. This has to be checked with an account that has neither the role nor Administrator, since the owner sees everything.
+- That two text channels may share a name (Discord allows it in practice; the docs say nothing about uniqueness).
+
+### Decided (owner, 2026-11-15)
+- **Channel names:** every group gets `#watch-planning`, `#chat` and `#voice` inside its own category (duplicate names are allowed; keys tell them apart). Only OSU for now.
+- **`@Monthly Movie` is deleted** (with its How to button); a fresh `@OSU` role is created.
+
+## Phase 11: stats page, private member views, Film Buffs Wrapped (defined, not planned)
+
+Owner (2026-11-13): each member's own stats stay **private**; **group-wide totals are public**. No website: everything happens inside Discord (a web page would need Discord login, a domain with HTTPS and a public port, which is more to run and secure than a private server needs). Details still to be worked out with the owner before a step-by-step plan is written.
+
+- **New stats channel** (name TBD, e.g. `#stats` or `#engagement`), added through `server.yaml` + `setup_server.py`. Read-only for members, like `#welcome-and-rules`: the bot keeps a few messages up to date and edits them in place, so the channel reads like a page. Group totals only, never per-member numbers. Possible content: films logged this month/year, group watches, hours watched, top genres, most-discussed posts, weekly-pick turnout.
+- **Private member view:** a `/me` command and/or a "📋 My stats" button on the stats page opens a reply only that member can see (ephemeral). It shows their own stats so far, and could also show their active nominations, saved ranking and linked Letterboxd account (see Phase 10). Ephemeral replies disappear when dismissed or after a reload, so members reopen them; all data lives in SQLite.
+- **Film Buffs Wrapped** (end of year, like Spotify Wrapped): a "🎁 Your <year> Wrapped" button on the stats page opens a private slideshow with ◀ ▶ buttons, one stat per slide. A **"Share"** button posts the member's Wrapped publicly only if they click it. Slides are optional image cards (would add an image library such as Pillow). Slide ideas from the first talk:
+  - films logged, rewatches, top genres, hours watched
+  - average rating vs. the group's
+  - "taste twin" (the member whose ratings match most closely); owner liked it, but it names another member, so it needs a closer look
+  - most contrarian rating
+  - nominations made and won; how often their 1st choice won; group-watch turnout
+  - a group Wrapped post in the stats channel at the same time
+- **Data gaps to close early** (so a full year is there by December):
+  - **Runtime** isn't stored. Fetch it from TMDB (the Phase 9 daily call can include it).
+  - **Chat activity** isn't counted. If "most active in discussions" is wanted, start counting messages per member per post (author and time only; no message content needed), and backfill from post history.
+- Everything else (Letterboxd entries with ratings, nominations, ranked votes, weeks) is already in SQLite.
+- Rating stats must keep guiding decision 3 (ratings are spoilers): fine in a member's private view, and as group-wide averages, but never film-by-film ratings on the public page without thinking about spoilers.
+- Probably two pieces: the stats page + private view first, Wrapped in December.
 
 ## Later ideas
 - Off-machine backup copies (needs a destination from the owner).
@@ -161,4 +278,14 @@ Answered 2026-11-12 (Phase 8): `/letterboxd` becomes a group (`link`/`sync`/`unl
 
 Settled 2026-11-12: the Phase 4 watch → review question (the Phase 8 poller guard covers both cases).
 
-No open questions right now. Phase 10 (stats) needs a short design talk before it's built.
+Answered 2026-11-13: member stats stay private (ephemeral views), group totals go in a new read-only, bot-maintained stats channel; Wrapped happens inside Discord, not on a website; "favorites" isn't a separate feature, it becomes several rolling nominations per member (Phase 10).
+
+Answered 2026-11-13: the voting phase comes first (renumbered to Phase 10; stats is Phase 11).
+
+Answered 2026-11-13 (Phase 10): rankings roll over; no late cutoff; monthly vote closes on the last day of the prior month; discussion on the 1st at 8 PM in Watch Party; first monthly movie December; monthly leader rule confirmed; ping roles with buttons on the How to page.
+
+Answered 2026-11-15 (Phase 12): monthly moves into private, role-gated groups (OSU first); main is weekly-only; group repeats allowed except a film that group already watched; no group stats; no `#watch-log` for groups; `/admin` takes a group.
+
+Answered 2026-11-15 (Phase 12): group channels are `#watch-planning` / `#chat` / `#voice`; `@Monthly Movie` is deleted and `@OSU` created fresh.
+
+Open: Phase 11 needs more brainstorming before a plan is written (see its points). Phase 12 leftover: whether to remind a group a few days before its discussion.

@@ -1,4 +1,4 @@
-# Status (as of 2026-11-12)
+# Status (as of 2026-11-15)
 
 > **Channel names (2026-11-11):** `#movies` (key `movies`; was briefly `#pre-watch-discussion`) and **`#post-watch-discussion`** (key `movie_spoilers`, was `#movie-spoilers`). Older sections below use the names of their time.
 
@@ -116,7 +116,7 @@ Deployed 2026-11-11: clean restart, startup notice seen in `#bot-logs`, first ba
 
 ## Phase 5: weekly pick, votes, watchlists ✅ (live, owner-tested 2026-11-11)
 *The ballot → poll → watch schedule below was replaced by Phase 5R (2026-11-12).*
-Owner tested `/nominate`, `/schedule`, `/top` and the pinned leaderboard. `/admin pick` used for real: **Wildwood (2026)** is this week's movie (week of Nov 9; Up Next, event created, both posts pinned).
+Owner tested `/nominate`, `/schedule`, `/top` and the pinned leaderboard. `/admin pick` used for real: **Wildwood (2026)** is this week's movie (week of Nov 9; Up Next, event created, both posts pinned). **Cleared 2026-11-12** with the new `/admin clear` (see below): the owner wants everyone focused on picking next week's movie.
 Bot version 0.6.1, schema 7. 90 unit tests pass. Design and owner decisions are in ROADMAP.md (Phase 5).
 
 - **Rename:** `#pre-watch-discussion` → **`#movies`** via `server.yaml` (applied; `--plan` clean). Bot wording says "#movies post" / "spoiler-free post". The 105 post-watch starters were rewritten once to link back to "#movies" (tracked by `bot_meta.post_watch_starter_version`). `#watch-planning` topic and the welcome message describe the weekly pick and `/watchlist`.
@@ -189,3 +189,73 @@ Bot version 0.9, schema 10. 138 unit tests pass. Rules narrowed with the owner a
 ## Welcome page split (2026-11-12) ✅
 - `#welcome-and-rules` now has two bot-maintained embeds from `server.yaml` `messages:`. First, **🎬 Welcome to Film Buffs** (key `welcome_rules`, edited in place, same message ID): the owner's friendly overview (the weekly loop, pre-/post-watch discussions, Letterboxd, upcoming stats, ideas welcome, be nice). Second, **📖 How to** (new key `how_to`): the old detailed instructions (movies and 👍, weekly pick, spoiler policy, Letterboxd commands).
 - Applied with `setup_server.py --apply`; `--plan` reports no changes. Order holds because messages are applied in YAML order and the first one keeps its ID. If either message is deleted, reposting it would put it out of order.
+
+## `/admin clear` (2026-11-12) ✅
+- New `WeeklyService.admin_clear` + **`/admin clear week:<This week|Next week>`**: for a picked week, the film goes back to `winner_prev_status`, is retagged, both forum posts are unpinned, the bot's scheduled event is deleted, the week becomes `skipped` ("cleared by an admin", no `#watch-log` line), and `#watch-planning` gets a ⏭️ note. `/admin pick` still works on that week afterwards. 1 new test (139 pass). Bot restarted.
+- Used once (run from a one-off script with the same code, since the owner asked for it): **Wildwood (2026)** cleared for Nov 9–15. Checked in Discord: back to Backlog, both posts unpinned, no events left, ⏭️ note posted. The "🎬 Watch week Nov 9–15: Wildwood" message in `#announcements` was left alone.
+
+## Phase 10: rolling nominations, always-open weekly vote, monthly movie ✅ (live 2026-11-13; the monthly part moved into private groups in Phase 12)
+Bot version 0.10, schema 11. 140 unit tests pass (15 new in `tests/test_phase10.py`). Replaces 5R's Mon–Thu nominate / Fri–Sun vote split. Decisions are in ROADMAP "Phase 10 decisions".
+- **Pool** (`filmbuffs/pool.py`): `pool_nominations` holds up to 3 ranked nominations per member; a film belongs to one member at a time. `/nominate [title] [rank]`, `/unnominate film:` (autocomplete of yours), `/nominations` and the **📋 My nominations** button (private, ⬆️ move up / 🗑️ withdraw). Nominations roll over until withdrawn or won.
+- **Live ballot:** `ballot_entries` = each member's highest-ranked nomination that's still Backlog or Watched (solo) and has a post, in the order they joined; capped at 25 (dropdown limit; films already on it keep their place). Recomputed after every pool change and every 30 s tick (statuses change elsewhere). Both ballots show the same films.
+- **Rankings** (`track_rankings`, track `weekly` | `monthly`): roll over. A film leaving the ballot is deleted from every ranking and the gap closes. The picker marks films that joined since the member's last change with 🆕.
+- **Weekly** (`filmbuffs/weekly.py`): watch week T's vote opens Mon 12:00 AM of T-1 (state `voting` straight away) and closes Sun 11:59 PM. At the close: the film leading the open monthly vote is set aside (`weeks.excluded_tmdb_id`), the rest are frozen into `week_options`, the rankings are snapshot into `ranked_votes` for stats, then IRV as in 5R (empty ballot → skip, one film → wins without a vote, no rankings → skip). The winner leaves the pool, so its nominator's next film moves up. Announcements say "🎬 Weekly movie" and ping `@Weekly Movie`; the event is "🎬 Weekly movie: …". Watch week, pins and `#watch-log` lines are unchanged.
+- **Monthly** (`filmbuffs/monthly.py`, `months` table; `month_options` + `month_votes` snapshot at close): vote 1st → last day of the month before, 11:59 PM; crowned film → Up Next, leaves the pool, a **voice event in Watch Party** on the 1st of the next month at `monthly.discussion_time` (20:00, 120 min), an announcement pinging `@Monthly Movie` (also says the next month's vote is open), a result note in `#watch-planning`. End of month → Watched, `#watch-log` line "🌙 Monthly · December 2026 · Title · won X–Y". Discord doesn't auto-start voice events; someone starts it, and an unstarted one is cancelled a few hours after its start time.
+- **Ballot messages:** one 🎬 per watch week and one 🌙 per month in `#watch-planning`, each with **🗳️ Vote** and **📋 My nominations**; they show the films, 🆕 for ones that joined in the last 2 days and "N members have a ranking". Old 5R `vote:<week>` buttons still resolve (period-keyed DynamicItems).
+- **Admin:** `/admin pick|clear slot:<This/Next week, This/Next month>`; `/admin discussion month: date: [time:]` moves (or recreates) the monthly discussion event.
+- **Roles:** `server.yaml` `roles:` (`weekly_ping` "Weekly Movie", `monthly_ping` "Monthly Movie", mentionable). `setup_server.py` now creates/renames roles (tracked as `role:<key>`, adopts a same-named unmanaged role) and posts message buttons (`buttons:` on `how_to`, custom_id `role:<key>`, handled by the bot's `RoleButton`). The bot reads role IDs from the state DB at startup, so **restart after applying**.
+- **Transition:** migration 11 moved open-ballot 5R nominations into the pool (there were none; Nov 16's single nomination had already won) and turned any `ballot`/`ballot_closed` week into `voting`. Week Nov 16–22 (picked) is unchanged. The **December monthly vote opened on the deploy**; the weekly vote for Nov 23–29 opens Mon Nov 16, 12:00 AM. Pre-migration copy: `data/pre-phase10.db`.
+- **Text:** `server.yaml` welcome, How to (new "Picking movies" section + "Pings" with buttons), `#watch-planning` and `#watch-log` topics.
+
+- **Nov 16–22 reopened (owner, 2026-11-13):** Wildwood (2026), the sole 5R nomination, was cleared with `admin_clear` (back to Backlog, event deleted; it is not in the pool, so it's only on a ballot if someone nominates it again). The week was set back to `voting` with a fresh 🎬 ballot in `#watch-planning`, closing **Sun Nov 15, 11:59 PM CT**; a notice was posted and the old 5R ballot message now says "Replaced". The "🎬 Watch week Nov 16–22: Wildwood" announcement in `#announcements` was left alone. Done with a one-off script using the bot's own code while the service was stopped for about a minute.
+
+## Fixes of 2026-11-15 ✅ (deployed; `setup_server.py --apply` for the text still to do)
+Owner requests. Schema 12, 141 unit tests pass (`tests/test_fixes_1115.py` new). Bot restarted 2026-11-15 20:37 CT.
+- **#bot-logs error fixed:** clicking **📋 My nominations** (or `/nominations`, or **🗳️ Vote** with nothing to rank) with no nominations crashed with `AttributeError: 'NoneType' object has no attribute 'is_finished'` (seen Nov 13 and Nov 15). discord.py's `send_message` can't take `view=None` (`edit_message` can). `vote_ui.send_private` leaves the view out when there is none.
+- **`#unknown` links on phones:** movie posts were linked as thread mentions (`<#thread_id>`), which the mobile app shows as "#unknown" for forum posts it hasn't loaded (most are archived). Ballots, results, announcements, `/schedule` and `/admin resync` now use masked links `[Title (Year)](https://discord.com/channels/<guild>/<thread>)` (`pool.post_link`). Checked live: both open ballots re-rendered with the links. Channel mentions (`<#channel>`) are unchanged.
+- **`/nominate` does `/addmovie`'s job:** new `pitch:` option; with `title:` it looks the film up on TMDB, creates the `#movies` post if needed (Backlog, with the pitch; source `nominate`) and replies with the post link, then nominates. Shared code: `cogs/movies.add_movie` / `post_note`. `/addmovie` stays for adding a film without nominating it.
+- **👍 no longer count (owner):** the pinned "🏆 Top 25 most wanted" + "By genre" message was deleted from `#watch-planning` (once, at startup, via `bot_meta.leaderboard_planning_message_id`); `/top`, the leaderboard loop, the reaction listeners and the startup 👍 re-read are gone (`filmbuffs/votes.py` deleted). Members can still react; nothing reads it. Ballot lines no longer show 👍/📋 counts.
+  - Migration 12 drops the `votes` table (24 rows), the `movies_starter` index and the `thumbs` columns of `week_options` / `month_options`.
+  - Tie-break in the runoff: `weekly.tie_break` is now `[interest, added]`, where interest = members with the film on their uploaded Letterboxd watchlist. `thumbs` is rejected in `server.yaml`.
+  - Info cards: the "👍 this message to vote for it in the weekly pick" footer is gone (`CARD_VERSION` 3). All 458 cards are refreshed once at startup, about 1 s apart (~10–15 min).
+  - Text: `server.yaml` (`#movies` and `#post-watch-discussion` guidelines, 📖 How to), README, `/watchlist` and `/letterboxd sync` replies. **Needs `setup_server.py --plan` / `--apply`** (plan: 3 changes: two forum guidelines and the How to message).
+- The "Votes", "Leaderboard", "Scores" and `/top` bullets in Phase 5 above are history now.
+
+
+## Phase 12: private groups with their own monthly movie ✅ (live 2026-11-15; waits for the owner's `setup_server.py --apply`, a restart and a hands-on test)
+Bot version 0.12, schema 13. 144 unit tests pass. Decisions are in ROADMAP "Phase 12". Pre-migration copy: `data/pre-phase12.db`.
+- **The main server is weekly-only.** The main monthly vote, the rule that kept the weekly vote off the monthly leader, `@Monthly Movie` (and its How to button), and every public mention of a monthly movie are gone.
+  - On the restart (22:02 CT) the bot deleted the 🌙 December ballot and the "🌙 Monthly vote for December 2026 is open" notice in `#watch-planning`. Nobody had ranked it.
+  - The two main nominations are unchanged.
+- **Groups** (`filmbuffs/groups.py`, `server.yaml` `groups:`). Each entry expands into:
+  - a mentionable role (`role:group_<key>`), which is both the membership and the ping;
+  - a category (`category:group_<key>`, placed above Admin);
+  - `#watch-planning`, `#chat` and `#voice` (keys `<key>_watch_planning` etc.), hidden from `@everyone` and visible to the role and `@bot`.
+
+  Only OSU is configured (category "🎓 OSU", role `OSU`, first month December 2026). The owner assigns the role in Discord. The owner and Administrator roles always see the channels.
+- **setup_server.py:**
+  - Expands `groups:`.
+  - Plans roles before channels. Overwrite targets can be `role:<key>`, and a role created in the same apply is filled in at run time.
+  - New `retire_roles:` list (key + name; deletes a role it created).
+  - `State.delete`.
+- **Per-group voting** (`monthly.GroupVoteService`, one per group in `bot.group_votes`):
+  - Own pool, ballot and rankings: pool `grp` = group key, ranking track `group:<key>`. 3 nominations per member per pool.
+  - Phase 10's monthly schedule. The discussion event goes in the group's `#voice`.
+  - Everything is posted in the group's `#watch-planning` and pings only the group role. No `#announcements` post, no `#watch-log` line, and no tag, status or pin change in `#movies`.
+  - A group's ballot takes any film with a post that **that group** hasn't picked before (`db.group_watched` = its months with a winner); main status doesn't matter. The main ballot keeps Backlog / Watched (solo).
+- **Context:**
+  - `/nominate`, `/unnominate`, `/nominations` and `/schedule` act on a group when used in its category (`bot.group_of`; a group needs `title:` on `/nominate`), and on the main vote anywhere else. Members without the role are refused.
+  - Button IDs carry the group: `vote:osu:2026-12`, `noms:osu:show`, `noms:osu:up:2`. Old `vote:2026-12` buttons answer "closed".
+  - Nominating a film with no post still creates the normal public `#movies` post, which doesn't name the group.
+- **Admin:**
+  - `/admin pick|clear group:<main|osu> slot:<This|Next>` (week for main, month for a group).
+  - `/admin discussion group: month: date: [time:]`.
+  - Clearing a group's pick lets the group nominate the film again.
+- **Schema 13:** `pool_nominations`, `ballot_entries`, `months`, `month_options` and `month_votes` gain `grp` (rebuilt). `months` dropped `winner_prev_status` and `log_message_id`. The main `monthly` rankings and months were deleted.
+- **Not yet verified live:** that the OSU voice event is invisible to non-members. Discord's docs list View Channel as required to get such an event, but don't say the events list is filtered. It needs an account with neither the role nor admin.
+- **`setup_server.py --plan` (2026-11-15):**
+  - Create: role OSU, category 🎓 OSU, `#watch-planning`, `#chat`, `#voice`.
+  - Change: `#movies` guidelines (from the 11-15 fixes), `#watch-planning` and `#watch-log` topics, channel order, the Welcome and How to messages.
+  - Delete: role Monthly Movie.
+
+  Until the apply and a restart, the bot has no groups, so no OSU vote is open yet.

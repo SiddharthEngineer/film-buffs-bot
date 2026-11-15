@@ -9,7 +9,7 @@ from filmbuffs.availability import (FIELD_NAME, JUSTWATCH_CREDIT, Availability,
                                     AvailabilityService, card_line, check_movies, classify,
                                     merge_flags)
 from filmbuffs.db import Database
-from filmbuffs.movies import REMINDER_NAME, VOTE_FOOTER, build_embed, set_availability
+from filmbuffs.movies import REMINDER_NAME, build_embed, set_availability
 from filmbuffs.tmdb import Movie, TMDBError
 
 TODAY = date(2026, 11, 12)
@@ -167,13 +167,13 @@ def test_card_field_sits_above_reminder_with_justwatch_credit():
     e = build_embed(movie, 5, None, Availability(streaming=["Netflix"]))
     names = [f.name for f in e.fields]
     assert names[-2:] == [FIELD_NAME, REMINDER_NAME]
-    assert JUSTWATCH_CREDIT in e.footer.text and e.footer.text.startswith(VOTE_FOOTER)
+    assert e.footer.text == JUSTWATCH_CREDIT     # no "👍 to vote" footer any more
     # Re-rendering replaces the field; losing availability drops field and credit.
     set_availability(e, Availability(streaming=["Max"]))
     assert [f.value for f in e.fields if f.name == FIELD_NAME] == ["📺 Streaming on Max"]
     set_availability(e, Availability())
     assert FIELD_NAME not in [f.name for f in e.fields]
-    assert e.footer.text == VOTE_FOOTER and e.fields[-1].name == REMINDER_NAME
+    assert e.footer.text is None and e.fields[-1].name == REMINDER_NAME
 
 
 def test_merge_flags_keeps_other_flags():

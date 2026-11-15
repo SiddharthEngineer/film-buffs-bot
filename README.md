@@ -5,7 +5,8 @@ A custom Discord bot plus an infrastructure-as-code setup script for **Film Buff
 - **Movies** live as posts in the `#movies` forum, one per film, created by the bot from TMDB data.
 - **Letterboxd** is where people log what they watch. The bot pulls those logs in and keeps everything in SQLite, so we can build engagement stats later.
 - **Spoilers** are kept out of `#movies` entirely; each film gets a companion post in `#post-watch-discussion` (created the first time someone opens it).
-- **Weekly pick**: next week's movie is decided this week. `/nominate` Mon–Thu (only nominated films are on the ballot), a ranked-choice vote Fri–Sun counted by instant runoff, then the watch week with a server event. A pinned leaderboard ranks every film by 👍.
+- **Weekly movie**: members keep up to 3 ranked nominations (`/nominate`); each member's highest one that's still available is on the ballot in `#watch-planning`. The 🎬 weekly vote is always open and closes Sunday night (ranked choice, instant runoff; rankings carry over week to week), then the watch week with a server event. Opt-in `@Weekly Movie` pings. Reactions on posts don't count as votes.
+- **Private groups** (`server.yaml` `groups:`): a role-gated category per group of friends (`#watch-planning`, `#chat`, `#voice`) with its own nominations and its own 🌙 monthly vote: it closes on the last day of the month before, the film is watched during its month and discussed in the group's `#voice` on the 1st. Nothing about a group shows outside its category; a group can pick any film it hasn't picked before.
 
 | Doc | What's in it |
 |---|---|
@@ -27,7 +28,6 @@ filmbuffs/            the bot package (python -m filmbuffs)
   db.py               SQLite schema + migrations (data/filmbuffs.db)
   tmdb.py             TMDB client: search, details, autocomplete
   movies.py           movie posts in #movies (create, embed, tags)
-  votes.py            👍 vote tracking, the pinned leaderboard post
   weekly.py           weekly pick: ballot, ranked vote (instant runoff), watch week
   vote_ui.py          the Vote button and the private ranking picker
   tags.py             which forum tags a post carries (5-tag limit)
@@ -58,7 +58,7 @@ cp .env.example .env && chmod 600 .env   # then fill in the three values
 
 `.env` needs `DISCORD_TOKEN`, `DISCORD_GUILD_ID` and `TMDB_API_KEY` (a TMDB v3 key or v4 read-access token both work).
 
-Discord application settings: **Message Content** intent on, **Server Members** and **Presence** off, Public Bot off. Invite with scopes `bot applications.commands` and permissions integer `2832634816326736` (View Channels, Manage Channels, Manage Roles, Manage Threads, Send Messages, Send Messages in Threads, Manage Messages, Pin Messages, Manage Webhooks, Embed Links, Add Reactions, Read Message History, Send Polls, Create Events). Pin Messages (added in Phase 5, for the leaderboard) is a separate permission from Manage Messages now. Manage Roles is only there because Discord requires it to set channel permission overwrites.
+Discord application settings: **Message Content** intent on, **Server Members** and **Presence** off, Public Bot off. Invite with scopes `bot applications.commands` and permissions integer `2832634816326736` (View Channels, Manage Channels, Manage Roles, Manage Threads, Send Messages, Send Messages in Threads, Manage Messages, Pin Messages, Manage Webhooks, Embed Links, Add Reactions, Read Message History, Send Polls, Create Events). Pin Messages (added in Phase 5; used for the forum pins) is a separate permission from Manage Messages now. Manage Roles is only there because Discord requires it to set channel permission overwrites.
 
 Check the connection (read-only):
 
@@ -97,17 +97,18 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 
 | Command | Where | What it does |
 |---|---|---|
-| `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#movies` (or links the existing one). Free text is rejected; pick from the autocomplete. |
-| 👍 on a movie's first message | `#movies` | Says you want to watch it. Ranks it on the leaderboard and the ballot. |
-| `/nominate [title]` / `/unnominate` | any channel (no title: inside a movie post) | Mon–Thu: one nomination per member on the open ballot; run again to swap. |
-| **🗳️ Vote** on the ballot | `#watch-planning` | Fri–Sun: rank as many films as you like, best first, in a private picker (Undo last / Clear). Saved on every pick; click Vote again to see or change it. |
-| `/schedule` | any channel | This week's movie and next week's nominations or vote. |
-| `/top [genre] [include_watched]` | any channel | The most-wanted films. |
-| `/watchlist show` · `clear` | any channel | What the bot has from your last export upload; clear removes it (your 👍 stay). |
+| `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#movies` (or links the existing one) without nominating it. Free text is rejected; pick from the autocomplete. |
+| `/nominate [title] [rank] [pitch]` | any channel (no title: inside a movie post) | Does what `/addmovie` does (creates the post if there's none, with the pitch), then adds the film to your nominations (up to 3, ranked 1–3). No rank: goes last. A rank inserts it there; with 3 already, it replaces that one. Nominating one of yours again with a rank moves it. Your highest eligible one is on the ballot. In a private group's channels, this uses that group's nominations instead (`title:` required). |
+| `/unnominate film:` | any channel | Withdraws one of your nominations (autocomplete lists yours). |
+| `/nominations` (or **📋 My nominations** on a ballot) | any channel | Your nominations, privately, with ⬆️ move-up and 🗑️ withdraw buttons. |
+| **🗳️ Vote** on the 🎬 or a group's 🌙 ballot | `#watch-planning` (main or a group's) | Any time: rank as many films as you like, best first, in a private picker (Undo last / Clear). Each vote's rankings are separate and carry over to its next vote; films that leave the ballot drop out and later ranks move up. 🆕 marks films that joined since you last ranked. |
+| Role buttons on **📖 How to** | `#welcome-and-rules` | Toggle the `@Weekly Movie` ping role. Group roles are assigned by an admin in Discord. |
+| `/schedule` | any channel | This and next week's movie or vote and your nominations. In a group's channels: that group's this and next month's movie or vote (with the discussion time) and your nominations there. |
+| `/watchlist show` · `clear` | any channel | What the bot has from your last export upload; clear removes it. |
 | `/spoiler` | inside a movie post | Links the movie's post-watch discussion (creates it if needed); inside a post-watch post, links back. |
 | Apps → **Mark as spoiler** | any message in a `#movies` post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
 | `/letterboxd link [username]` · `unlink` | any channel | Links your Letterboxd account (no username: shows which one is linked and your last sync). `unlink` stops posting. |
-| `/letterboxd sync file:` | any channel | Upload your Letterboxd export zip. Shows a preview (new / changed / removed entries, posts to create), then **Apply** or **Cancel**. Stores your history, edits the bot's embeds for entries you edited, deletes the bot's messages for entries you deleted, replaces your watchlist (each film counts toward the rankings like that member's 👍, shown as 📋; no reaction is added to the post). |
+| `/letterboxd sync file:` | any channel | Upload your Letterboxd export zip. Shows a preview (new / changed / removed entries, posts to create), then **Apply** or **Cancel**. Stores your history, edits the bot's embeds for entries you edited, deletes the bot's messages for entries you deleted, replaces your watchlist (watchlist films only break ties in the votes). |
 
 ## Admin cheat sheet
 
@@ -117,7 +118,9 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 |---|---|
 | `/admin resync [post]` | Re-renders a movie's info card (button, no-spoilers reminder) and re-applies its tags from the database; also refreshes its post-watch post's title and starter. Run it inside the `#movies` or post-watch post, or pick the post. Use it after editing a movie row by hand, or if a card or its tags look wrong. |
 | `/admin availability` | Re-checks In Theaters / Streaming for every movie against TMDB now (it also runs daily at 05:00 Chicago) and replies with what changed. Takes a few minutes. |
-| `/admin pick week:<This/Next week> title:` | Sets that week's movie. Closes an open vote early (its ballots are kept), puts a previously picked film back to its old tag, updates the event and announces it. If the week has started, it's pinned right away. |
+| `/admin pick group:<main or a group> slot:<This/Next> title:` | Sets that week's (main) or month's (group) movie. Closes an open vote early (its rankings are kept), updates the event and announces it. Main: puts a previously picked film back to its old tag, and pins it right away if the week has started. Groups never change tags. |
+| `/admin clear group: slot:<This/Next>` | Undoes that week's or month's pick: no movie then, the event is removed. Main: the film goes back to its old tag and its pins are removed, and the week shows "no pick (cleared by an admin)". A group can nominate a cleared film again. `/admin pick` can still set a film later. |
+| `/admin discussion group: month:<This/Next month's movie> date:YYYY-MM-DD [time:HH:MM]` | Moves a group's discussion event (Central time, default 20:00). Editing the event in Discord works too; the bot never resets its time. |
 | `/admin letterboxd-unlink member:<member>` | Unlinks someone's Letterboxd account (e.g. a wrong link or they asked). Their stored entries stay. |
 
 **#bot-logs** (admins only) gets:
@@ -149,7 +152,7 @@ Backups live on the same disk as the bot. For off-machine copies, pull `backups/
 sqlite3 data/filmbuffs.db "SELECT week_start, state, winner_tmdb_id, skip_reason FROM weeks"
 ```
 
-If a step fails (e.g. Discord was down), it's retried every 30 seconds and the error goes to `#bot-logs`. Deleting the ballot or the pinned leaderboard message in `#watch-planning` makes the bot post a new one.
+If a step fails (e.g. Discord was down), it's retried every 30 seconds and the error goes to `#bot-logs`. Deleting a ballot message in `#watch-planning` makes the bot post a new one.
 
 **Other handy checks:**
 

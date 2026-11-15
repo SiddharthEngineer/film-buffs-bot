@@ -48,5 +48,9 @@ class State:
              datetime.now(timezone.utc).isoformat()))
         self.db.commit()
 
+    def delete(self, key: str) -> None:
+        self.db.execute("DELETE FROM managed_objects WHERE key=?", (key,))
+        self.db.commit()
+
     def all_ids(self) -> set[int]:
         return {r[0] for r in self.db.execute("SELECT discord_id FROM managed_objects")}

@@ -255,9 +255,7 @@ class Letterboxd(commands.Cog):
                 (res.messages_deleted, "messages deleted")]
         lines.append(" · ".join(f"{n} {label}" for n, label in bits if n) or "Nothing to change.")
         if plan.watchlist is not None:
-            lines.append(f"📋 Watchlist: {len({t for t, _, _ in plan.watchlist})} films. Each "
-                         "counts toward the rankings and ballot like your 👍 would (shown as 📋 "
-                         "in /top and the leaderboard); no 👍 is added to the posts.")
+            lines.append(f"📋 Watchlist: {len({t for t, _, _ in plan.watchlist})} films.")
         if res.failed:
             lines.append(f"⚠️ {res.failed} Discord steps failed; run **/letterboxd sync** again "
                          "to retry them.")
