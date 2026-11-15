@@ -11,6 +11,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from ..ideas import choice_name
 from ..pool import post_link
 from ..tmdb import TMDBError, parse_choice
 
@@ -231,6 +232,51 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
             f"✅ Unlinked **{link['username']}** from {member.mention}. Their stored "
             "entries stay; nothing new will be posted.", ephemeral=True,
             allowed_mentions=discord.AllowedMentions.none())
+
+    # /admin idea done|drop (Phase 14) -----------------------------------------
+    idea = app_commands.Group(name="idea", description="Take an idea off the #ideas list")
+
+    async def _close_idea(self, interaction: discord.Interaction, idea: str, status: str) -> None:
+        row = await self.bot.db.get_idea(int(idea)) if idea.strip().isdigit() else None
+        if row is None or row["status"] != "active":
+            await interaction.response.send_message(
+                "❌ Pick an active idea from the list.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        if not await self.bot.ideas.close(row["id"], status, interaction.user.id):
+            await interaction.followup.send("That idea was just closed by someone else.",
+                                            ephemeral=True)
+            return
+        verb = "✅ Marked done" if status == "done" else "🗑️ Dropped"
+        await interaction.followup.send(f"{verb}: #{row['id']} {row['text']}. It's off the "
+                                        "pinned list.", ephemeral=True,
+                                        allowed_mentions=discord.AllowedMentions.none())
+
+    @idea.command(name="done", description="Mark an idea as done (built)")
+    @app_commands.describe(idea="Start typing and pick the idea")
+    @admin_only()
+    async def idea_done(self, interaction: discord.Interaction, idea: str) -> None:
+        await self._close_idea(interaction, idea, "done")
+
+    @idea.command(name="drop", description="Drop an idea (not doing it)")
+    @app_commands.describe(idea="Start typing and pick the idea")
+    @admin_only()
+    async def idea_drop(self, interaction: discord.Interaction, idea: str) -> None:
+        await self._close_idea(interaction, idea, "dropped")
+
+    async def _idea_choices(self, interaction: discord.Interaction, current: str):
+        cur = current.lower().strip()
+        return [app_commands.Choice(name=choice_name(r), value=str(r["id"]))
+                for r in await self.bot.db.active_ideas()
+                if cur in f"#{r['id']} {r['text']}".lower()][:25]
+
+    @idea_done.autocomplete("idea")
+    async def _idea_done_ac(self, interaction: discord.Interaction, current: str):
+        return await self._idea_choices(interaction, current)
+
+    @idea_drop.autocomplete("idea")
+    async def _idea_drop_ac(self, interaction: discord.Interaction, current: str):
+        return await self._idea_choices(interaction, current)
 
 
 async def setup(bot: "FilmBuffsBot") -> None:

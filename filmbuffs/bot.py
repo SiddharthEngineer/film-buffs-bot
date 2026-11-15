@@ -16,6 +16,7 @@ from .backup import latest_backup
 from .botlogs import DiscordLogHandler
 from .config import Config
 from .db import MIGRATIONS, Database
+from .ideas import IdeasService
 from .letterboxd import LetterboxdService
 from .monthly import GroupVoteService
 from .movies import MovieService
@@ -30,7 +31,7 @@ VERSION = "0.12"
 USER_AGENT = f"FilmBuffsBot/{VERSION} (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd",
               "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly",
-              "filmbuffs.cogs.availability"]
+              "filmbuffs.cogs.availability", "filmbuffs.cogs.ideas"]
 
 
 def git_commit() -> str:
@@ -58,6 +59,7 @@ class FilmBuffsBot(commands.Bot):
         self.letterboxd = LetterboxdService(self)
         self.pool = PoolService(self)
         self.weekly = WeeklyService(self)
+        self.ideas = IdeasService(self)          # #ideas list (Phase 14)
         # Private groups (Phase 12): one monthly vote (with its own pool) per group.
         self.group_votes = {k: GroupVoteService(self, g) for k, g in config.groups.items()}
         self.botlogs = DiscordLogHandler(self)

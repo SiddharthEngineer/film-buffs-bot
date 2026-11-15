@@ -287,3 +287,16 @@ Owner decisions are in ROADMAP "Phase 13".
 - **`@Weekly Movie` → `@Weekly Pings`:** `server.yaml` `roles:` `weekly_ping` (key unchanged, so the role keeps its ID and members keep it). The ballot text, `vote_ui.py`, README and the test fixture say `@Weekly Pings`.
 - **`ops.admin_role` is optional** and now `null`: `/admin` is Manage Server / Administrator only. `Config.admin_role` is `None` when it's null or missing (it used to default to `Moderator`); `is_admin` matches no role then. Tests: `test_is_admin_without_role`.
 - **Owner by hand** after merge + deploy: `uv run setup_server.py --plan` (expect only the role rename), then `--apply`, then `sudo systemctl restart film-buffs-bot`. Then Discord → Server Settings → Roles: delete `Moderator`, and on `@everyone` turn off **Mention @everyone, @here, and All Roles** (keep Create Events and Create Expressions).
+
+## Phase 14: 📊 Recap category with #wrapped and #ideas (built on branch `claude/phase14-recap-445f58`; not deployed)
+Owner decisions are in ROADMAP "Phase 14". Unit tests pass (`tests/test_ideas.py`, 13 tests).
+- **`server.yaml`:** new category `recap` "📊 Recap", declared just above 🔧 Admin. The private group categories (`groups.expand`) still go directly above Admin, so the order is … 🔊 Voice · 📊 Recap · 🎓 OSU · 🔧 Admin (members outside OSU see Recap right above Admin).
+  - `#wrapped` (key `wrapped`): `read_only`, topic "Group stats and Film Buffs Wrapped. Coming soon." Empty until Phase 11.
+  - `#ideas` (key `ideas`): members can post; `@bot` gets View, Send, Embed Links, Read History and Pin Messages there.
+- **Ideas list** (`filmbuffs/ideas.py` `IdeasService`, `cogs/ideas.py`):
+  - **Migration 15** (`ideas`: text, suggested_by, channel_id, message_id (unique), status active/done/dropped, added_by/at, closed_by/at). Seeded with four planned ideas: the #wrapped stats page, private `/me` stats, Film Buffs Wrapped, off-machine backups (shown as "🛠️ planned", no link).
+  - **Apps → Add to ideas** (message context menu, admin only: hidden by default permissions, `admin_only()` re-checked). Only on members' messages in `#ideas`. It opens a one-line modal prefilled with the message text (≤ 200 chars) so the admin can shorten it; the entry links to the message and credits its author.
+  - **`/admin idea done`** / **`/admin idea drop`** with autocomplete over active ideas (`#id text`). No member-facing `/idea add` (owner).
+  - **One pinned embed in `#ideas`** listing active ideas oldest first, `• [text](message link) · @author`. Edited in place after every change and at startup; reposted and re-pinned if deleted. ID in `bot_meta` `ideas_list_message`. Text is one line with markdown escaped; if the 4096-char description is full, it ends "…and N more".
+- **Not verified live:** the context menu, modal and pin (no Discord calls from this session).
+- **Owner by hand, after merge:** `uv run setup_server.py --plan` (expect: create 📊 Recap, `#wrapped`, `#ideas`; channel order), then `--apply`, then `sudo systemctl restart film-buffs-bot`. The bot posts and pins the list in `#ideas` on startup. Test: right-click a message in `#ideas` → Apps → Add to ideas, then `/admin idea done`.
