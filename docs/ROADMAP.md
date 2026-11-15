@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–10, 5R, 12 and 12b are built and live (see [STATUS.md](STATUS.md)). Phases 12 and 12b (private groups with their own monthly movie; picks announced in each `#watch-planning`; 🔔 Pings on the ballots) went live and were owner-tested 2026-11-15. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–10, 5R, 12 and 12b are built and live (see [STATUS.md](STATUS.md)). Phases 13–16 (roles, a Recap category with `#wrapped` and `#ideas`, one pinned welcome message plus `/help`, the `#post-watch` redesign) are planned, not started. Phases 12 and 12b (private groups with their own monthly movie; picks announced in each `#watch-planning`; 🔔 Pings on the ballots) went live and were owner-tested 2026-11-15. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 **2026-11-15 (owner):** 👍 reactions no longer count for anything; the leaderboard, `/top` and vote tracking are removed. `/nominate` also creates the movie's post (with a pitch), like `/addmovie`. See STATUS "Fixes of 2026-11-15".
 
@@ -254,11 +254,85 @@ Owner (2026-11-15):
 
 Where the buttons go (owner confirmed 2026-11-15): a **🔔 Pings** toggle button on each open ballot, next to 🗳️ Vote and 📋 My nominations. It toggles `@Weekly Movie` on the weekly ballot and `@<Name> Pings` on a group's. A ballot is always open, and each new one gets the button. The reply is private: "🔔 Added / 🔕 Removed".
 
+## Phases 13–16: cleanup and a Recap category (planned 2026-11-15, not started)
+
+Four small phases, one at a time, in this order. Recap comes before the welcome rewrite so the welcome message can link `#ideas` and `#wrapped`.
+
+### Phase 13: roles and permissions
+
+Live roles (read from the API 2026-11-15, top to bottom):
+
+| Role | What it does | Decision (owner, 2026-11-15) |
+|---|---|---|
+| `Moderator` | Full **Administrator**. Only the owner holds it, and the owner already has every permission as server owner, so it adds nothing. `/admin` checks it by name (`ops.admin_role`). | **Delete** |
+| `Film Buffs Bot` | The bot's integration role (14 permissions, no Administrator). Must stay above the ping roles. | Keep, don't touch |
+| `Weekly Movie` | Opt-in ping for weekly pick announcements, toggled with 🔔 Pings on the ballot. | **Rename to `Weekly Pings`** (key `weekly_ping` unchanged, so members keep it) |
+| `OSU` | Membership of the OSU group: sees its category and channels. | Keep |
+| `OSU Pings` | Opt-in ping for OSU's monthly pick. | Keep |
+| `@everyone` | Has **Mention Everyone** (any member can ping @everyone/@here and every role). Also Create Events and Create Expressions (emoji/stickers). | **Turn Mention Everyone off**; keep Create Events and Create Expressions |
+
+Code:
+- `server.yaml` `roles:`: `weekly_ping` renamed to `Weekly Pings` (applied by `setup_server.py`). Bot wording that says `@Weekly Movie` (`weekly.py` ballot text, `vote_ui.py`, README, the test fixture) says `@Weekly Pings`.
+- `ops.admin_role` becomes optional (`null` = no role; `/admin` is then Manage Server / Administrator only) and is set to `null`. README and STATUS drop "Moderator".
+- Tests for `is_admin` without a role.
+
+Owner by hand, after `setup_server.py --apply` and a restart (Discord → Server Settings → Roles):
+- Delete `Moderator` (`setup_server.py` doesn't manage it, so it won't touch it).
+- `@everyone` → turn off **Mention @everyone, @here, and All Roles**. Bot pings keep working (its ping roles are mentionable).
+
+### Phase 14: 📊 Recap category with `#wrapped` and `#ideas`
+
+Owner (2026-11-15): a new category **📊 Recap**, placed **above 🔧 Admin**, with two channels:
+- **`#wrapped`**: read-only (`read_only` preset), only the bot posts. Home of Phase 11's stats page and Film Buffs Wrapped (replaces Phase 11's "stats channel, name TBD"). Until Phase 11 it only has its topic, e.g. "Group stats and Film Buffs Wrapped. Coming soon."
+- **`#ideas`**: members post ideas for the server and the bot, and talk about them. The bot keeps **one pinned message** listing every active idea, edited in place (like the old leaderboard).
+  - Ideas are stored in SQLite (new table via `MIGRATIONS`: text, who suggested it, the message it came from, status, times).
+  - Owner (2026-11-15): **no `/idea add`**; members just chat about ideas. The list is curated by admins: right-click a message → **Apps → Add to ideas** (admin-only context menu; the entry links to that message), and `/admin idea done` / `/admin idea drop` (autocomplete) take it off the active list.
+  - Seeded with what's already planned (Phase 11 stats, Wrapped, and so on).
+  - A text channel allows many pinned messages, so the list doesn't compete with anything.
+- Both through `server.yaml` + `setup_server.py` (plan, then apply).
+
+### Phase 15: `#welcome` as a readable page, and `/help`
+
+Owner (2026-11-15): rename `#welcome-and-rules` → **`#welcome`** (key `welcome` unchanged), members can't post (already `read_only`), Welcome and How to become **one** page with clear sections for newcomers (not numbered steps, not a full rewrite), and it should read like a README rather than a bot embed. `/help` is a reminder of the commands.
+
+**What Discord offers** (docs checked 2026-11-15, see DISCORD_NOTES): there is **no page or README feature in the API**. The Welcome Screen (≤ 5 channel links + a short description) and the Server Guide's resource pages are **Community-server** features, and the Server Guide can't be set through the API at all; resource pages are channels anyway, so their text still lives in messages. So the choice is about how the message is built. **Owner chose A (2026-11-15).**
+- **A. Components V2 message (chosen).** Still one bot message kept in `server.yaml`, but it renders like a document: real `#`/`##` headings, bullet lists, divider lines between sections, an accent-colored frame, and optionally the server icon or a poster as a thumbnail beside the intro. No embed box. Caveats: an existing embed message can't be converted, so the bot posts a new one and deletes its old Welcome and How to messages (its own messages); the docs give no total-text cap (the real limit, believed to be ~4,000 characters across text blocks, must be tested on a throwaway message first); `setup_server.py` needs Components V2 support.
+- **B. Plain message with markdown, written by the owner.** Discord now renders headings and lists in ordinary messages too. The owner posts and edits it by hand; the bot stays out. Limit 2,000 characters, so it would need two or three messages (or a shorter text).
+- **C. Turn on Community and use the Server Guide.** Native onboarding (welcome card, new-member to-dos, resource pages). Bigger change: the server owner enables it by hand (it needs Administrator), Discord then requires a rules channel and stricter verification / content-filter settings, and the guide is managed by hand in Server Settings, not from `server.yaml`. The page text itself would still be a message in `#welcome`.
+
+Either way:
+- Sections roughly as today: what this server is → Movies and spoilers (`#movies` vs `#post-watch`) → Picking movies (nominate, vote, watch week, 🔔 Pings) → Letterboxd → Groups (if you've been given a group role) → Recap (`#wrapped` and `#ideas`) → Be nice. Mostly reordering and tightening, plus a sentence per section on why it matters. The "📊 Coming next: stats" teaser points to `#wrapped`; the "send ideas" line points to `#ideas`.
+- `how_to` is removed; `setup_server.py` gains `retire_messages:` (key + title; deletes a message it posted) and `pin: true`.
+- **`/help`** (anyone, ephemeral): every command a member can use, grouped (Movies · Picking · Spoilers · Letterboxd · Groups), one line each, built from the bot's registered command tree so it never goes stale; `/admin` shows only for admins. Ends with a link to `#welcome`.
+
+### Phase 16: `#post-watch` redesign
+
+Owner (2026-11-15): posts should look like `#movies`: title, year and poster in the forum list. **The weekly pin stays** (a forum allows one pinned post). Rename the forum to **`#post-watch`**.
+- **Rename** `#post-watch-discussion` → `#post-watch` in `server.yaml` (key `movie_spoilers` unchanged). Bot wording that names the channel (`spoilers.py`, `letterboxd.py`, `weekly.py`, `config.py`, README, welcome) says `#post-watch`. The card button stays "🔓 Post-watch discussion".
+- **Post title:** `Title (Year)` (drop "— Post-watch").
+- **Starter:** keeps the "Spoilers allowed" note and the link back to the spoiler-free `#movies` post, but moves them **into an embed** (description) with the poster as its thumbnail, and sends no plain text. The forum list shows a starter's text but not its embeds, which is why `#movies` posts show only title + poster; post-watch posts will look the same. (Check on the first rewritten post during rollout.)
+- **Poster:** not stored today. Migration: `poster_url` on `movies`, filled when a post is created and backfilled from TMDB (throttled) during the rollout.
+- **Tags** (owner: Reviews, genres and decades; no Weekly/Solo). All moderated, recomputed from the DB like `MovieService.retag`:
+  - **📓 Reviews**: at least one Letterboxd review is posted in it.
+  - **Genres**: the same 12 tags and TMDB mapping as `#movies`, max 3 per post.
+  - **Decades** (one per post): **Pre-1980**, 1980s, 1990s, 2000s, 2010s, 2020s. The library has 14 films before 1980 (4 with a post-watch post), too few for their own tags.
+  - **19 of 20 tags**, and **at most 5 per post** (Reviews + decade + 3 genres), which is exactly Discord's per-post limit, so nothing gets cut. Not too many; the catch is that it leaves one free tag. Splitting out 1970s would use all 20.
+- **Rollout:** bump `STARTER_VERSION` so the 108 existing post-watch posts get the new title, starter and tags once at startup (~1 s apart, a few minutes).
+- **Guidelines** keep "⚠️ SPOILERS ALLOWED. Only open a movie's post once you've seen it."
+
+### Open for the owner (Phases 13–16)
+- None. Phase 15 uses a Components V2 message (owner, 2026-11-15).
+
+### Build order (owner, 2026-11-15: in parallel where possible)
+Each phase is built in its own session on its own branch (worktree). Sessions run tests and commit to their branch but **don't deploy**: no service restart, no `setup_server.py --apply`, no live Discord calls. Branches are merged into `main` with the owner's OK, then deployed one phase at a time (restart, owner runs plan/apply and tests by hand).
+- **Together:** Phases 13, 14 and 16. Their overlaps are small and merge cleanly: different sections of `server.yaml`, `admin.py` (13 changes `is_admin`, 14 adds idea subcommands), one string each in `weekly.py`, README, and their own STATUS section. **Migrations are assigned up front:** Phase 16 appends migration 14 (`poster_url`, post-watch tags), Phase 14 appends migration 15 (ideas table). Whichever merges second puts its migration after the other's.
+- **After those merge:** Phase 15. Its text links `#wrapped`, `#ideas` and `#post-watch` and names `@Weekly Pings`, and `load_config` rejects links to channel keys that don't exist yet.
+
 ## Phase 11: stats page, private member views, Film Buffs Wrapped (defined, not planned)
 
 Owner (2026-11-13): each member's own stats stay **private**; **group-wide totals are public**. No website: everything happens inside Discord (a web page would need Discord login, a domain with HTTPS and a public port, which is more to run and secure than a private server needs). Details still to be worked out with the owner before a step-by-step plan is written.
 
-- **New stats channel** (name TBD, e.g. `#stats` or `#engagement`), added through `server.yaml` + `setup_server.py`. Read-only for members, like `#welcome-and-rules`: the bot keeps a few messages up to date and edits them in place, so the channel reads like a page. Group totals only, never per-member numbers. Possible content: films logged this month/year, group watches, hours watched, top genres, most-discussed posts, weekly-pick turnout.
+- **Stats channel: `#wrapped`** in the Recap category (created in Phase 14; owner, 2026-11-15). Read-only for members, like `#welcome-and-rules`: the bot keeps a few messages up to date and edits them in place, so the channel reads like a page. Group totals only, never per-member numbers. Possible content: films logged this month/year, group watches, hours watched, top genres, most-discussed posts, weekly-pick turnout.
 - **Private member view:** a `/me` command and/or a "📋 My stats" button on the stats page opens a reply only that member can see (ephemeral). It shows their own stats so far, and could also show their active nominations, saved ranking and linked Letterboxd account (see Phase 10). Ephemeral replies disappear when dismissed or after a reload, so members reopen them; all data lives in SQLite.
 - **Film Buffs Wrapped** (end of year, like Spotify Wrapped): a "🎁 Your <year> Wrapped" button on the stats page opens a private slideshow with ◀ ▶ buttons, one stat per slide. A **"Share"** button posts the member's Wrapped publicly only if they click it. Slides are optional image cards (would add an image library such as Pillow). Slide ideas from the first talk:
   - films logged, rewatches, top genres, hours watched
@@ -266,7 +340,7 @@ Owner (2026-11-13): each member's own stats stay **private**; **group-wide total
   - "taste twin" (the member whose ratings match most closely); owner liked it, but it names another member, so it needs a closer look
   - most contrarian rating
   - nominations made and won; how often their 1st choice won; group-watch turnout
-  - a group Wrapped post in the stats channel at the same time
+  - a group Wrapped post in `#wrapped` at the same time
 - **Data gaps to close early** (so a full year is there by December):
   - **Runtime** isn't stored. Fetch it from TMDB (the Phase 9 daily call can include it).
   - **Chat activity** isn't counted. If "most active in discussions" is wanted, start counting messages per member per post (author and time only; no message content needed), and backfill from post history.
@@ -299,5 +373,7 @@ Answered 2026-11-15 (Phase 12): monthly moves into private, role-gated groups (O
 Answered 2026-11-15 (Phase 12): group channels are `#watch-planning` / `#chat` / `#voice`; `@Monthly Movie` is deleted and `@OSU` created fresh.
 
 Answered 2026-11-15 (Phase 12b): no pinned instructions; picks announced in each `#watch-planning`, not `#announcements`; opt-in group ping roles; 🔔 Pings button on each ballot.
+
+Answered 2026-11-15 (Phases 13–16): delete Moderator; rename `@Weekly Movie` → `@Weekly Pings`; Mention Everyone off, Create Events and Create Expressions stay; one pinned welcome message with sections, `/help` lists commands; a Recap category with `#wrapped` (bot-only) and `#ideas` (pinned list of active ideas); `#post-watch` keeps the weekly pin, gets Reviews + genre + decade tags, and its starter goes into an embed so the forum list shows only title and poster. Later the same day: Phase 15 uses a Components V2 message; Phases 13, 14 and 16 are built in parallel, then 15; no `/idea add` (admins curate the list, members chat); 📊 Recap goes above 🔧 Admin; `#welcome-and-rules` → `#welcome`, one page, no bot embed if Discord has a better page format.
 
 Open: Phase 11 needs more brainstorming before a plan is written (see its points). Phase 12 leftover: whether to remind a group a few days before its discussion.

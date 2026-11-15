@@ -35,6 +35,9 @@ Things checked against current docs or live tests while building. Re-check anyth
 - **discord.py 2.7:** `InteractionResponse.send_message(view=None)` raises `AttributeError` (it calls `view.is_finished()`); leave `view` out instead. `edit_message(view=None)` is fine and removes components.
 - Message Content intent is needed for anything reading message text in listeners (bots in < 100 servers just toggle it on).
 
+- **Page-like content** (checked 2026-11-15, guild, message, components reference): no README/page feature in the API. **Welcome Screen** (`description` + up to 5 `welcome_channels`) is a COMMUNITY feature (PATCH needs MANAGE_GUILD); toggling COMMUNITY needs ADMINISTRATOR. **Onboarding** (prompts, default channels; enabling needs ≥ 7 default channels, 5 where @everyone can talk) holds no long text. **Server Guide** / resource pages aren't in the API (only the `<id:guide>` link). `rules_channel_id` is for Community guilds; rules are just messages in that channel.
+- **Components V2** (checked 2026-11-15): flag `IS_COMPONENTS_V2` (`1 << 15`), can't be removed once sent; `content` and `embeds` stop working. Up to 40 components; Text Display uses normal markdown (headings, lists, masked links, `-#` subtext); Section = 1–3 Text Displays + a Button or Thumbnail accessory; Container (optional `accent_color`), Separator (divider, spacing 1/2), Media Gallery 1–10 items. **No total-text limit is stated**; test before relying on one. Embed limits: description 4096, field 1024, 6000 across a message's embeds; plain content 2000.
+
 ## TMDB
 - v3 API key (`api_key` param) or v4 read token (`Authorization: Bearer`) both work for `/3` endpoints.
 - `/movie/{id}?append_to_response=credits` gives runtime, genres and crew (directors) in one call.
