@@ -51,6 +51,30 @@ def spoiler_post_name(display: str) -> str:
 #   3: Phase 16: title `Title (Year)`, embed-only starter with poster, tags
 STARTER_VERSION = "3"
 
+# Bump to recreate post-watch posts that carry a "changed the post title"
+# notice (which can't be deleted). 1: the Phase 16 rollout's renames.
+REBUILD_VERSION = "1"
+REBUILD_KEY = "post_watch_rebuild_version"
+REBUILD_OLD_KEY = "post_watch_rebuild_current"   # JSON {tmdb_id, old, pinned} mid-rebuild
+# Messages people (or the bot's commands) write; everything else is a system notice.
+USER_TYPES = {discord.MessageType.default.value, discord.MessageType.reply.value,
+              discord.MessageType.chat_input_command.value,
+              discord.MessageType.context_menu_command.value}
+
+
+def foreign_messages(history, starter_id: int | None, embed_ids: set[int]) -> list:
+    """Messages in a post-watch post that a rebuild couldn't carry over: anything
+    people wrote (or the spoiler-move webhook sent), i.e. every non-system
+    message except the starter and the stored Letterboxd embeds."""
+    return [m for m in history if m.type.value in USER_TYPES
+            and m.id != starter_id and m.id not in embed_ids]
+
+
+def post_activity(row) -> int:
+    """Sort key: newest message the bot knows of in the post (snowflakes grow
+    with time), so rebuilding in this order keeps the "latest activity" order."""
+    return max(row["last_embed"] or 0, row["spoiler_thread_id"])
+
 
 def starter_description(display: str, movies_url: str) -> str:
     return (f"⚠️ **Post-watch discussion for {display}. Spoilers allowed.** "
@@ -147,6 +171,7 @@ class SpoilerService:
         self._open_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._move_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._webhook: discord.Webhook | None = None
+        self._rebuilding = False
 
     @property
     def forum(self) -> discord.ForumChannel:
@@ -325,6 +350,175 @@ class SpoilerService:
         else:
             log.warning("Some #post-watch tags aren't set up (run setup_server.py --apply); "
                         "the post-watch refresh runs again at the next start")
+
+    # one-time rebuild (title-change notices) ---------------------------------
+    # Renaming a forum post leaves a "changed the post title" system message in
+    # it that nobody can delete (DISCORD_NOTES). The Phase 16 rollout left one
+    # in every post, so each such post is recreated once with its final title:
+    # new post, the review embeds re-sent in order, DB and links updated, old
+    # post deleted. Posts with messages the bot doesn't own are left alone.
+
+    async def rebuild_posts(self) -> None:
+        """Once per REBUILD_VERSION, after the Phase 16 refresh is done."""
+        db = self.bot.db
+        if self._rebuilding or await db.get_meta(REBUILD_KEY) == REBUILD_VERSION:
+            return
+        if await db.get_meta("post_watch_starter_version") != STARTER_VERSION:
+            return                      # tags not set up yet; titles may still change
+        self._rebuilding = True
+        try:
+            await self._resume_rebuild()
+            cur = await db.conn.execute(
+                "SELECT m.*, (SELECT MAX(e.spoiler_message_id) FROM letterboxd_entries e "
+                "WHERE e.tmdb_id = m.tmdb_id) AS last_embed "
+                "FROM movies m WHERE m.spoiler_thread_id IS NOT NULL")
+            rows = sorted(await cur.fetchall(), key=post_activity)
+            log.info("Checking %d post-watch post(s) for title-change notices", len(rows))
+            done = kept = 0
+            for row in rows:
+                try:
+                    result = await self.rebuild_post(row)
+                except (discord.HTTPException, RuntimeError):
+                    log.exception("Could not rebuild the post-watch post for TMDB %s",
+                                  row["tmdb_id"])
+                    kept += 1
+                    continue
+                if result == "rebuilt":
+                    done += 1
+                    await asyncio.sleep(1)
+                elif result == "kept":
+                    kept += 1
+            log.info("Post-watch rebuild: %d post(s) recreated, %d left as they were",
+                     done, kept)
+            if not kept:
+                await db.set_meta(REBUILD_KEY, REBUILD_VERSION)
+        finally:
+            self._rebuilding = False
+
+    async def rebuild_post(self, row) -> str:
+        """Recreate one post if it has a title-change notice. Returns "rebuilt",
+        "clean" (nothing to do) or "kept" (skipped; logged)."""
+        db, tmdb_id = self.bot.db, row["tmdb_id"]
+        async with self._open_locks[tmdb_id]:
+            old = await self.find_spoiler_post(row)
+            movies_post = await self.bot.movies.find_post(tmdb_id)
+            if old is None or movies_post is None:
+                return "clean"
+            history = [m async for m in old.history(limit=None, oldest_first=True)]
+            if not any(m.type == discord.MessageType.channel_name_change for m in history):
+                return "clean"
+            entries = await self._embedded_entries(tmdb_id)
+            others = foreign_messages(history, row["spoiler_starter_message_id"],
+                                      {e["spoiler_message_id"] for e in entries})
+            if others:
+                log.warning("Post-watch post %s (TMDB %s) has %d message(s) the bot didn't "
+                            "post; not rebuilding it", old.id, tmdb_id, len(others))
+                return "kept"
+            row = await db.get_movie(tmdb_id) or row
+            await db.set_meta(REBUILD_OLD_KEY, json.dumps(
+                {"tmdb_id": tmdb_id, "old": old.id, "pinned": bool(old.flags.pinned)}))
+            display = display_of(row)
+            new, starter = await self._create_post(
+                display, movies_post.jump_url, await self.poster_url(row),
+                await self.applied_tags(row))
+            await db.set_spoiler_post(tmdb_id, new.id, starter.id)
+            await self._finish_rebuild(tmdb_id, old, new, bool(old.flags.pinned), history)
+        log.info("Rebuilt post-watch post for TMDB %s (%s): %s → %s",
+                 tmdb_id, display, old.id, new.id)
+        return "rebuilt"
+
+    async def _embedded_entries(self, tmdb_id: int) -> list:
+        cur = await self.bot.db.conn.execute(
+            "SELECT * FROM letterboxd_entries WHERE tmdb_id=? AND spoiler_message_id IS NOT NULL "
+            "ORDER BY spoiler_message_id", (tmdb_id,))
+        return list(await cur.fetchall())
+
+    async def _finish_rebuild(self, tmdb_id: int, old, new, pinned: bool,
+                              history: list | None) -> None:
+        """Move the entries whose embed is still in the old post into the new
+        one, then delete the old post, pin and refresh the card. Safe to repeat
+        after a crash (entries already moved are newer than the new post)."""
+        db = self.bot.db
+        if old is not None and history is None:
+            history = [m async for m in old.history(limit=None, oldest_first=True)]
+        by_id = {m.id: m for m in history or ()}
+        quiet = discord.AllowedMentions.none()
+        for e in await self._embedded_entries(tmdb_id):
+            mid = e["spoiler_message_id"]
+            if mid >= new.id:
+                continue                                # already in the new post
+            src = by_id.get(mid)
+            if src is None or not src.embeds:
+                await db.update_entry(e["guid"], spoiler_message_id=None)
+                continue
+            msg = await new.send(embeds=src.embeds, allowed_mentions=quiet)
+            await db.update_entry(e["guid"], spoiler_message_id=msg.id)
+            await self._relink_movies_note(e, new.id, msg.id)
+        if old is not None:
+            # A reply that arrived mid-rebuild would be lost: keep the old post then.
+            latest = [m async for m in old.history(limit=None, oldest_first=True)]
+            moved = {m.id for m in history or ()}
+            late = [m for m in latest if m.id not in moved and m.type.value in USER_TYPES]
+            if late:
+                log.error("Post-watch post %s got %d new message(s) during the rebuild; "
+                          "kept it next to the new post %s", old.id, len(late), new.id)
+            else:
+                await old.delete(reason="Recreated without the title-change notice")
+        await db.set_meta(REBUILD_OLD_KEY, None)
+        if pinned:
+            await new.edit(pinned=True, reason="This week's movie")
+        await self.retag(tmdb_id)
+        try:
+            await self.bot.movies.update_card(tmdb_id)
+        except discord.HTTPException:
+            log.exception("Card refresh after rebuilding the post-watch post for TMDB %s failed",
+                          tmdb_id)
+
+    async def _relink_movies_note(self, entry, thread_id: int, message_id: int) -> None:
+        """Point the entry's spoiler-free #movies note at its new embed."""
+        from .letterboxd import movies_note
+        if not entry["movies_message_id"]:
+            return
+        mrow = await self.bot.db.get_movie(entry["tmdb_id"])
+        lb = self.bot.letterboxd
+        try:
+            post = await lb._thread(mrow["thread_id"] if mrow else None)
+            if post is None:
+                return
+            text = movies_note(entry["discord_user_id"], lb._jump(thread_id, message_id),
+                               entry["rating"] is not None, bool(entry["review_text"]))
+            await post.get_partial_message(entry["movies_message_id"]).edit(
+                content=text, allowed_mentions=discord.AllowedMentions.none())
+        except discord.NotFound:
+            await self.bot.db.update_entry(entry["guid"], movies_message_id=None)
+        except discord.HTTPException:
+            log.exception("Could not relink the #movies note for Letterboxd entry %s",
+                          entry["guid"])
+
+    async def _resume_rebuild(self) -> None:
+        """Finish a post whose rebuild was cut off (restart mid-way)."""
+        db = self.bot.db
+        raw = await db.get_meta(REBUILD_OLD_KEY)
+        if not raw:
+            return
+        state = json.loads(raw)
+        row = await db.get_movie(state["tmdb_id"])
+        if row is None or row["spoiler_thread_id"] in (None, state["old"]):
+            await db.set_meta(REBUILD_OLD_KEY, None)    # new post never recorded; redo it
+            return
+        new = await self.find_spoiler_post(row)
+        if new is None:
+            await db.set_meta(REBUILD_OLD_KEY, None)
+            return
+        old = self.bot.get_channel(state["old"])
+        if old is None:
+            try:
+                old = await self.bot.fetch_channel(state["old"])
+            except discord.NotFound:
+                old = None
+        log.warning("Resuming the cut-off rebuild of post-watch post %s (TMDB %s)",
+                    state["old"], state["tmdb_id"])
+        await self._finish_rebuild(state["tmdb_id"], old, new, state["pinned"], None)
 
     async def _create_post(self, display: str, movies_url: str, poster_url: str | None,
                            tags: list[discord.ForumTag]):

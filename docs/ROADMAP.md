@@ -330,6 +330,9 @@ Each phase is built in its own session on its own branch (worktree). Sessions ru
 - **Together:** Phases 13, 14 and 16. Their overlaps are small and merge cleanly: different sections of `server.yaml`, `admin.py` (13 changes `is_admin`, 14 adds idea subcommands), one string each in `weekly.py`, README, and their own STATUS section. **Migrations are assigned up front:** Phase 16 appends migration 14 (`poster_url`, post-watch tags), Phase 14 appends migration 15 (ideas table). Whichever merges second puts its migration after the other's.
 - **After those merge:** Phase 15. Its text links `#wrapped`, `#ideas` and `#post-watch` and names `@Weekly Pings`, and `load_config` rejects links to channel keys that don't exist yet.
 
+## Phase 17: rebuild `#post-watch` posts without the title-change notice (built 2026-11-16; see STATUS.md)
+Owner (2026-11-16): the "changed the post title" notices left by the Phase 16 renames should go, even if it means recreating the posts. Discord won't delete them, so the bot recreates each affected post once (embeds copied over, links and pin moved, old post deleted). No Letterboxd export re-upload needed. **Going forward: don't rename posts in bulk**; if a post-watch title ever has to change for many posts, use the same rebuild (bump `REBUILD_VERSION`) instead of a rename.
+
 ## Phase 11: stats page, private member views, Film Buffs Wrapped (defined, not planned)
 
 Owner (2026-11-13): each member's own stats stay **private**; **group-wide totals are public**. No website: everything happens inside Discord (a web page would need Discord login, a domain with HTTPS and a public port, which is more to run and secure than a private server needs). Details still to be worked out with the owner before a step-by-step plan is written.

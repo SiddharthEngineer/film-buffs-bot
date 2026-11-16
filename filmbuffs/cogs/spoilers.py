@@ -43,6 +43,7 @@ class Spoilers(commands.Cog):
     async def on_ready(self) -> None:
         await self.bot.movies.refresh_old_cards()
         await self.svc.refresh_starters()
+        await self.svc.rebuild_posts()
 
     # /spoiler ----------------------------------------------------------------
     @app_commands.command(name="spoiler",
