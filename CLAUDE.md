@@ -19,5 +19,10 @@ Read `docs/STATUS.md` (what's live) and `docs/ROADMAP.md` (what's next, agreed d
 - Movie post tags are always recomputed from the DB row via `MovieService.retag` (5-tag limit; status/flags beat genres).
 - External HTTP uses the honest User-Agent `FilmBuffsBot/<ver> (private Discord bot)`. Never spoof a browser.
 - Respect Discord rate limits (discord.py handles 429s; throttle bulk post creation explicitly).
-- After code changes: `uv run pytest -q`, then `sudo systemctl restart film-buffs-bot` and check `journalctl -u film-buffs-bot`.
+- After code changes: `uv run pytest -q`, commit, push to `main`, then run `deploy/deploy.sh` (pulls `origin/main` into the live copy, syncs deps, restarts, shows the log).
+
+## Two copies: coding vs live
+- **`~/src/film-buffs-bot`** is for coding and tests only. It has **no `.env`** and only a throwaway `data/` snapshot, so nothing run here can reach the real Discord server or the live DB.
+- **`/srv/film-buffs-bot`** is what the systemd service runs. It holds `.env`, the live `data/filmbuffs.db` and `backups/`. Never edit code there; `deploy/deploy.sh` refuses to deploy over local changes.
+- Anything that touches the real server or live data runs **in `/srv/film-buffs-bot`, after deploying**: `setup_server.py` (plan and `--apply`), `backfill.py`, `scripts/check_connection.py`, live-test scripts, `sqlite3 data/filmbuffs.db`, DB copies before migrations.
 - Commits: author is the owner (Siddharth); end messages with the Claude co-author line.

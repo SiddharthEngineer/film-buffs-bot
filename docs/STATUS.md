@@ -10,7 +10,7 @@
 - Discord app "Film Buffs Bot" (Film Buffs Bot#4646) is in the Film Buffs server with exactly the 13 permissions in the README, no Administrator.
 - Role order: the bot's role above its ping roles, above `@everyone`. (A `Moderator` admin role existed until Phase 13; the owner deletes it.)
 - Server is **not** a Community server; nothing so far needs it (forums work without it).
-- `.env` on the VPS holds the token, guild ID and TMDB key (chmod 600, gitignored).
+- `.env` on the VPS holds the token, guild ID and TMDB key (chmod 600, gitignored). It lives only in the live copy, `/srv/film-buffs-bot` (since 2026-11-16).
 
 ### Phase 1: server layout ✅
 Built by `setup_server.py --apply` from `server.yaml`; a fresh `--plan` reports no changes.
@@ -36,7 +36,7 @@ Built by `setup_server.py --apply` from `server.yaml`; a fresh `--plan` reports 
 - Autocomplete answers in ~0.3–0.5 s (Discord's limit is 3 s).
 
 ### Ops already in place
-- systemd unit `film-buffs-bot` (enabled, `Restart=on-failure`, runs as `dev`, `ProtectSystem=strict` with write access only to `data/` and `backups/`).
+- systemd unit `film-buffs-bot` (enabled, `Restart=on-failure`, runs as `dev`, `ProtectSystem=strict` with write access only to `data/` and `backups/`). Since 2026-11-16 it runs from the live copy `/srv/film-buffs-bot` (detached checkout of `origin/main`, updated by `deploy/deploy.sh`); `~/src/film-buffs-bot` is the coding copy with no `.env` and a throwaway `data/` snapshot.
 - Commands are synced to the guild only (instant updates).
 - 53 unit tests passing (`uv run pytest -q`).
 

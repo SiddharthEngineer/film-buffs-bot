@@ -49,18 +49,31 @@ tests/                pytest
 
 ## First-time setup
 
+There are two copies on the VPS:
+
+- `~/src/film-buffs-bot`: for coding and `uv run pytest`. No `.env`, so it can't reach Discord.
+- `/srv/film-buffs-bot`: the live copy the systemd service runs. Holds `.env`, `data/` and `backups/`. Only `deploy/deploy.sh` changes its code.
+
 ```bash
-git clone git@github.com:SiddharthEngineer/film-buffs-bot.git ~/film-buffs-bot
-cd ~/film-buffs-bot
+# coding copy
+git clone https://github.com/SiddharthEngineer/film-buffs-bot.git ~/src/film-buffs-bot
+cd ~/src/film-buffs-bot && uv sync
+
+# live copy
+sudo install -d -o deploy -g srv -m 2775 /srv/film-buffs-bot
+git clone https://github.com/SiddharthEngineer/film-buffs-bot.git /srv/film-buffs-bot
+cd /srv/film-buffs-bot
 uv sync                                  # creates .venv from pyproject.toml + uv.lock
 cp .env.example .env && chmod 600 .env   # then fill in the three values
+sudo install -m 644 deploy/film-buffs-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now film-buffs-bot
 ```
 
 `.env` needs `DISCORD_TOKEN`, `DISCORD_GUILD_ID` and `TMDB_API_KEY` (a TMDB v3 key or v4 read-access token both work).
 
 Discord application settings: **Message Content** intent on, **Server Members** and **Presence** off, Public Bot off. Invite with scopes `bot applications.commands` and permissions integer `2832634816326736` (View Channels, Manage Channels, Manage Roles, Manage Threads, Send Messages, Send Messages in Threads, Manage Messages, Pin Messages, Manage Webhooks, Embed Links, Add Reactions, Read Message History, Send Polls, Create Events). Pin Messages (added in Phase 5; used for the forum pins) is a separate permission from Manage Messages now. Manage Roles is only there because Discord requires it to set channel permission overwrites.
 
-Check the connection (read-only):
+Check the connection (read-only, from `/srv/film-buffs-bot`):
 
 ```bash
 uv run scripts/check_connection.py
@@ -68,7 +81,7 @@ uv run scripts/check_connection.py
 
 ## Changing the server layout
 
-Edit `server.yaml`, then:
+Edit `server.yaml` in the coding copy, commit, push and deploy, then in `/srv/film-buffs-bot`:
 
 ```bash
 uv run setup_server.py           # plan: show the diff, change nothing
@@ -83,15 +96,15 @@ uv run setup_server.py --apply   # apply (asks to confirm)
 ## Running the bot
 
 ```bash
-sudo systemctl restart film-buffs-bot      # after pulling code changes
+uv run pytest -q                           # unit tests (coding copy)
+deploy/deploy.sh                           # ship origin/main to the live copy and restart
+deploy/deploy.sh <commit>                  # roll back to (or deploy) a specific commit
 journalctl -u film-buffs-bot -f            # live logs
-uv run pytest -q                           # unit tests
 ```
 
-Dependencies live in `pyproject.toml` (locked in `uv.lock`); add one with `uv add <pkg>`. The service runs `.venv/bin/python` directly, so it doesn't need uv at runtime; run `uv sync` and restart after dependency changes.
+`deploy/deploy.sh` (run from either copy) checks the live copy has no local edits, checks out `origin/main` there, runs `uv sync --frozen`, reinstalls the unit file if it changed, restarts the service and prints the last log lines. Push first: the live copy pulls from GitHub, not from `~/src`.
 
-The unit file is `deploy/film-buffs-bot.service`; install changes with
-`sudo install -m 644 deploy/film-buffs-bot.service /etc/systemd/system/ && sudo systemctl daemon-reload`.
+Dependencies live in `pyproject.toml` (locked in `uv.lock`); add one with `uv add <pkg>`. The service runs `.venv/bin/python` directly, so it doesn't need uv at runtime. The unit file is `deploy/film-buffs-bot.service`.
 
 ## Commands
 
@@ -129,7 +142,7 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 - 🔴 every ERROR from the bot, with the end of the traceback. The same error is posted at most once an hour (later posts say how many repeats were held back), and at most 5 messages go out per 10 minutes. Full tracebacks are always in `journalctl -u film-buffs-bot`.
 - Letterboxd: a single error when a feed fails 4 polls in a row (about an hour) or Letterboxd refuses 4 rounds in a row, and a 🟡 notice when it works again. One-off failures only go to the journal. An entry that fails to post 5 times is given up on and reported.
 
-**Backups:** every night at 04:00 America/Chicago (`server.yaml` → `ops`), the bot snapshots `data/filmbuffs.db` into `backups/filmbuffs-<UTC time>.db` with SQLite's online backup API, checks it, and keeps only the newest 3 (`ops.backup_keep`). If the newest backup is over a day old when the bot starts, it makes one right away. Each backup is a complete, ordinary SQLite file.
+**Backups:** (paths below are in `/srv/film-buffs-bot`) every night at 04:00 America/Chicago (`server.yaml` → `ops`), the bot snapshots `data/filmbuffs.db` into `backups/filmbuffs-<UTC time>.db` with SQLite's online backup API, checks it, and keeps only the newest 3 (`ops.backup_keep`). If the newest backup is over a day old when the bot starts, it makes one right away. Each backup is a complete, ordinary SQLite file.
 
 ```bash
 ls -lh backups/                                              # what's there
