@@ -267,33 +267,30 @@ messages:
     sections:
       - |
         # 🎬 Welcome to Film Buffs
-        A place to pick, watch and talk about movies together. Every week we vote on a movie, everyone watches it that week, and then we talk about it. This page explains how it all works; run **/help** any time for a list of commands.
+        Each week we:
+        1. Vote on next week's movie
+        2. Watch this week's movie
+        3. Chat about last week's movie
+        This page explains how it all works; run **/help** any time for a list of commands.
       - |
         ## 🍿 Movies and spoilers
         Every movie gets **two** posts, so you never get spoiled by accident:
-        - **{#movies}** is spoiler-free: trailers, hype and first impressions only. Each post starts with the movie's info card.
-        - **{#movie_spoilers}** is for after you've watched it: reviews, hot takes, spoilers welcome. Click **🔓 Post-watch discussion** on a movie's info card (or run **/spoiler** inside its post) to get there.
-        - Someone slipped? Right-click (long-press on mobile) their message → **Apps → Mark as spoiler**. The bot moves it to the post-watch discussion.
-        - Anywhere else, hide spoilers with `||spoiler bars||`.
+        - **{#movies}** is spoiler-free: trailers, hype and first impressions only.
+        - **{#movie_spoilers}** is for after you've watched it: reviews, hot takes, spoilers welcome.
       - |
         ## 🗳️ Picking the weekly movie
-        All times are Central.
-        - **Nominate:** **/nominate** a film from any channel (start typing a title, pick it from the list). Add a `pitch:` to sell it. You can keep up to 3, ranked; your highest one that's still available is on the ballot. **/nominations** shows and reorders yours, **/unnominate** withdraws one. **/addmovie** adds a post without nominating it.
-        - **Vote:** the ballot in {#watch_planning} is always open and closes **Sunday night**. Click **🗳️ Vote** and rank as many films as you like, best first. Your ranking carries over to next week. Votes are counted by instant runoff: if your 1st choice is knocked out, your vote moves to your 2nd, so ranking more never hurts.
-        - **Watch (Mon–Sun):** the winner is announced in {#watch_planning}, gets a server event, and is pinned at the top of {#movies} and {#movie_spoilers} all week. Click **🔔 Pings** on the ballot to get **@Weekly Pings** when it's picked. Past picks are in {#watch_log}.
-        - **/schedule** shows what's on, what's open and your nominations.
-        - Reactions on posts are welcome but don't count as votes.
+        - **Nominate** a film using **/nominate**. You can keep up to 3, but only your highest one is put on the ballot.
+        - **Vote** in {#watch_planning}. The ballot is always open and closes **Sunday night** at 11:59 PM Central Time.
+        - **Watch** on your own time. The winner is announced in {#watch_planning} and gets a server event.
+        - Note: we use instant-runoff ranked choice voting. Your nominations and vote rankings carry over week to week.
       - |
         ## 📒 Letterboxd
-        - **/letterboxd link** with your username. Your new diary entries show up in {#letterboxd_feed} and on the movie's post; ratings and reviews go in its post-watch discussion. **/letterboxd unlink** to stop.
-        - Optional: **/letterboxd sync** your Letterboxd export zip to bring in your history and watchlist (watchlists only break ties in the vote). Upload a fresh export whenever you like.
-      - |
-        ## 🎓 Groups
-        Some friend groups have their own private category with a **monthly** movie. If you've been given a group's role, you'll see its channels; **/nominate**, **/nominations** and **/schedule** used there act on that group's vote.
+        - **/letterboxd link** with your username. Your new diary entries show up on the movie's post.
+        - Optional: run **/letterboxd sync** and upload your Letterboxd export zip to sync your watchlist and your entire review history.
       - |
         ## 📊 Recap
         - {#wrapped}: group stats and Film Buffs Wrapped (coming soon).
-        - {#ideas}: ideas to make the server or the bot better. Post them and talk them over; the pinned list shows what's planned.
+        - {#ideas}: ideas to make the server better. I appreciate your feedback!
       - |
         ## 🤝 Be nice
         Disagree about movies, not about people.
