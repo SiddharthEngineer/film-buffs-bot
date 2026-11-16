@@ -105,6 +105,7 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 | **🔔 Pings** on a ballot | `#watch-planning` (main or a group's) | Toggles `@Weekly Pings` on the weekly ballot, or the group's `@<Group> Pings` on a group's ballot (members only). Group membership roles are assigned by an admin in Discord. |
 | `/schedule` | any channel | This and next week's movie or vote and your nominations. In a group's channels: that group's this and next month's movie or vote (with the discussion time) and your nominations there. |
 | `/watchlist show` · `clear` | any channel | What the bot has from your last export upload; clear removes it. |
+| `/help` | any channel | Privately lists every command you can use, grouped, with clickable links (admins also see `/admin`). |
 | `/spoiler` | inside a movie post | Links the movie's post-watch discussion (creates it if needed); inside a post-watch post, links back. |
 | Apps → **Mark as spoiler** | any message in a `#movies` post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
 | `/letterboxd link [username]` · `unlink` | any channel | Links your Letterboxd account (no username: shows which one is linked and your last sync). `unlink` stops posting. |

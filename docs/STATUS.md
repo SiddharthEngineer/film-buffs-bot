@@ -14,7 +14,7 @@
 Built by `setup_server.py --apply` from `server.yaml`; a fresh `--plan` reports no changes.
 
 ```
-📢 Info       #welcome-and-rules (read-only, bot-maintained "🎬 Welcome" embed, then a "📖 How to" embed)
+📢 Info       #welcome (read-only, one bot-maintained, pinned Components V2 page; Phase 15)
               #announcements (read-only)
 💬 Chat       #general (the server's original channel, adopted), #trailers-and-news
 🎬 Movies     #movies (forum; only the bot creates posts, everyone can reply)
@@ -300,3 +300,15 @@ Owner decisions are in ROADMAP "Phase 14". Unit tests pass (`tests/test_ideas.py
   - **One pinned embed in `#ideas`** listing active ideas oldest first, `• [text](message link) · @author`. Edited in place after every change and at startup; reposted and re-pinned if deleted. ID in `bot_meta` `ideas_list_message`. Text is one line with markdown escaped; if the 4096-char description is full, it ends "…and N more".
 - **Not verified live:** the context menu, modal and pin (no Discord calls from this session).
 - **Owner by hand, after merge:** `uv run setup_server.py --plan` (expect: create 📊 Recap, `#wrapped`, `#ideas`; channel order), then `--apply`, then `sudo systemctl restart film-buffs-bot`. The bot posts and pins the list in `#ideas` on startup. Test: right-click a message in `#ideas` → Apps → Add to ideas, then `/admin idea done`.
+
+## Phase 15: `#welcome` page and `/help` (built 2026-11-15 on `main`; not deployed)
+Owner decisions are in ROADMAP "Phase 15" (option A, Components V2). 183 unit tests pass (new `tests/test_phase15.py`).
+- **`#welcome-and-rules` → `#welcome`** (`server.yaml`, key `welcome` unchanged, still `read_only`).
+- **One page** (`messages:` key `welcome_rules`, now `sections:` + `pin: true`): 🎬 Welcome → 🍿 Movies and spoilers → 🗳️ Picking the weekly movie → 📒 Letterboxd → 🎓 Groups (no group named) → 📊 Recap (`#wrapped`, `#ideas`) → 🤝 Be nice. Mostly the old Welcome + How to text, reordered and tightened. ~3,000 characters with channel links (cap 4,000).
+- **`setup_server.py`:**
+  - `sections:` renders a Components V2 page (`build_page`: one accent-colored Container, a Text Display per section, large dividers between). `load_config` checks no title/description/buttons, ≤ 19 sections and the worst-case length (each `{#key}` counted as a full mention); `render` re-checks the real length at apply time.
+  - The existing Welcome embed is **edited into the page in place** (same message ID, first in the channel); `--plan` says "embed → Components V2 page (same message)".
+  - `pin: true` pins the message on apply (and `--plan` shows "pin it" if it's unpinned).
+  - `retire_messages:` (key, embed title, channel key) deletes a message it posted; refuses if the title doesn't match, forgets the key if it's already gone. Used for `how_to`.
+- **`/help`** (`filmbuffs/help.py`, `cogs/help.py`): ephemeral embed listing every command, built from the bot's command tree, under Movies and spoilers · Picking movies (with a note on group channels) · Letterboxd · Admin (admins only: `/admin …` and Apps → Add to ideas). Unlisted new commands land under "More". Commands are clickable (`</name:id>`, IDs from the startup sync, `bot.command_ids`). Ends with a link to `#welcome`.
+- **Owner by hand, after the go-ahead:** `uv run setup_server.py --plan` (expect: rename `#welcome-and-rules` → `#welcome`, the Welcome message converted and pinned, How to deleted), then `--apply`, then `sudo systemctl restart film-buffs-bot` (registers `/help`). Check `#welcome` on desktop and phone, and `/help` as a member and as admin.

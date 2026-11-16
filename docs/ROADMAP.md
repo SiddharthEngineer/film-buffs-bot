@@ -2,7 +2,7 @@
 
 Work in phases. At the end of each phase: stop, summarize, list anything the owner must do by hand, and wait for a go-ahead.
 
-Phases 0–10, 5R, 12 and 12b are built and live (see [STATUS.md](STATUS.md)). Phases 13–16 (roles, a Recap category with `#wrapped` and `#ideas`, one pinned welcome message plus `/help`, the `#post-watch` redesign) are planned; Phase 13 is built (not yet deployed, see STATUS). Phases 12 and 12b (private groups with their own monthly movie; picks announced in each `#watch-planning`; 🔔 Pings on the ballots) went live and were owner-tested 2026-11-15. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
+Phases 0–10, 5R, 12 and 12b are built and live (see [STATUS.md](STATUS.md)). Phases 13–16 (roles, a Recap category with `#wrapped` and `#ideas`, one pinned welcome message plus `/help`, the `#post-watch` redesign) are planned; 13, 14 and 16 are live and owner-tested, 15 is built (not yet deployed, see STATUS). Phases 12 and 12b (private groups with their own monthly movie; picks announced in each `#watch-planning`; 🔔 Pings on the ballots) went live and were owner-tested 2026-11-15. Phase 11 (stats page, private views, Wrapped) is defined but not planned or started. Phase 6 was built before Phase 5 at the owner's request. The original Phase 3 was built and then redesigned with the owner; Phase 3R below replaces it.
 
 **2026-11-15 (owner):** 👍 reactions no longer count for anything; the leaderboard, `/top` and vote tracking are removed. `/nominate` also creates the movie's post (with a pitch), like `/addmovie`. See STATUS "Fixes of 2026-11-15".
 
@@ -292,7 +292,7 @@ Owner (2026-11-15): a new category **📊 Recap**, placed **above 🔧 Admin**, 
 - Both through `server.yaml` + `setup_server.py` (plan, then apply).
 - Built as planned, plus one detail: Add to ideas opens a one-line box prefilled with the message text, so a rambling message becomes a short list entry. Group categories stay directly above Admin, so the order is Recap · OSU · Admin.
 
-### Phase 15: `#welcome` as a readable page, and `/help`
+### Phase 15: `#welcome` as a readable page, and `/help` (built 2026-11-15, not deployed; see STATUS.md)
 
 Owner (2026-11-15): rename `#welcome-and-rules` → **`#welcome`** (key `welcome` unchanged), members can't post (already `read_only`), Welcome and How to become **one** page with clear sections for newcomers (not numbered steps, not a full rewrite), and it should read like a README rather than a bot embed. `/help` is a reminder of the commands.
 
@@ -305,6 +305,7 @@ Either way:
 - Sections roughly as today: what this server is → Movies and spoilers (`#movies` vs `#post-watch`) → Picking movies (nominate, vote, watch week, 🔔 Pings) → Letterboxd → Groups (if you've been given a group role) → Recap (`#wrapped` and `#ideas`) → Be nice. Mostly reordering and tightening, plus a sentence per section on why it matters. The "📊 Coming next: stats" teaser points to `#wrapped`; the "send ideas" line points to `#ideas`.
 - `how_to` is removed; `setup_server.py` gains `retire_messages:` (key + title; deletes a message it posted) and `pin: true`.
 - **`/help`** (anyone, ephemeral): every command a member can use, grouped (Movies · Picking · Spoilers · Letterboxd · Groups), one line each, built from the bot's registered command tree so it never goes stale; `/admin` shows only for admins. Ends with a link to `#welcome`.
+- **Built with two changes from the caveats above** (live-tested 2026-11-15 on throwaway messages in `#bot-logs`, deleted): an embed message **can** be edited into Components V2 (the flag can be set, not cleared), so the Welcome message is converted in place (same message ID, still first in the channel) and only How to is retired; and Discord's cap is **4,000 characters of displayable text** per message (4,001+ is refused with `COMPONENT_DISPLAYABLE_TEXT_SIZE_EXCEEDED`). The page is ~3,000 with channel links. No thumbnail (not needed).
 
 ### Phase 16: `#post-watch` redesign (built 2026-11-15, not deployed; see STATUS.md)
 

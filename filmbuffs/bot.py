@@ -31,7 +31,7 @@ VERSION = "0.12"
 USER_AGENT = f"FilmBuffsBot/{VERSION} (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd",
               "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly",
-              "filmbuffs.cogs.availability", "filmbuffs.cogs.ideas"]
+              "filmbuffs.cogs.availability", "filmbuffs.cogs.ideas", "filmbuffs.cogs.help"]
 
 
 def git_commit() -> str:
@@ -86,6 +86,8 @@ class FilmBuffsBot(commands.Bot):
         self.tree.copy_global_to(guild=guild)
         synced = await self.tree.sync(guild=guild)
         log.info("Synced %d commands: %s", len(synced), ", ".join(c.name for c in synced))
+        # Top-level command IDs, so /help can show clickable </name:id> mentions.
+        self.command_ids = {c.name: c.id for c in synced}
 
     async def on_ready(self) -> None:
         log.info("Logged in as %s; guilds: %s", self.user, [g.name for g in self.guilds])

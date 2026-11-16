@@ -8,7 +8,15 @@ Safe to re-run. Objects are tracked by key -> Discord ID in data/filmbuffs.db,
 so renames in server.yaml rename in Discord instead of creating duplicates.
 Unmanaged channels are only reported. The one exception is the `retire:` list
 in server.yaml: channels named there by ID are deleted, with safety checks,
-and `retire_roles:`, which deletes roles this script created (by key).
+`retire_roles:`, which deletes roles this script created (by key), and
+`retire_messages:`, which deletes messages this script posted (by key; the
+embed title must match).
+
+Messages are embeds by default. `sections:` instead makes a Components V2
+"page" (Phase 15): one accent-colored container, a text block per section
+(normal markdown, headings included) and a divider between them. Discord caps a
+V2 message's displayable text at 4000 characters (live-tested 2026-11-15).
+`pin: true` keeps a message pinned.
 
 Private groups (`groups:`, Phase 12) are expanded into a role, a category and
 three hidden channels each; see filmbuffs/groups.py.
@@ -40,6 +48,10 @@ SORT_ORDERS = {
     "creation_date": discord.ForumOrderType.creation_date,
 }
 TTY = sys.stdout.isatty()
+PAGE_TEXT_LIMIT = 4000       # Components V2 displayable text (live-tested 2026-11-15)
+PAGE_MAX_SECTIONS = 19       # 40 components: container + sections + dividers
+MENTION_LEN = 22             # "<#" + a 19-digit snowflake + ">"
+CHANNEL_REF = re.compile(r"\{#([^{}]*)\}")
 
 
 def color(text: str, code: str) -> str:
@@ -112,12 +124,26 @@ def load_config(path) -> dict:
         unique(f"message:{m['key']}")
         if m["channel"] not in channel_keys:
             raise ConfigError(f"message {m['key']}: unknown channel {m['channel']!r}")
-        for ref in re.findall(r"\{#([^{}]*)\}", m.get("description", "")):
+        sections = m.get("sections")
+        texts = [m.get("description", "")] + list(sections or [])
+        for ref in (r for t in texts for r in CHANNEL_REF.findall(t)):
             if ref not in channel_keys:
                 hint = ref.replace("-", "_")
                 raise ConfigError(
                     f"message {m['key']}: unknown channel ref {{#{ref}}} (use a channel key"
                     + (f", e.g. {{#{hint}}}" if hint in channel_keys else "") + ")")
+        if sections is not None:
+            if m.get("description") or m.get("title") or m.get("buttons"):
+                raise ConfigError(f"message {m['key']}: a page (sections:) has no title, "
+                                  "description or buttons; put the heading in the first section")
+            if not sections or not all(isinstance(x, str) and x.strip() for x in sections):
+                raise ConfigError(f"message {m['key']}: sections must be non-empty strings")
+            if len(sections) > PAGE_MAX_SECTIONS:
+                raise ConfigError(f"message {m['key']}: at most {PAGE_MAX_SECTIONS} sections")
+            size = page_text_size(sections)
+            if size > PAGE_TEXT_LIMIT:
+                raise ConfigError(f"message {m['key']}: {size} characters with channel links; "
+                                  f"Discord allows {PAGE_TEXT_LIMIT}")
         buttons = m.get("buttons") or []
         if len(buttons) > 5:
             raise ConfigError(f"message {m['key']}: at most 5 buttons")
@@ -126,6 +152,12 @@ def load_config(path) -> dict:
                 raise ConfigError(f"message {m['key']}: button for unknown role {b.get('role')!r}")
             if not b.get("label") or len(b["label"]) > 80:
                 raise ConfigError(f"message {m['key']}: button labels are 1-80 characters")
+    message_keys = {m["key"] for m in cfg.get("messages", [])}
+    for r in cfg.get("retire_messages", []):
+        if not r.get("key") or not r.get("title") or r.get("channel") not in channel_keys:
+            raise ConfigError(f"retire_messages entries need a key, a title and a channel key: {r}")
+        if r["key"] in message_keys:
+            raise ConfigError(f"message {r['key']!r} is both declared and retired")
     for r in cfg.get("retire", []):
         if not isinstance(r.get("id"), int) or not r.get("name"):
             raise ConfigError(f"retire entries need an integer id and a name: {r}")
@@ -177,6 +209,24 @@ def norm_emoji(e) -> str:
     if e is None:
         return ""
     return str(getattr(e, "name", e) or "").replace("️", "")
+
+
+def page_text_size(sections: list[str]) -> int:
+    """Worst-case displayable length of a page: each {#key} counted as a full mention."""
+    return sum(len(CHANNEL_REF.sub("x" * MENTION_LEN, t.strip())) for t in sections)
+
+
+def build_page(sections: list[str], accent: int | None) -> discord.ui.LayoutView:
+    """A Components V2 page: one container, text blocks split by dividers."""
+    children: list[discord.ui.Item] = []
+    for i, text in enumerate(sections):
+        if i:
+            children.append(discord.ui.Separator(visible=True,
+                                                 spacing=discord.SeparatorSpacing.large))
+        children.append(discord.ui.TextDisplay(text))
+    view = discord.ui.LayoutView(timeout=None)
+    view.add_item(discord.ui.Container(*children, accent_color=accent))
+    return view
 
 
 def first_line(text: str, n: int = 70) -> str:
@@ -597,17 +647,27 @@ class Reconciler:
         return run
 
     # messages --------------------------------------------------------------
-    def render(self, m: dict, live: bool) -> tuple[discord.Embed, str]:
-        desc = re.sub(r"\{#(\w+)\}", lambda x: self.channel_ref(x.group(1), live),
-                      m.get("description", "").strip())
-        embed = discord.Embed(title=m.get("title"), description=desc,
-                              color=m.get("color"))
-        payload = embed.to_dict()
-        if m.get("buttons"):
-            payload = {"embed": payload, "buttons": m["buttons"]}
+    def render(self, m: dict, live: bool):
+        """(embed or None, page sections or None, digest). Pages render as Components V2."""
+        sub = lambda t: CHANNEL_REF.sub(lambda x: self.channel_ref(x.group(1), live), t.strip())
+        if m.get("sections") is not None:
+            sections = [sub(t) for t in m["sections"]]
+            if live and sum(map(len, sections)) > PAGE_TEXT_LIMIT:
+                raise RuntimeError(f"message {m['key']}: over {PAGE_TEXT_LIMIT} characters")
+            payload = {"page": sections, "color": m.get("color"), "pin": bool(m.get("pin"))}
+            embed = None
+        else:
+            sections = None
+            embed = discord.Embed(title=m.get("title"), description=sub(m.get("description", "")),
+                                  color=m.get("color"))
+            payload = embed.to_dict()
+            if m.get("buttons"):
+                payload = {"embed": payload, "buttons": m["buttons"]}
+            if m.get("pin"):
+                payload = {"embed": payload, "pin": True}
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True)
                                 .encode()).hexdigest()
-        return embed, digest
+        return embed, sections, digest
 
     @staticmethod
     def view(m: dict) -> discord.ui.View | None:
@@ -621,6 +681,12 @@ class Reconciler:
                                          custom_id=f"role:{b['role']}"))
         return v
 
+    @staticmethod
+    def label(m: dict) -> str:
+        if m.get("sections"):
+            return first_line(m["sections"][0]).lstrip("# ").strip()
+        return m.get("title", m["key"])
+
     async def plan_message(self, m: dict) -> None:
         key = f"message:{m['key']}"
         ch_key = f"channel:{m['channel']}"
@@ -628,7 +694,8 @@ class Reconciler:
                        for c in cat["channels"] if c["key"] == m["channel"])
         channel = self.guild.get_channel(self.state.get(ch_key) or 0)
         msg_id = self.state.get(key)
-        _, digest = self.render(m, live=False)
+        _, _, digest = self.render(m, live=False)
+        page = m.get("sections") is not None
 
         existing = None
         if channel and msg_id:
@@ -639,26 +706,75 @@ class Reconciler:
 
         async def run():
             ch = self.guild.get_channel(self.state.get(ch_key))
-            embed, live_digest = self.render(m, live=True)
+            embed, sections, live_digest = self.render(m, live=True)
             msg = None
             if self.state.get(key):
                 try:
                     msg = await ch.fetch_message(self.state.get(key))
                 except discord.NotFound:
                     msg = None
-            view = self.view(m)
-            if msg:
-                await msg.edit(content=None, embed=embed, view=view)
+            none = discord.AllowedMentions.none()
+            if sections is not None:
+                # Editing an embed message into V2 is allowed (the flag can only be
+                # set, never cleared), so the message keeps its ID and place.
+                view = build_page(sections, m.get("color"))
+                if msg:
+                    msg = await msg.edit(content="", embed=None, view=view, allowed_mentions=none)
+                else:
+                    msg = await ch.send(view=view, allowed_mentions=none)
             else:
-                msg = await ch.send(embed=embed, view=view)
+                view = self.view(m)
+                if msg:
+                    msg = await msg.edit(content=None, embed=embed, view=view)
+                else:
+                    msg = await ch.send(embed=embed, view=view)
+            if m.get("pin") and not msg.pinned:
+                await msg.pin(reason=REASON)
             self.state.set(key, "message", msg.id, {"hash": live_digest})
 
+        what = f'message "{self.label(m)}" in #{ch_name}'
         if existing is None:
-            self.add("+", f'message "{m.get("title", m["key"])}" in #{ch_name}',
-                     [first_line(m.get("description", ""))], run)
-        elif self.state.get_extra(key).get("hash") != digest:
-            self.add("~", f'message "{m.get("title", m["key"])}" in #{ch_name}',
-                     ["content changed; edit in place"], run)
+            first = m["sections"][0] if page else m.get("description", "")
+            self.add("+", what, [first_line(first)] + (["pinned"] if m.get("pin") else []), run)
+            return
+        details = []
+        if self.state.get_extra(key).get("hash") != digest:
+            details.append("content changed; edit in place")
+        if page and not existing.flags.components_v2:
+            details.append("embed → Components V2 page (same message)")
+        if m.get("pin") and not existing.pinned:
+            details.append("pin it")
+        if details:
+            self.add("~", what, details, run)
+
+    async def plan_retire_messages(self) -> None:
+        """Delete messages this script posted, listed under `retire_messages:` (key, title, channel)."""
+        for r in self.cfg.get("retire_messages", []):
+            key = f"message:{r['key']}"
+            msg_id = self.state.get(key)
+            if not msg_id:
+                continue
+            ch = self.guild.get_channel(self.state.get(f"channel:{r['channel']}") or 0)
+            msg = None
+            if ch is not None:
+                try:
+                    msg = await ch.fetch_message(msg_id)
+                except discord.NotFound:
+                    msg = None
+            if msg is None:
+                async def forget(key=key):
+                    self.state.delete(key)
+                self.add(">", f'message "{r["title"]}"', ["already deleted; forget its key"], forget)
+                continue
+            title = msg.embeds[0].title if msg.embeds else None
+            if title != r["title"]:
+                raise ConfigError(f"retire_messages {r['key']}: message title is {title!r}, not "
+                                  f"{r['title']!r}; refusing to delete")
+
+            async def run(msg=msg, key=key):
+                await msg.delete()
+                self.state.delete(key)
+            self.add("-", f'message "{r["title"]}" in #{msg.channel.name}', [], run)
 
     # retire ----------------------------------------------------------------
     async def plan_retire(self) -> None:
@@ -742,6 +858,7 @@ class Reconciler:
         self.plan_positions()
         for m in self.cfg.get("messages", []):
             await self.plan_message(m)
+        await self.plan_retire_messages()
         await self.plan_retire()
         self.plan_retire_roles()
 

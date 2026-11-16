@@ -105,7 +105,7 @@ categories:
     name: "📢 Info"
     channels:
       - key: welcome
-        name: welcome-and-rules
+        name: welcome
         topic: "Start here: how this server works."
         preset: read_only
       - key: announcements
@@ -255,59 +255,53 @@ categories:
         topic: "Bot errors and health notices. Admins only."
         preset: admin_only
 
-# Messages the bot posts and keeps up to date. {#key} becomes a channel link.
+# Messages the bot posts and keeps up to date. {#key} becomes a channel link. `sections:` makes a
+# Components V2 page instead of an embed; `pin: true` keeps it pinned.
 messages:
+  # One Components V2 page (Phase 15): a text block per section, dividers between.
+  # Same key as the old Welcome embed, so it's converted in place (same message).
   - key: welcome_rules
     channel: welcome
-    title: "🎬 Welcome to Film Buffs"
-    description: |
-      A place to pick, watch and talk about movies together.
-
-      **Every week we:**
-      🍿 Watch the same movie
-      🗳️ Pick next week's movie together: nominate and vote any time, the vote closes Sunday night
-
-      💬 **Every movie gets its own discussions**
-      • Pre-watch in {#movies}: hype, predictions, first impressions (no spoilers)
-      • Post-watch in {#movie_spoilers}: reviews, hot takes, spoilers allowed
-
-      📒 **Letterboxd is hooked up**, so everyone's reviews and watchlists post to the right channels automatically.
-
-      📊 **Coming next: stats!**
-      🎥 Movies: all-time rankings, most controversial picks, and more
-      🙋 Us: who reviews the most, who contributes the most, who's the harshest critic 👀
-
-      🤖 Siddharth is building this with Claude. Got an idea to make it better? Send it over!
-
-      **Be nice.** Disagree about movies, not about people.
-
-      👇 **How to do all of this is in the next message.**
     color: 0xE5A00D
+    pin: true
+    sections:
+      - |
+        # 🎬 Welcome to Film Buffs
+        A place to pick, watch and talk about movies together. Every week we vote on a movie, everyone watches it that week, and then we talk about it. This page explains how it all works; run **/help** any time for a list of commands.
+      - |
+        ## 🍿 Movies and spoilers
+        Every movie gets **two** posts, so you never get spoiled by accident:
+        - **{#movies}** is spoiler-free: trailers, hype and first impressions only. Each post starts with the movie's info card.
+        - **{#movie_spoilers}** is for after you've watched it: reviews, hot takes, spoilers welcome. Click **🔓 Post-watch discussion** on a movie's info card (or run **/spoiler** inside its post) to get there.
+        - Someone slipped? Right-click (long-press on mobile) their message → **Apps → Mark as spoiler**. The bot moves it to the post-watch discussion.
+        - Anywhere else, hide spoilers with `||spoiler bars||`.
+      - |
+        ## 🗳️ Picking the weekly movie
+        All times are Central.
+        - **Nominate:** **/nominate** a film from any channel (start typing a title, pick it from the list). Add a `pitch:` to sell it. You can keep up to 3, ranked; your highest one that's still available is on the ballot. **/nominations** shows and reorders yours, **/unnominate** withdraws one. **/addmovie** adds a post without nominating it.
+        - **Vote:** the ballot in {#watch_planning} is always open and closes **Sunday night**. Click **🗳️ Vote** and rank as many films as you like, best first. Your ranking carries over to next week. Votes are counted by instant runoff: if your 1st choice is knocked out, your vote moves to your 2nd, so ranking more never hurts.
+        - **Watch (Mon–Sun):** the winner is announced in {#watch_planning}, gets a server event, and is pinned at the top of {#movies} and {#movie_spoilers} all week. Click **🔔 Pings** on the ballot to get **@Weekly Pings** when it's picked. Past picks are in {#watch_log}.
+        - **/schedule** shows what's on, what's open and your nominations.
+        - Reactions on posts are welcome but don't count as votes.
+      - |
+        ## 📒 Letterboxd
+        - **/letterboxd link** with your username. Your new diary entries show up in {#letterboxd_feed} and on the movie's post; ratings and reviews go in its post-watch discussion. **/letterboxd unlink** to stop.
+        - Optional: **/letterboxd sync** your Letterboxd export zip to bring in your history and watchlist (watchlists only break ties in the vote). Upload a fresh export whenever you like.
+      - |
+        ## 🎓 Groups
+        Some friend groups have their own private category with a **monthly** movie. If you've been given a group's role, you'll see its channels; **/nominate**, **/nominations** and **/schedule** used there act on that group's vote.
+      - |
+        ## 📊 Recap
+        - {#wrapped}: group stats and Film Buffs Wrapped (coming soon).
+        - {#ideas}: ideas to make the server or the bot better. Post them and talk them over; the pinned list shows what's planned.
+      - |
+        ## 🤝 Be nice
+        Disagree about movies, not about people.
 
-  - key: how_to
-    channel: welcome
-    title: "📖 How to"
-    description: |
-      **Movies**
-      • Every movie gets its own post in {#movies}. **/nominate** a film from any channel (start typing a title and pick it from the list) and its post is created if it has none; add a `pitch:` to sell it. **/addmovie** adds a post without nominating it.
-      • React to posts however you like; reactions don't count as votes.
-
-      **Picking movies** (all times CT)
-      • **Nominate:** **/nominate** up to 3 films, ranked 1–3 (`rank:` puts one where you want it). Your highest one that's still available is on the ballot in {#watch_planning}; if it wins, your next one moves up. Nominations stay until you withdraw them (**/unnominate**) or they win. **/nominations** shows yours and lets you reorder them.
-      • **🎬 Weekly movie:** the weekly vote is always open and closes Sunday night. Click **🗳️ Vote** on the 🎬 ballot and rank as many films as you like, best first. Your ranking carries over to the next week, so only change it when you want to. Votes are counted by instant runoff: if your 1st choice is knocked out, your vote moves to your 2nd, and so on, so ranking more never hurts.
-      • **Watch week (Mon–Sun):** the winner is tagged Up Next, gets a server event and an announcement in {#watch_planning} (click **🔔 Pings** on the ballot to be pinged), and is pinned at the top of {#movies} and {#movie_spoilers} for its week. It's logged in {#watch_log} at the end.
-      • **/schedule** shows what's on, what's open and your nominations.
-
-      **Spoiler policy**
-      • {#movies} is spoiler-free: trailers, hype and first impressions only.
-      • Seen it? Every movie has its own post in {#movie_spoilers}, where spoilers are allowed. Click **🔓 Post-watch discussion** on a movie's info card, or run **/spoiler** inside its post.
-      • Someone slipped? Right-click (long-press on mobile) their message → **Apps → Mark as spoiler**. The bot moves it to the post-watch discussion; nothing else in the post moves.
-      • Outside movie posts, always use `||spoiler bars||`.
-
-      **Letterboxd**
-      • Run **/letterboxd link** with your username to link your account. New diary entries show up in {#letterboxd_feed} and the movie's post; ratings and reviews go in its post-watch discussion. **/letterboxd unlink** to stop.
-      • Optional: **/letterboxd sync** your Letterboxd export zip. It brings in your history, applies edits and deletions you made on Letterboxd, and adds a post for each film on your watchlist (it only breaks ties in the votes). Upload a fresh export whenever you want to update it.
-    color: 0xE5A00D
+# Messages this script posted that should be deleted (key, title, channel).
+# The embed title must still match.
+retire_messages:
+  - {key: how_to, title: "📖 How to", channel: welcome}   # merged into the Welcome page (Phase 15)
 
 # Unmanaged channels to delete, by ID. The name must still match, text
 # channels with messages are refused unless allow_messages: true, and a

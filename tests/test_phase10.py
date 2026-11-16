@@ -527,11 +527,10 @@ def test_server_yaml_roles_groups_and_buttons(tmp_path):
     assert {(r["key"], r["name"]) for r in cfg["roles"]} == {
         ("weekly_ping", "Weekly Pings"), ("group_osu", "OSU"), ("group_osu_ping", "OSU Pings")}
     assert [r["key"] for r in cfg["retire_roles"]] == ["monthly_ping"]
-    how = next(m for m in cfg["messages"] if m["key"] == "how_to")
-    assert not how.get("buttons")                     # 🔔 Pings lives on the ballots now
-    assert len(how["description"]) <= 4096
-    text = " ".join(m["description"] for m in cfg["messages"])
-    assert "onthly" not in text and "OSU" not in text            # nothing public about groups
+    assert all(not m.get("buttons") for m in cfg["messages"])   # 🔔 Pings lives on the ballots
+    text = " ".join(m.get("description", "") + " ".join(m.get("sections") or [])
+                    for m in cfg["messages"])
+    assert "OSU" not in text                                     # no group is named publicly
     cats = [c["key"] for c in cfg["categories"]]
     assert cats.index("group_osu") == cats.index("admin") - 1
     osu = next(c for c in cfg["categories"] if c["key"] == "group_osu")
