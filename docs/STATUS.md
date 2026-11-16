@@ -301,7 +301,7 @@ Owner decisions are in ROADMAP "Phase 14". Unit tests pass (`tests/test_ideas.py
 - **Not verified live:** the context menu, modal and pin (no Discord calls from this session).
 - **Owner by hand, after merge:** `uv run setup_server.py --plan` (expect: create 📊 Recap, `#wrapped`, `#ideas`; channel order), then `--apply`, then `sudo systemctl restart film-buffs-bot`. The bot posts and pins the list in `#ideas` on startup. Test: right-click a message in `#ideas` → Apps → Add to ideas, then `/admin idea done`.
 
-## Phase 15: `#welcome` page and `/help` (built 2026-11-15 on `main`; not deployed)
+## Phase 15: `#welcome` page and `/help` ✅ (deployed 2026-11-16: applied, restarted, `/help` registered; awaiting owner test)
 Owner decisions are in ROADMAP "Phase 15" (option A, Components V2). 183 unit tests pass (new `tests/test_phase15.py`).
 - **`#welcome-and-rules` → `#welcome`** (`server.yaml`, key `welcome` unchanged, still `read_only`).
 - **One page** (`messages:` key `welcome_rules`, now `sections:` + `pin: true`): 🎬 Welcome → 🍿 Movies and spoilers → 🗳️ Picking the weekly movie → 📒 Letterboxd → 🎓 Groups (no group named) → 📊 Recap (`#wrapped`, `#ideas`) → 🤝 Be nice. Mostly the old Welcome + How to text, reordered and tightened. ~3,000 characters with channel links (cap 4,000).
