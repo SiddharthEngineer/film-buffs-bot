@@ -333,6 +333,17 @@ Each phase is built in its own session on its own branch (worktree). Sessions ru
 ## Phase 17: rebuild `#post-watch` posts without the title-change notice (deployed 2026-11-16; see STATUS.md)
 Owner (2026-11-16): the "changed the post title" notices left by the Phase 16 renames should go, even if it means recreating the posts. Discord won't delete them, so the bot recreates each affected post once (embeds copied over, links and pin moved, old post deleted). No Letterboxd export re-upload needed. **Going forward: don't rename posts in bulk**; if a post-watch title ever has to change for many posts, use the same rebuild (bump `REBUILD_VERSION`) instead of a rename.
 
+## Phase 18: a simpler server (built 2026-11-16; see STATUS.md)
+Owner (2026-11-16), from newcomer feedback ("too complicated, too much going on"): fewer channels, fewer messages, fewer distractions.
+- `#movies` → **`#pre-watch`** (key `movies` unchanged).
+- The info card's **🔓 Post-watch discussion button is gone**. The card's last line links the post in text: "Already seen it? [Discuss in #post-watch →]". The `#post-watch` starter says "← Haven't seen it yet? [Spoiler free post in #pre-watch]". A text link needs the post to exist, so **every movie gets its `#post-watch` post together with its `#pre-watch` post** (owner picked this over lazy creation). Existing movies are backfilled at startup.
+- **No more pitches**: `pitch:` removed from `/addmovie` and `/nominate`, and the old Pitch field comes off cards (there were none).
+- **Layout** (owner picked the 4-category option): 🎬 Film Buffs (`#welcome`, `#general`, `#watch-planning`, 🔊 Voice) · 🍿 Movies (`#pre-watch`, `#post-watch`) · 📚 More (`#letterboxd-feed`, `#watch-log`, `#ideas`) · groups · 🔧 Admin. Removed: `#announcements`, `#trailers-and-news`, `#wrapped` (all empty), the Discussions voice channel, and the 💬 Chat, 📅 Planning and 🔊 Voice categories. One voice channel, named **Voice** (the old Watch Party).
+- **Welcome page:** the owner rewrote it (`server.yaml` `messages:` → `welcome_rules` → `sections:`); no Groups or Recap sections.
+- **Link text (owner, 2026-11-16):** the whole line is the link, with no arrows. On the card: "Already seen it? Discussion in #post-watch". On the starter: "Haven't seen it? Spoiler free discussion in #pre-watch".
+- **OSU:** its `#watch-planning` topic and ballot say the group vote is completely separate from the weekly one.
+- **Phase 11 note:** `#wrapped` is gone; if stats come back, they need a new channel (or a pinned message in `#general`).
+
 ## Phase 11: stats page, private member views, Film Buffs Wrapped (defined, not planned)
 
 Owner (2026-11-13): each member's own stats stay **private**; **group-wide totals are public**. No website: everything happens inside Discord (a web page would need Discord login, a domain with HTTPS and a public port, which is more to run and secure than a private server needs). Details still to be worked out with the owner before a step-by-step plan is written.

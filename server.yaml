@@ -101,40 +101,38 @@ presets:
       allow: [view_channel, send_messages, embed_links]
 
 categories:
+  # Phase 18: one category for the everyday channels (was 📢 Info, 💬 Chat,
+  # 📅 Planning and 🔊 Voice).
   - key: info
-    name: "📢 Info"
+    name: "🎬 Film Buffs"
     channels:
       - key: welcome
         name: welcome
         topic: "Start here: how this server works."
         preset: read_only
-      - key: announcements
-        name: announcements
-        topic: "Server news."
-        preset: read_only
-
-  - key: chat
-    name: "💬 Chat"
-    channels:
       - key: general
         name: general
         adopt: general          # take over the existing #general instead of creating one
-      - key: trailers
-        name: trailers-and-news
-        topic: "Trailers, release news, festival buzz."
+      - key: watch_planning
+        name: watch-planning
+        topic: "The 🎬 weekly ballot is always open. /nominate up to 3 films (your #1 is on the ballot), then click Vote and rank them. /schedule shows what's on. Chat welcome."
+      - key: watch_party
+        name: Voice
+        type: voice
+        adopt: Stream Room      # existing voice channel, renamed (was Watch Party)
 
   - key: movies
-    name: "🎬 Movies"
+    name: "🍿 Movies"
     channels:
       - key: movies
-        name: movies
+        name: pre-watch         # was #movies (Phase 18); key unchanged
         type: forum
         default_sort: latest_activity
         topic: |
-          🚫 NO SPOILERS in this channel. Talk about trailers, hype and first impressions only.
-          One post per movie, created by the bot. Want it picked? /nominate it from any channel (pick it from the autocomplete list): that adds its post here if it has none and puts it on the ballot in #watch-planning. /addmovie adds a post without nominating it. React however you like; reactions don't count as votes. This week's movie is pinned at the top of this channel.
-          Seen it? Every movie has a post-watch discussion in #post-watch where spoilers are allowed: click 🔓 Post-watch discussion on the movie's info card (or run /spoiler inside the post).
-          Slipped up? Right-click (long-press on mobile) a message → Apps → Mark as spoiler moves it to the post-watch discussion. Nothing else in the post moves.
+          🚫 NO SPOILERS in this channel. Trailers, hype and first impressions only.
+          One post per movie, made by the bot. /nominate a film from any channel to put it on the weekly ballot in #watch-planning (that also adds its post here). This week's movie is pinned at the top.
+          Seen it? Every post links to the movie's spoiler discussion in #post-watch.
+          Slipped up? Right-click (long-press on mobile) a message → Apps → Mark as spoiler moves it to #post-watch.
         overwrites:
           "@everyone":
             allow: [send_messages_in_threads]
@@ -172,7 +170,7 @@ categories:
         default_sort: latest_activity
         topic: |
           ⚠️ SPOILERS ALLOWED. Only open a movie's post once you've seen it.
-          One post per movie, created by the bot when someone first opens a movie's post-watch discussion. Each post links back to the movie's spoiler-free post in #movies.
+          One post per movie, made by the bot together with the movie's spoiler-free post in #pre-watch. Each post links back to it.
         overwrites:
           "@everyone":
             allow: [send_messages_in_threads]
@@ -205,40 +203,17 @@ categories:
           - {key: d_2020s,     name: "2020s",       moderated: true}
           # 19 of Discord's 20-tag limit used.
 
-  - key: planning
-    name: "📅 Planning"
+  # Phase 14. Group categories (groups:) are inserted between 📚 More and Admin.
+  - key: recap
+    name: "📚 More"             # was 📊 Recap (Phase 18)
     channels:
-      - key: watch_planning
-        name: watch-planning
-        topic: "The 🎬 weekly ballot is always open. /nominate up to 3 films (your #1 is on the ballot), then click Vote and rank them. /schedule shows what's on. Chat welcome."
+      - key: letterboxd_feed
+        name: letterboxd-feed
+        topic: "New Letterboxd diary entries from linked members. Ratings and reviews are in each movie's #post-watch post."
+        preset: read_only
       - key: watch_log
         name: watch-log
         topic: "One line per weekly pick."
-        preset: read_only
-      - key: letterboxd_feed
-        name: letterboxd-feed
-        topic: "New Letterboxd diary entries from linked members. Ratings and reviews are in each movie's post-watch discussion."
-        preset: read_only
-
-  - key: voice
-    name: "🔊 Voice"
-    channels:
-      - key: watch_party
-        name: Watch Party
-        type: voice
-        adopt: Stream Room      # existing voice channel, renamed
-      - key: discussions
-        name: Discussions
-        type: voice
-        adopt: Lounge           # existing voice channel, renamed
-
-  # Phase 14. Group categories (groups:) are inserted between this and Admin.
-  - key: recap
-    name: "📊 Recap"
-    channels:
-      - key: wrapped
-        name: wrapped
-        topic: "Group stats and Film Buffs Wrapped. Coming soon."
         preset: read_only
       - key: ideas
         name: ideas
@@ -286,11 +261,7 @@ messages:
       - |
         ## 📒 Letterboxd
         - **/letterboxd link** with your username. Your new diary entries show up on the movie's post.
-        - Optional: run **/letterboxd sync** and upload your Letterboxd export zip to sync your watchlist and your entire review history.
-      - |
-        ## 📊 Recap
-        - {#wrapped}: group stats and Film Buffs Wrapped (coming soon).
-        - {#ideas}: ideas to make the server better. I appreciate your feedback!
+        - Optional: run **/letterboxd sync** and upload your Letterboxd export zip to sync your watchlist and entire review history.
       - |
         ## 🤝 Be nice
         Disagree about movies, not about people.
@@ -299,6 +270,17 @@ messages:
 # The embed title must still match.
 retire_messages:
   - {key: how_to, title: "📖 How to", channel: welcome}   # merged into the Welcome page (Phase 15)
+
+# Channels and categories this script created that should be deleted, by key
+# (Phase 18). Same checks as `retire:` below; the key is forgotten once gone.
+retire_managed:
+  - {key: "channel:announcements", name: announcements}
+  - {key: "channel:trailers",      name: trailers-and-news}
+  - {key: "channel:wrapped",       name: wrapped}           # back with Phase 11 if wanted
+  - {key: "channel:discussions",   name: Discussions}
+  - {key: "category:chat",         name: "💬 Chat"}
+  - {key: "category:planning",     name: "📅 Planning"}
+  - {key: "category:voice",        name: "🔊 Voice"}
 
 # Unmanaged channels to delete, by ID. The name must still match, text
 # channels with messages are refused unless allow_messages: true, and a

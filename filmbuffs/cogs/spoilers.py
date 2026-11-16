@@ -1,6 +1,7 @@
 """Post-watch discussions: /spoiler and the "Mark as spoiler" context menu.
 
-The info card's "Post-watch discussion" button lives in filmbuffs/cards.py.
+Info cards link their #post-watch post in text (Phase 18); the old button's
+handler, kept for cards not yet refreshed, lives in filmbuffs/cards.py.
 """
 from __future__ import annotations
 
@@ -41,6 +42,7 @@ class Spoilers(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
+        await self.svc.create_missing_posts()
         await self.bot.movies.refresh_old_cards()
         await self.svc.refresh_starters()
         await self.svc.rebuild_posts()
@@ -61,7 +63,7 @@ class Spoilers(commands.Cog):
         row = await self.svc.movie_for_movies_post(channel)
         if row is None:
             await interaction.response.send_message(
-                "Use /spoiler inside a movie's post in #movies.", ephemeral=True)
+                "Use /spoiler inside a movie's post in #pre-watch.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         thread, created = await self.svc.open(row["tmdb_id"])
@@ -78,7 +80,7 @@ class Spoilers(commands.Cog):
         if row is None:
             text = ("This is already the post-watch discussion, so spoilers are fine here."
                     if await self.svc.movie_for_spoiler_post(thread) is not None else
-                    "Mark as spoiler only works inside movie posts in #movies.")
+                    "Mark as spoiler only works inside movie posts in #pre-watch.")
             await interaction.response.send_message(text, ephemeral=True)
             return
         refusal = None

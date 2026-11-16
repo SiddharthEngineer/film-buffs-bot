@@ -1,5 +1,7 @@
 # Status (as of 2026-11-16)
 
+> **Phase 18 (2026-11-16):** `#movies` is now **`#pre-watch`** (key `movies`), and the server has four categories: 🎬 Film Buffs, 🍿 Movies, 📚 More (was 📊 Recap) and 🔧 Admin, plus the groups. See "Phase 18" at the end. Older sections use the names of their time.
+
 > **Channel names (2026-11-11):** `#movies` (key `movies`; was briefly `#pre-watch-discussion`) and **`#post-watch-discussion`** (key `movie_spoilers`, was `#movie-spoilers`). Older sections below use the names of their time.
 
 ## Done and live
@@ -322,3 +324,19 @@ The Phase 16 rollout renamed all 108 posts, which left an undeletable "Film Buff
 - **What changes for members:** posts get new IDs, so old links to a post-watch post (in someone's DMs/notes) stop working; the bot's own links (`#movies` notes, card buttons) are updated. Post creation dates become the rebuild day.
 - **Result (checked after the run):** the 108 posts now hold 214 bot messages and **no system notices**; `post_watch_rebuild_version` = 1. Nothing was pinned before or after (no week picked yet).
 - **Owner by hand:** ~~`sudo systemctl restart film-buffs-bot`~~ (done); the rebuild takes ~5–10 minutes (`journalctl -u film-buffs-bot -f` shows "Checking 108 post-watch post(s)…" then "Post-watch rebuild: N post(s) recreated, 0 left as they were"). Then check `#post-watch`: no "changed the post title" lines, reviews present, tags and this week's pin intact; and a `#movies` card's "🔓 Post-watch discussion" button and a "📓 … logged this" note open the new post.
+
+## Phase 18: a simpler server ✅ (deployed 2026-11-16: applied, restarted; backfill of 351 `#post-watch` posts done; final card/starter refresh running at 07:23 CT, ~40–60 min)
+Owner decisions are in ROADMAP "Phase 18". 202 unit tests pass (new `tests/test_phase18.py`).
+- **`server.yaml`:** `#movies` → `#pre-watch`. New layout: 🎬 Film Buffs (key `info`: `#welcome`, `#general`, `#watch-planning`, 🔊 **Voice** = key `watch_party`, renamed from Watch Party) · 🍿 Movies (`#pre-watch`, `#post-watch`) · 📚 More (key `recap`: `#letterboxd-feed`, `#watch-log`, `#ideas`) · 🎓 OSU · 🔧 Admin. New `#pre-watch`/`#post-watch` guidelines (no button, no pitch). Welcome page: the owner's own text (commit 152fe7e), minus the Recap section and the dead `{#wrapped}` link.
+- **`setup_server.py` `retire_managed:`** deletes channels and categories the script created, by state key, once they're out of the layout. It uses the same checks as `retire:`: the name must match, text channels with messages are refused unless `allow_messages: true`, and a category is refused while it still holds an undeclared channel. The key is forgotten after the delete. It is used for `#announcements`, `#trailers-and-news`, `#wrapped` (all three checked empty), Discussions, and the 💬 Chat, 📅 Planning and 🔊 Voice categories.
+- **Info card** (`CARD_VERSION` 5): no button. The 🚫 reminder field is just one link: "[Already seen it? Discussion in #post-watch](link)" (version 4 had "Trailers, hype…" and an arrow; owner trimmed it). The old Pitch field is dropped. `SpoilerButton` stays registered so old cards work until they're refreshed. `update_card` re-archives a post it had to un-archive.
+- **`#post-watch` starter** (`STARTER_VERSION` 5): ends with one link, "[Haven't seen it? Spoiler free discussion in #pre-watch](link)". `refresh_post` re-archives a post it had to un-archive. Only the embed is edited, with no renames, so no title notices.
+- **Every movie has both posts:** `MovieService.ensure_post` calls `spoilers.open` right after creating a `#pre-watch` post. A failure is logged, and **`SpoilerService.create_missing_posts`** (startup, before the card refresh) creates any that are missing. It works oldest `#pre-watch` post first, ~1 s apart, and archives each new post right away.
+- **Active threads:** Discord caps active threads per guild but doesn't document the number (checked 2026-11-16, DISCORD_NOTES). Before this phase, 567 threads were active (every post, from today's rebuild and card edits), which is why bulk work now leaves posts archived.
+- **Pitch removed** from `/addmovie` and `/nominate` (and `post_note`, `ensure_post`). The `movies.pitch` column stays (migrations are append-only); it's always NULL.
+- User-facing `#movies` text in the bot now says `#pre-watch`.
+- **`--plan` (read-only, checked 2026-11-16):** 12 changes (category renames, moves, `#movies` → `#pre-watch`, Watch Party → Voice, topics, welcome page edited in place), 7 deletes (the 4 channels and 3 categories above), 0 creates.
+- **OSU group:** its `#watch-planning` topic and the top of the 🌙 monthly ballot now say the group vote is completely independent from the server's weekly vote (separate nominations and votes).
+- **Deploy log (2026-11-16):** first apply + restart created the 351 posts (version-4 text). Then the text was trimmed (versions 5), applied again (welcome page, OSU topic) and restarted at 07:23 CT. The restart stopped the version-4 starter refresh partway; the version-5 refresh redoes all 459 cards and starters. Watch it with `journalctl -u film-buffs-bot -f` ("Refreshing 459 info card(s) to version 5", then "Refreshing 459 post-watch starter message(s)").
+- **Owner by hand:** nothing left. Check a `#pre-watch` card and a `#post-watch` starter once the refresh finishes, and the OSU ballot.
+- **Not changed:** the `#ideas` pinned list still has the seeded idea "Stats page in #wrapped" (plain text). Drop it with `/admin idea drop` if you like.

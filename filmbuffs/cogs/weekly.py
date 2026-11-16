@@ -130,12 +130,10 @@ class Weekly(commands.Cog):
                           description="Nominate a movie for this channel's ballot (adds its post if needed)")
     @app_commands.describe(title="Start typing and pick the movie (default: the post you're in)",
                            rank="Where it goes in your list (1 = on the ballot). With 3 already, "
-                                "it replaces that one",
-                           pitch="Why we should watch it (optional; shown on a new post)")
+                                "it replaces that one")
     @app_commands.guild_only()
     async def nominate(self, interaction: discord.Interaction, title: str | None = None,
-                       rank: app_commands.Range[int, 1, 3] | None = None,
-                       pitch: app_commands.Range[str, 1, 1000] | None = None) -> None:
+                       rank: app_commands.Range[int, 1, 3] | None = None) -> None:
         pool, group, err = self._context(interaction)
         if err:
             await interaction.response.send_message(err, ephemeral=True)
@@ -146,24 +144,22 @@ class Weekly(commands.Cog):
             await interaction.followup.send("Pick a movie with `title:`.", ephemeral=True)
             return
         if title:
-            # Everything /addmovie does: TMDB lookup, and a #movies post if there's none.
+            # Everything /addmovie does: TMDB lookup, and a #pre-watch post if there's none.
             movie, thread, created, err = await add_movie(self.bot, interaction.user, title,
-                                                          pitch, source="nominate")
+                                                          source="nominate")
             if err:
                 await interaction.followup.send(err, ephemeral=True)
                 return
             tmdb_id = movie.id
-            note = post_note(movie, thread, created, pitch) + "\n"
+            note = post_note(movie, thread, created) + "\n"
         else:
             row = await self.bot.db.get_movie_by_thread(interaction.channel_id)
             if row is None:
                 await interaction.followup.send(
-                    "Pick a movie with `title:`, or run this inside its post in #movies.",
+                    "Pick a movie with `title:`, or run this inside its post in #pre-watch.",
                     ephemeral=True)
                 return
             tmdb_id = row["tmdb_id"]
-            if pitch:
-                note = "-# A pitch only goes on a new post; post it here as a message instead.\n"
         reply = await pool.nominate(interaction.user.id, tmdb_id, rank)
         await interaction.followup.send((note + reply)[:2000], ephemeral=True,
                                         allowed_mentions=discord.AllowedMentions.none())
@@ -242,7 +238,7 @@ class Weekly(commands.Cog):
         if imp is None and n == 0:
             await interaction.response.send_message(
                 "You haven't uploaded a watchlist. **/letterboxd sync** takes your Letterboxd "
-                "export zip (optional). Its films get a post in #movies if they have none, and "
+                "export zip (optional). Its films get a post in #pre-watch if they have none, and "
                 "only break ties in the votes.", ephemeral=True)
             return
         when = f"<t:{int(datetime.fromisoformat(imp['imported_at']).timestamp())}:D>" if imp else "?"

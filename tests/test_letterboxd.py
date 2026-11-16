@@ -178,7 +178,7 @@ class FakeMovies:
     def __init__(self, db):
         self.db, self.posts, self.created = db, {}, []
 
-    async def ensure_post(self, movie, *, added_by, pitch, status, source):
+    async def ensure_post(self, movie, *, added_by, status, source):
         if movie.id in self.posts:
             return self.posts[movie.id], False
         ch = FakeChannel(5000 + movie.id)

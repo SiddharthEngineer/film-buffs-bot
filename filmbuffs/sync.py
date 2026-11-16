@@ -5,13 +5,13 @@ Used by /letterboxd sync (filmbuffs/cogs/letterboxd.py) and by backfill.py
 member, then applied:
 
   new      rows are stored; reviews get a post-watch embed ("imported from
-           Letterboxd history"); films without a #movies post get one
+           Letterboxd history"); films without a #pre-watch post get one
            (Watched (solo), or Backlog for watchlist films), throttled.
   changed  rating / ♥ / rewatch / watched date / review edited on Letterboxd:
-           the row is updated and the bot's own embed (and #movies note, if the
+           the row is updated and the bot's own embed (and #pre-watch note, if the
            poller posted one) is edited in place. Nothing is reposted or moved.
   removed  diary entries deleted on Letterboxd: the bot deletes its own messages
-           for them (embed, #movies note, #letterboxd-feed line) and marks the
+           for them (embed, #pre-watch note, #letterboxd-feed line) and marks the
            row `removed`. The row is kept for stats.
   watchlist replaced.
 
@@ -416,7 +416,7 @@ async def apply_sync(client, plan: SyncPlan, *, via: str,
             await step(f"deleting messages for {e['guid']}", delete())
             await asyncio.sleep(EDIT_PAUSE)
 
-        # 2. Edited entries: embeds (and #movies notes) edited in place.
+        # 2. Edited entries: embeds (and #pre-watch notes) edited in place.
         for item in plan.edits:
             async def edit(item=item):
                 row = await db.get_entry(item.stored["guid"])
@@ -428,14 +428,14 @@ async def apply_sync(client, plan: SyncPlan, *, via: str,
             await step(f"editing {item.row.display}", edit())
             await asyncio.sleep(EDIT_PAUSE)
 
-        # 3. Missing #movies posts, oldest first.
+        # 3. Missing #pre-watch posts, oldest first.
         for tid, (status, _) in sorted(plan.new_posts.items(), key=lambda kv: kv[1][1]):
             async def post(tid=tid, status=status):
                 movie = await client.tmdb.movie(tid)
                 if movie is None:
                     raise LookupError(f"TMDB {tid} no longer exists")
                 _, created = await client.movies.ensure_post(
-                    movie, added_by=uid, pitch=None, status=status, source="letterboxd-sync")
+                    movie, added_by=uid, status=status, source="letterboxd-sync")
                 res.posts_created += created
                 if created:
                     await asyncio.sleep(POST_PAUSE)
@@ -495,7 +495,7 @@ def preview_lines(plan: SyncPlan) -> list[str]:
         lines.append("**Discord:** nothing (store only)")
     else:
         lines.append("**Discord:** " + _parts(
-            (c["posts_to_create"], f"#movies posts to create ({posts})" if posts else ""),
+            (c["posts_to_create"], f"#pre-watch posts to create ({posts})" if posts else ""),
             (c["reviews_to_post"], "reviews to post"),
             (c["embeds_to_edit"], "embeds to edit"),
             (c["entries_to_clean_up"], "removed entries' messages to delete")))

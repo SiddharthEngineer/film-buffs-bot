@@ -80,7 +80,7 @@ class Config:
                 elif ch["key"] == "movie_spoilers":
                     post_watch_spec = ch
         if "movies" not in self.channels or forum_spec is None:
-            raise RuntimeError("The #movies forum (key: movies) is not set up. Run setup_server.py --apply first.")
+            raise RuntimeError("The #pre-watch forum (key: movies) is not set up. Run setup_server.py --apply first.")
         if "movie_spoilers" not in self.channels:
             raise RuntimeError("The #post-watch forum (key: movie_spoilers) is not set up. Run setup_server.py --apply first.")
 
@@ -115,8 +115,8 @@ class Config:
             if k not in self.tags:
                 raise RuntimeError(f"server.yaml is missing the {k!r} forum tag")
 
-        # #post-watch tags (Phase 16): Reviews, the #movies genre keys, decades.
-        # Unlike #movies, missing IDs don't stop the bot (the forum may not have
+        # #post-watch tags (Phase 16): Reviews, the #pre-watch genre keys, decades.
+        # Unlike #pre-watch, missing IDs don't stop the bot (the forum may not have
         # its tags yet, before setup_server.py --apply); post_watch_tags_ready says
         # whether every declared tag exists, and the one-off post-watch refresh
         # only marks itself done once they do.
@@ -133,7 +133,7 @@ class Config:
                      if t["key"].startswith("g_")}
         if pw_genres and pw_genres != movie_genres:
             raise RuntimeError("server.yaml: the #post-watch genre tags must use the same keys "
-                               "as the #movies genre tags")
+                               "as the #pre-watch genre tags")
 
         # TMDB genre name -> genre tag key, in server.yaml order.
         self.genre_map: dict[str, str] = {}

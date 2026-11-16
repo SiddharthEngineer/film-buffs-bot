@@ -59,7 +59,7 @@ def post_url(guild_id: int, thread_id: int) -> str:
 
 
 def post_link(guild_id: int, row, text: str | None = None) -> str:
-    """A masked link to a movie's #movies post, labelled with its title (or `text`).
+    """A masked link to a movie's #pre-watch post, labelled with its title (or `text`).
 
     Not a `<#thread_id>` mention: the phone app shows a forum post it hasn't
     loaded (most of them are archived) as "#unknown"; a link always shows its

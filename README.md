@@ -2,9 +2,9 @@
 
 A custom Discord bot plus an infrastructure-as-code setup script for **Film Buffs**, a private Discord server where a group of friends picks, watches and talks about movies.
 
-- **Movies** live as posts in the `#movies` forum, one per film, created by the bot from TMDB data.
+- **Movies** live as posts in the `#pre-watch` forum (key `movies`; was `#movies`), one per film, created by the bot from TMDB data.
 - **Letterboxd** is where people log what they watch. The bot pulls those logs in and keeps everything in SQLite, so we can build engagement stats later.
-- **Spoilers** are kept out of `#movies` entirely; each film gets a companion post in `#post-watch` (created the first time someone opens it), tagged with its genres, its decade and 📓 Reviews once a Letterboxd review is posted there.
+- **Spoilers** are kept out of `#pre-watch` entirely; each film gets a companion post in `#post-watch` (created together with its `#pre-watch` post; the two link to each other in text), tagged with its genres, its decade and 📓 Reviews once a Letterboxd review is posted there.
 - **Weekly movie**: members keep up to 3 ranked nominations (`/nominate`); each member's highest one that's still available is on the ballot in `#watch-planning`. The 🎬 weekly vote is always open and closes Sunday night (ranked choice, instant runoff; rankings carry over week to week), then the watch week with a server event. Picks are announced in `#watch-planning`; opt-in `@Weekly Pings` pings with the 🔔 Pings button on the ballot. Reactions on posts don't count as votes.
 - **Private groups** (`server.yaml` `groups:`): a role-gated category per group of friends (`#watch-planning`, `#chat`, `#voice`) with its own nominations and its own 🌙 monthly vote: it closes on the last day of the month before, the film is watched during its month and discussed in the group's `#voice` on the 1st. Its picks are announced in its `#watch-planning`, pinging an opt-in `@<Group> Pings` role (🔔 Pings on its ballot). Nothing about a group shows outside its category; a group can pick any film it hasn't picked before.
 
@@ -27,7 +27,7 @@ filmbuffs/            the bot package (python -m filmbuffs)
   config.py           .env + server.yaml + IDs from the state DB
   db.py               SQLite schema + migrations (data/filmbuffs.db)
   tmdb.py             TMDB client: search, details, autocomplete
-  movies.py           movie posts in #movies (create, embed, tags)
+  movies.py           movie posts in #pre-watch (create, embed, tags)
   weekly.py           weekly pick: ballot, ranked vote (instant runoff), watch week
   vote_ui.py          the Vote button and the private ranking picker
   tags.py             which forum tags a post carries (5-tag limit)
@@ -97,8 +97,8 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 
 | Command | Where | What it does |
 |---|---|---|
-| `/addmovie title:<pick from list> [pitch]` | any channel | Creates the movie's post in `#movies` (or links the existing one) without nominating it. Free text is rejected; pick from the autocomplete. |
-| `/nominate [title] [rank] [pitch]` | any channel (no title: inside a movie post) | Does what `/addmovie` does (creates the post if there's none, with the pitch), then adds the film to your nominations (up to 3, ranked 1–3). No rank: goes last. A rank inserts it there; with 3 already, it replaces that one. Nominating one of yours again with a rank moves it. Your highest eligible one is on the ballot. In a private group's channels, this uses that group's nominations instead (`title:` required). |
+| `/addmovie title:<pick from list>` | any channel | Creates the movie's posts in `#pre-watch` and `#post-watch` (or links the existing one) without nominating it. Free text is rejected; pick from the autocomplete. |
+| `/nominate [title] [rank]` | any channel (no title: inside a movie post) | Does what `/addmovie` does (creates the posts if there are none), then adds the film to your nominations (up to 3, ranked 1–3). No rank: goes last. A rank inserts it there; with 3 already, it replaces that one. Nominating one of yours again with a rank moves it. Your highest eligible one is on the ballot. In a private group's channels, this uses that group's nominations instead (`title:` required). |
 | `/unnominate film:` | any channel | Withdraws one of your nominations (autocomplete lists yours). |
 | `/nominations` (or **📋 My nominations** on a ballot) | any channel | Your nominations, privately, with ⬆️ move-up and 🗑️ withdraw buttons. |
 | **🗳️ Vote** on the 🎬 or a group's 🌙 ballot | `#watch-planning` (main or a group's) | Any time: rank as many films as you like, best first, in a private picker (Undo last / Clear). Each vote's rankings are separate and carry over to its next vote; films that leave the ballot drop out and later ranks move up. 🆕 marks films that joined since you last ranked. |
@@ -107,7 +107,7 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 | `/watchlist show` · `clear` | any channel | What the bot has from your last export upload; clear removes it. |
 | `/help` | any channel | Privately lists every command you can use, grouped, with clickable links (admins also see `/admin`). |
 | `/spoiler` | inside a movie post | Links the movie's post-watch discussion (creates it if needed); inside a post-watch post, links back. |
-| Apps → **Mark as spoiler** | any message in a `#movies` post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
+| Apps → **Mark as spoiler** | any message in a `#pre-watch` post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
 | `/letterboxd link [username]` · `unlink` | any channel | Links your Letterboxd account (no username: shows which one is linked and your last sync). `unlink` stops posting. |
 | `/letterboxd sync file:` | any channel | Upload your Letterboxd export zip. Shows a preview (new / changed / removed entries, posts to create), then **Apply** or **Cancel**. Stores your history, edits the bot's embeds for entries you edited, deletes the bot's messages for entries you deleted, replaces your watchlist (watchlist films only break ties in the votes). |
 
@@ -117,7 +117,7 @@ The unit file is `deploy/film-buffs-bot.service`; install changes with
 
 | Command | What it does |
 |---|---|
-| `/admin resync [post]` | Re-renders a movie's info card (button, no-spoilers reminder) and re-applies its tags from the database; also refreshes its post-watch post's title and starter. Run it inside the `#movies` or post-watch post, or pick the post. Use it after editing a movie row by hand, or if a card or its tags look wrong. |
+| `/admin resync [post]` | Re-renders a movie's info card (no-spoilers reminder with its `#post-watch` link) and re-applies its tags from the database; also refreshes its post-watch post's title and starter. Run it inside the `#pre-watch` or post-watch post, or pick the post. Use it after editing a movie row by hand, or if a card or its tags look wrong. |
 | `/admin availability` | Re-checks In Theaters / Streaming for every movie against TMDB now (it also runs daily at 05:00 Chicago) and replies with what changed. Takes a few minutes. |
 | `/admin pick group:<main or a group> slot:<This/Next> title:` | Sets that week's (main) or month's (group) movie. Closes an open vote early (its rankings are kept), updates the event and announces it. Main: puts a previously picked film back to its old tag, and pins it right away if the week has started. Groups never change tags. |
 | `/admin clear group: slot:<This/Next>` | Undoes that week's or month's pick: no movie then, the event is removed. Main: the film goes back to its old tag and its pins are removed, and the week shows "no pick (cleared by an admin)". A group can nominate a cleared film again. `/admin pick` can still set a film later. |

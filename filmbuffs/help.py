@@ -19,7 +19,7 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
 MORE = "📚 More"
 # Context menus have no description of their own.
 MENU_TEXT = {
-    "Mark as spoiler": "move a message out of a #movies post into its post-watch discussion",
+    "Mark as spoiler": "move a message out of a #pre-watch post into its post-watch discussion",
     "Add to ideas": "add a message in #ideas to the pinned ideas list",
 }
 GROUP_NOTE = ("-# In a group's channels, **/nominate**, **/nominations**, **/unnominate** and "

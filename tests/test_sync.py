@@ -81,7 +81,7 @@ class Client:
         client = self
 
         class Movies:
-            async def ensure_post(self, movie, *, added_by, pitch, status, source):
+            async def ensure_post(self, movie, *, added_by, status, source):
                 if await db.get_movie(movie.id):
                     return client.channels[(await db.get_movie(movie.id))["thread_id"]], False
                 client.created.append((movie.id, status, source))
@@ -187,7 +187,7 @@ def test_first_sync_diff_and_rss_matching(tmp_path):
         assert c["watchlist_films"] == 1 and c["watchlist_added"] == 1
         text = "\n".join(preview_lines(p))
         assert "2 new · 2 changed" in text and "Unmatched on TMDB:** 1 films" in text
-        assert "3 #movies posts to create (Watched (solo) 2, Backlog 1)" in text
+        assert "3 #pre-watch posts to create (Watched (solo) 2, Backlog 1)" in text
     run(go)
 
 

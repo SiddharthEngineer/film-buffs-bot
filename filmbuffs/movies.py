@@ -1,4 +1,4 @@
-"""Movie posts in the #movies forum (spoiler-free). Shared by /addmovie, Letterboxd and backfill."""
+"""Movie posts in the #pre-watch forum (spoiler-free). Shared by /addmovie, Letterboxd and backfill."""
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from .availability import FIELD_NAME as WATCH_FIELD, JUSTWATCH_CREDIT, Availability, card_line
-from .cards import CARD_VERSION, card_view
+from .cards import CARD_VERSION
 from .tags import compose_tag_keys, genre_tag_keys
 from .tmdb import Movie
 
@@ -22,22 +22,29 @@ log = logging.getLogger(__name__)
 EMBED_COLOR = 0xE5A00D
 # Field added by the old (pre-3R) spoiler-line design; removed from cards on refresh.
 LEGACY_SPOILER_FIELD = "Spoiler line"
-# Last field on every info card: the no-spoilers reminder.
+# Last field on every info card: the no-spoilers reminder, linking the #post-watch post.
 REMINDER_NAME = "🚫 No spoilers in this post"
-REMINDER_VALUE = ("Trailers, hype and first impressions only. Seen it? Spoilers go in the "
-                  "**🔓 Post-watch discussion** (button below).")
+# Field the pre-Phase 18 /addmovie and /nominate `pitch:` added; dropped on refresh.
+PITCH_NAME = "Pitch"
 
 
-def set_reminder(e: discord.Embed) -> discord.Embed:
+def reminder_value(spoiler_url: str | None) -> str:
+    # Only missing for a moment while a new movie's #post-watch post is created.
+    text = "Already seen it? Discussion in #post-watch"
+    return f"[{text}]({spoiler_url})" if spoiler_url else f"{text}."
+
+
+def set_reminder(e: discord.Embed, spoiler_url: str | None) -> discord.Embed:
     """Put the no-spoilers reminder last on the card (replacing any older copy)."""
     for i in reversed([i for i, f in enumerate(e.fields)
-                       if f.name in (REMINDER_NAME, LEGACY_SPOILER_FIELD)]):
+                       if f.name in (REMINDER_NAME, LEGACY_SPOILER_FIELD, PITCH_NAME)]):
         e.remove_field(i)
-    e.add_field(name=REMINDER_NAME, value=REMINDER_VALUE, inline=False)
+    e.add_field(name=REMINDER_NAME, value=reminder_value(spoiler_url), inline=False)
     return e
 
 
-def set_availability(e: discord.Embed, av: Availability | None) -> discord.Embed:
+def set_availability(e: discord.Embed, av: Availability | None,
+                     spoiler_url: str | None = None) -> discord.Embed:
     """Put the "Where to watch (US)" field just above the reminder (or drop it), and
     credit JustWatch in the footer whenever the field is shown (TMDB's terms)."""
     for i in reversed([i for i, f in enumerate(e.fields) if f.name == WATCH_FIELD]):
@@ -50,7 +57,7 @@ def set_availability(e: discord.Embed, av: Availability | None) -> discord.Embed
         e.set_footer(text=JUSTWATCH_CREDIT)
     else:
         e.remove_footer()
-    return set_reminder(e)
+    return set_reminder(e, spoiler_url)
 
 
 def truncate(text: str, limit: int) -> str:
@@ -61,7 +68,7 @@ def truncate(text: str, limit: int) -> str:
 
 
 def build_embed(movie: Movie, added_by: discord.abc.User | int | None,
-                pitch: str | None, availability: Availability | None = None) -> discord.Embed:
+                availability: Availability | None = None) -> discord.Embed:
     e = discord.Embed(title=movie.display, url=movie.tmdb_url,
                       description=truncate(movie.overview, 600) or "*No synopsis on TMDB.*",
                       color=EMBED_COLOR)
@@ -78,8 +85,6 @@ def build_embed(movie: Movie, added_by: discord.abc.User | int | None,
     if added_by is not None:
         uid = added_by if isinstance(added_by, int) else added_by.id
         e.add_field(name="Added by", value=f"<@{uid}>", inline=True)
-    if pitch:
-        e.add_field(name="Pitch", value=truncate(pitch, 1024), inline=False)
     return set_availability(e, availability)
 
 
@@ -92,7 +97,7 @@ class MovieService:
     def forum(self) -> discord.ForumChannel:
         ch = self.bot.get_channel(self.bot.config.channels["movies"])
         if not isinstance(ch, discord.ForumChannel):
-            raise RuntimeError("#movies forum not found")
+            raise RuntimeError("#pre-watch forum not found")
         return ch
 
     async def find_post(self, tmdb_id: int) -> discord.Thread | None:
@@ -124,9 +129,23 @@ class MovieService:
         return tags
 
     async def ensure_post(self, movie: Movie, *, added_by: discord.abc.User | int | None,
-                          pitch: str | None, status: str, source: str,
-                          ) -> tuple[discord.Thread, bool]:
-        """Return (post, created). Creates the post if the movie has none yet."""
+                          status: str, source: str) -> tuple[discord.Thread, bool]:
+        """Return (post, created). Creates the post if the movie has none yet, and
+        its #post-watch post right after (Phase 18: every movie has both)."""
+        thread, created = await self._ensure_post(movie, added_by=added_by, status=status,
+                                                  source=source)
+        if created:
+            spoilers = getattr(self.bot, "spoilers", None)
+            if spoilers is not None:
+                try:
+                    await spoilers.open(movie.id)   # also links it on the card
+                except (discord.HTTPException, LookupError, RuntimeError):
+                    # The startup backfill (create_missing_posts) retries it.
+                    log.exception("Could not create the #post-watch post for TMDB %s", movie.id)
+        return thread, created
+
+    async def _ensure_post(self, movie: Movie, *, added_by: discord.abc.User | int | None,
+                           status: str, source: str) -> tuple[discord.Thread, bool]:
         async with self._locks[movie.id]:
             existing = await self.find_post(movie.id)
             if existing is not None:
@@ -140,8 +159,7 @@ class MovieService:
             flags: list[str] = av.flags if av else []
             created = await self.forum.create_thread(
                 name=truncate(movie.display, 100),
-                embed=build_embed(movie, added_by, pitch, av),
-                view=card_view(movie.id, None),
+                embed=build_embed(movie, added_by, av),
                 applied_tags=self.applied_tags(status, flags, genres),
                 reason=f"Movie post ({source})",
             )
@@ -150,7 +168,7 @@ class MovieService:
             await self.bot.db.insert_movie(
                 tmdb_id=movie.id, thread_id=thread.id, starter_message_id=message.id,
                 title=movie.title, year=movie.year, status=status, flags=flags,
-                genre_tags=genres, added_by=uid, pitch=pitch, source=source,
+                genre_tags=genres, added_by=uid, pitch=None, source=source,
                 poster_url=movie.poster_url or "")
             await self.bot.db.set_card_version(movie.id, CARD_VERSION)
             if av is not None:
@@ -179,21 +197,27 @@ class MovieService:
         return f"https://discord.com/channels/{self.bot.config.guild_id}/{row['spoiler_thread_id']}"
 
     async def update_card(self, tmdb_id: int) -> None:
-        """Re-render the info card: button, where to watch, no-spoilers reminder
-        (drops the legacy field)."""
+        """Re-render the info card: where to watch, the no-spoilers reminder with
+        its #post-watch link (drops the old button and legacy fields)."""
         row = await self.bot.db.get_movie(tmdb_id)
         thread = await self.find_post(tmdb_id)
         if row is None or thread is None:
             return
-        if thread.archived:
+        was_archived = thread.archived
+        if was_archived:
             await thread.edit(archived=False, reason="Updating the movie's info card")
         starter = await thread.fetch_message(row["starter_message_id"])
-        kwargs: dict = {"view": card_view(tmdb_id, self.spoiler_url(row))}
+        kwargs: dict = {"view": None}   # removes the pre-Phase 18 button
         if starter.embeds:
             kwargs["embed"] = set_availability(starter.embeds[0],
-                                               Availability.from_json(row["availability"]))
+                                               Availability.from_json(row["availability"]),
+                                               self.spoiler_url(row))
         await starter.edit(**kwargs)
         await self.bot.db.set_card_version(tmdb_id, CARD_VERSION)
+        if was_archived:
+            # Put it back: guilds have a cap on active threads (DISCORD_NOTES), and
+            # bulk refreshes would otherwise un-archive every post at once.
+            await thread.edit(archived=True, reason="Info card updated")
 
     async def refresh_old_cards(self) -> None:
         """One-off per CARD_VERSION bump: bring existing posts' cards and tags up to date."""

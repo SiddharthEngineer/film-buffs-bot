@@ -22,9 +22,10 @@ def test_welcome_is_one_pinned_page():
     assert page["sections"][0].startswith("# 🎬 Welcome to Film Buffs")
     assert setup_server.page_text_size(page["sections"]) <= setup_server.PAGE_TEXT_LIMIT
     text = "\n".join(page["sections"])
-    for ref in ("{#movies}", "{#movie_spoilers}", "{#watch_planning}", "{#wrapped}", "{#ideas}"):
+    for ref in ("{#movies}", "{#movie_spoilers}", "{#watch_planning}"):
         assert ref in text
-    assert "@Weekly Pings" in text and "/help" in text
+    assert "/help" in text and "Groups" not in text and "pitch" not in text
+    assert "Recap" not in text and "watchlist and entire review history" in text
     assert cfg["retire_messages"] == [{"key": "how_to", "title": "📖 How to", "channel": "welcome"}]
     ch = next(c for cat in cfg["categories"] for c in cat["channels"] if c["key"] == "welcome")
     assert ch["name"] == "welcome" and ch["preset"] == "read_only"
@@ -41,8 +42,8 @@ def _cfg_with(tmp_path, old: str, new: str):
 @pytest.mark.parametrize("old,new,err", [
     ("    pin: true\n    sections:", "    pin: true\n    title: x\n    sections:", "has no title"),
     ("        Disagree about movies, not about people.",
-     "        Disagree about movies, not about people." + "x" * 1200, "Discord allows 4000"),
-    ("{#wrapped}", "{#recap-wrapped}", "unknown channel ref"),
+     "        Disagree about movies, not about people." + "x" * 3000, "Discord allows 4000"),
+    ("{#watch_planning}", "{#watch-planning}", "unknown channel ref"),
     ('channel: welcome}', 'channel: nowhere}', "need a key, a title and a channel"),
     ("retire_messages:\n  - {key: how_to", "retire_messages:\n  - {key: welcome_rules", "both declared and retired"),
 ])

@@ -9,7 +9,7 @@ owner and to Administrator roles; that can't be turned off.
 
 Everything a group does stays in its category: its own nomination pool, ballot,
 rankings and monthly vote. Nothing about it appears in the public channels, and
-its picks never change a film's tags or status in #movies.
+its picks never change a film's tags or status in #pre-watch.
 
 This module is pure (no discord.py) so setup_server.py and the bot share it.
 """
@@ -84,7 +84,9 @@ def expand(cfg: dict) -> None:
             "_group": key,
             "channels": [
                 {"key": channel_key(key, "watch_planning"), "name": "watch-planning",
-                 "topic": (f"{g['name']}'s monthly movie. /nominate up to 3 films here (your #1 is "
+                 "topic": (f"{g['name']}'s monthly movie. Voting here is completely independent "
+                           f"from the server's weekly vote: nominations and votes are completely "
+                           f"separate. /nominate up to 3 films here (your #1 is "
                            f"on the ballot), then click Vote on the 🌙 ballot and rank them; 🔔 Pings "
                            f"toggles pings when a movie is picked. The vote closes on the last day of the month; the discussion is in the "
                            f"voice channel on the 1st. Only {role_name} members can see this "

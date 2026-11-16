@@ -51,7 +51,7 @@ def decade_tag_key(year: int | None) -> str | None:
 def post_watch_tag_keys(year: int | None, genres: list[str], has_reviews: bool,
                         max_genres: int = 3) -> list[str]:
     """Tags for a post-watch post: 📓 Reviews, the decade, then up to max_genres
-    genres (the #movies genre keys, in TMDB order). At most 5, so nothing is cut
+    genres (the #pre-watch genre keys, in TMDB order). At most 5, so nothing is cut
     with the default 3 genres."""
     keys = [REVIEWS_TAG] if has_reviews else []
     decade = decade_tag_key(year)

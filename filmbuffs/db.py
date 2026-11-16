@@ -435,7 +435,7 @@ MIGRATIONS = [
     );
     """,
     # 14 — Phase 16: #post-watch posts show the poster (starter embed thumbnail).
-    #   poster_url: TMDB poster, set when the #movies post is created; older rows
+    #   poster_url: TMDB poster, set when the #pre-watch post is created; older rows
     #     are filled from TMDB by the post-watch refresh. '' = TMDB has none.
     #   Post-watch tags need nothing else: genres and year are already here, and
     #   📓 Reviews comes from letterboxd_entries (spoiler_message_id + review_text).
@@ -792,7 +792,7 @@ class Database:
         return cur.rowcount
 
     async def watchlist_summary(self, user_id: int) -> tuple[aiosqlite.Row | None, int, int]:
-        """(import row, films stored, films that have a #movies post)."""
+        """(import row, films stored, films that have a #pre-watch post)."""
         cur = await self.conn.execute("SELECT * FROM watchlist_imports WHERE user_id=?", (user_id,))
         imp = await cur.fetchone()
         cur = await self.conn.execute(

@@ -11,7 +11,7 @@ Every group in server.yaml `groups:` has one GroupVoteService. For month M
   end         at the end of M the month is marked done.
 
 Everything is posted in the group's #watch-planning and pings only the group's
-opt-in ping role. A group's pick never changes the film's tags or status in #movies, is
+opt-in ping role. A group's pick never changes the film's tags or status in #pre-watch, is
 never logged in #watch-log and never announced in #announcements. The group
 can't pick the same film twice (its months with a winner are its history);
 other groups and the weekly vote don't matter.
@@ -238,6 +238,8 @@ class GroupVoteService(RankedTrack):
             head = (f"🌙 **Voting is open until {when(s.vote_close, self.tz)}.** The winner is "
                     f"**{g}'s movie for {name}**: watch it any time in {s.month:%B}, then join "
                     f"the discussion on **{when(s.discussion, self.tz)}** {self.where()}.\n"
+                    f"This vote is completely independent from the server's weekly vote: "
+                    f"nominations and votes are completely separate.\n"
                     f"Click **Vote** and rank as many as you like; your ranking carries over "
                     f"to next month's vote.\n"
                     f"**{n} member{' has' if n == 1 else 's have'} a ranking.** Results are posted "
@@ -347,7 +349,7 @@ class GroupVoteService(RankedTrack):
 
     async def _crown(self, row, w, now: datetime, *, how: str, line: str) -> None:
         """The month's film: it leaves the pool; event in #voice; announced in
-        #watch-planning. Its #movies post is left alone."""
+        #watch-planning. Its #pre-watch post is left alone."""
         month = row["month"]
         db = self.bot.db
         tmdb_id = w["tmdb_id"]

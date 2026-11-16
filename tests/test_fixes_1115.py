@@ -51,19 +51,19 @@ class FakeMovies:
     def __init__(self):
         self.calls = []
 
-    async def ensure_post(self, movie, *, added_by, pitch, status, source):
-        self.calls.append((movie.id, added_by, pitch, status, source))
+    async def ensure_post(self, movie, *, added_by, status, source):
+        self.calls.append((movie.id, added_by, status, source))
         return SimpleNamespace(jump_url="https://discord.com/channels/1/99"), True
 
 
-def test_add_movie_creates_the_post_with_the_pitch():
+def test_add_movie_creates_the_post():
     bot = SimpleNamespace(tmdb=FakeTMDB(), movies=FakeMovies())
     movie, thread, created, err = asyncio.run(
-        add_movie(bot, "member", "tmdb:949", "Best heist film", source="nominate"))
+        add_movie(bot, "member", "tmdb:949", source="nominate"))
     assert err is None and created and movie.id == 949
-    assert bot.movies.calls == [(949, "member", "Best heist film", "backlog", "nominate")]
-    assert post_note(movie, thread, True, "x").startswith("✅ Added **Heat (1995)**")
-    assert "pitch there" in post_note(movie, thread, False, "x")
+    assert bot.movies.calls == [(949, "member", "backlog", "nominate")]
+    assert post_note(movie, thread, True).startswith("✅ Added **Heat (1995)**")
+    assert "already has a post" in post_note(movie, thread, False)
     # Free text isn't a pick from the list: nothing is created.
-    _, _, _, err = asyncio.run(add_movie(bot, "member", "heat", None, source="nominate"))
+    _, _, _, err = asyncio.run(add_movie(bot, "member", "heat", source="nominate"))
     assert err and "isn't a movie from the list" in err and len(bot.movies.calls) == 1

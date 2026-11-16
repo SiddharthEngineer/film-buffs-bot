@@ -250,7 +250,7 @@ class Letterboxd(commands.Cog):
             self._syncing.discard(uid)
         lines = [f"✅ **Letterboxd sync done** ({export.username})"]
         bits = [(res.stored, "new rows stored"), (res.updated, "updated"),
-                (res.removed, "removed"), (res.posts_created, "#movies posts created"),
+                (res.removed, "removed"), (res.posts_created, "#pre-watch posts created"),
                 (res.reviews_posted, "reviews posted"), (res.embeds_edited, "embeds edited"),
                 (res.messages_deleted, "messages deleted")]
         lines.append(" · ".join(f"{n} {label}" for n, label in bits if n) or "Nothing to change.")

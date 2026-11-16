@@ -2,8 +2,8 @@
 
 Each new entry produces three messages, in this order:
   1. #post-watch post: an embed with rating, ♥, rewatch, watched date, review.
-  2. #movies post: a neutral one-liner ("X logged this") linking to (1). No rating.
-  3. #letterboxd-feed: one line linking the #movies post. No rating, no review.
+  2. #pre-watch post: a neutral one-liner ("X logged this") linking to (1). No rating.
+  3. #letterboxd-feed: one line linking the #pre-watch post. No rating, no review.
 Every entry is stored before anything is posted, and each message ID is saved as
 soon as it is sent, so a crash or Discord error resumes without duplicates.
 """
@@ -473,7 +473,7 @@ class LetterboxdService:
                  entry.guid, watch_guid)
 
     async def _after_merge(self, guid: str, member: discord.Member | None) -> None:
-        """Bring Discord in line with a merged entry: edit the embed (and #movies
+        """Bring Discord in line with a merged entry: edit the embed (and #pre-watch
         note) if there is one; if not, post the review unless the poller still
         will (pending) or it was never posted."""
         row = await self.bot.db.get_entry(guid)
@@ -520,7 +520,7 @@ class LetterboxdService:
         return msg
 
     async def refresh_messages(self, row, member: discord.Member | None) -> bool:
-        """Edit the entry's post-watch embed (and its #movies note, whose wording
+        """Edit the entry's post-watch embed (and its #pre-watch note, whose wording
         depends on rating/review) to match the stored row. Returns False if the
         embed is gone (deleted by hand); its ID is then forgotten."""
         db = self.bot.db
@@ -553,7 +553,7 @@ class LetterboxdService:
         return True
 
     async def delete_messages(self, row) -> int:
-        """Delete the bot's own messages for an entry (post-watch embed, #movies
+        """Delete the bot's own messages for an entry (post-watch embed, #pre-watch
         note, #letterboxd-feed line). Returns how many were deleted; the IDs are
         cleared as each one goes (or turns out to be gone already)."""
         db = self.bot.db
@@ -623,7 +623,7 @@ class LetterboxdService:
         # A solo log never changes an existing post's tags (owner, 2026-11-11);
         # only posts created from a log start as Watched (solo).
         movies_post, _ = await self.bot.movies.ensure_post(
-            movie, added_by=member.id, pitch=None, status="watched_solo", source="letterboxd")
+            movie, added_by=member.id, status="watched_solo", source="letterboxd")
         row = await db.get_entry(guid)
         quiet = discord.AllowedMentions.none()
 

@@ -56,7 +56,7 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
 
     @app_commands.command(name="resync",
                           description="Re-render a movie post's info card and re-apply its tags")
-    @app_commands.describe(post="The movie's #movies or post-watch post (default: this post)")
+    @app_commands.describe(post="The movie's #pre-watch or post-watch post (default: this post)")
     @admin_only()
     async def resync(self, interaction: discord.Interaction,
                      post: discord.Thread | None = None) -> None:
@@ -74,7 +74,7 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
         movies = self.bot.movies
         if await movies.find_post(tmdb_id) is None:
             await interaction.followup.send(
-                f"The #movies post for TMDB {tmdb_id} was deleted, so the bot forgot it. "
+                f"The #pre-watch post for TMDB {tmdb_id} was deleted, so the bot forgot it. "
                 "`/addmovie` will recreate it.", ephemeral=True)
             return
         await movies.update_card(tmdb_id)
@@ -134,7 +134,7 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
                 await interaction.followup.send(f"❌ TMDB has no movie with ID {tmdb_id}.",
                                                 ephemeral=True)
                 return
-            await self.bot.movies.ensure_post(movie, added_by=interaction.user, pitch=None,
+            await self.bot.movies.ensure_post(movie, added_by=interaction.user,
                                               status="backlog", source="admin")
         reply = await self._service(group).admin_pick(interaction.user.id, slot.value, tmdb_id)
         await interaction.followup.send(reply, ephemeral=True,

@@ -164,7 +164,7 @@ def test_card_hides_addon_channels_and_ad_tiers():
 
 def test_card_field_sits_above_reminder_with_justwatch_credit():
     movie = Movie(1, "Film", 2026, 100, "Plot", None, ["Drama"], ["Someone"])
-    e = build_embed(movie, 5, None, Availability(streaming=["Netflix"]))
+    e = build_embed(movie, 5, Availability(streaming=["Netflix"]))
     names = [f.name for f in e.fields]
     assert names[-2:] == [FIELD_NAME, REMINDER_NAME]
     assert e.footer.text == JUSTWATCH_CREDIT     # no "👍 to vote" footer any more

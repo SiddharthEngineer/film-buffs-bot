@@ -38,6 +38,10 @@ def test_card_reminder_is_last_and_replaces_old_fields():
     e.add_field(name=LEGACY_SPOILER_FIELD, value="old")
     e.add_field(name="Pitch", value="p")
     e.add_field(name=REMINDER_NAME, value="older text")
-    set_reminder(set_reminder(e))
-    assert [f.name for f in e.fields] == ["Pitch", REMINDER_NAME]
-    assert "Post-watch discussion" in e.fields[-1].value
+    set_reminder(set_reminder(e, None), "https://discord.com/channels/1/9")
+    # The old Pitch field (pre-Phase 18) goes too.
+    assert [f.name for f in e.fields] == [REMINDER_NAME]
+    assert e.fields[-1].value == ("[Already seen it? Discussion in #post-watch]"
+                                  "(https://discord.com/channels/1/9)")
+    set_reminder(e, None)
+    assert e.fields[-1].value == "Already seen it? Discussion in #post-watch."

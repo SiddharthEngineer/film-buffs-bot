@@ -26,7 +26,7 @@ def test_post_name_and_starter_embed():
     e = starter_embed("Parasite (2019)", "https://discord.com/channels/1/2", "https://img/p.jpg")
     assert "Post-watch discussion for Parasite (2019)" in e.description
     assert "Spoilers allowed" in e.description
-    assert "[Back to the spoiler-free post in #movies](https://discord.com/channels/1/2)" \
+    assert "[Haven't seen it? Spoiler free discussion in #pre-watch](https://discord.com/channels/1/2)" \
         in e.description
     assert e.thumbnail.url == "https://img/p.jpg"
     assert e.title is None                        # the post title already says it
@@ -434,15 +434,16 @@ def test_refresh_rewrites_title_starter_and_tags_once(tmp_path):
         return t, starter, first_edits, version, movies_post
     t, starter, (t_edits, s_edits), version, movies_post = asyncio.run(run())
     assert version == STARTER_VERSION
-    assert len(t_edits) == 1                             # name + tags + unarchive in one call
-    assert t_edits[0]["archived"] is False
+    assert len(t_edits) == 2                             # name + tags + unarchive in one call,
+    assert t_edits[0]["archived"] is False               # then archived again (Phase 18)
+    assert t_edits[1] == {"archived": True, "reason": "Post-watch post updated"} and t.archived
     assert t.name == "Parasite (2019)"
     assert tag_names(t) == ["reviews", "d_2010s", "g_comedy", "g_thriller", "g_drama"]
     assert len(s_edits) == 1 and s_edits[0]["content"] is None
     assert starter.content == "" and len(starter.embeds) == 1
     assert movies_post.jump_url in starter.embeds[0].description
     assert starter.embeds[0].thumbnail.url.endswith("/496243.jpg")
-    assert len(t.edits) == 1 and len(starter.edits) == 1   # second run changed nothing
+    assert len(t.edits) == 2 and len(starter.edits) == 1   # second run changed nothing
 
 
 def test_refresh_not_marked_done_until_tags_exist(tmp_path):
@@ -506,7 +507,7 @@ def test_move_sends_as_author_then_deletes(tmp_path):
     m = svc.wh.sent[0]
     lines = m.content.split("\n")
     assert lines[0] == "-# ↪ replying to Alex: https://discord.com/channels/1/555/40"
-    assert lines[1] == "-# moved from the spoiler-free #movies post by <@7>"
+    assert lines[1] == "-# moved from the spoiler-free #pre-watch post by <@7>"
     assert lines[2] == "the dad did it"
     assert m.files == ["file:a.png"]
     assert m.kw["username"] == "Sam" and m.kw["avatar_url"] == "https://a/sam.png"

@@ -1,4 +1,4 @@
-"""/addmovie: add a movie to the backlog as a post in #movies."""
+"""/addmovie: add a movie to the backlog as a post in #pre-watch."""
 from __future__ import annotations
 
 import logging
@@ -22,18 +22,16 @@ class Movies(commands.Cog):
 
     @app_commands.command(name="addmovie",
                           description="Add a movie to the backlog without nominating it (creates its post)")
-    @app_commands.describe(title="Start typing, then pick the movie from the list",
-                           pitch="Why we should watch it (optional)")
+    @app_commands.describe(title="Start typing, then pick the movie from the list")
     @app_commands.guild_only()
-    async def addmovie(self, interaction: discord.Interaction, title: str,
-                       pitch: app_commands.Range[str, 1, 1000] | None = None) -> None:
+    async def addmovie(self, interaction: discord.Interaction, title: str) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
-        movie, thread, created, err = await add_movie(self.bot, interaction.user, title, pitch,
+        movie, thread, created, err = await add_movie(self.bot, interaction.user, title,
                                                       source="addmovie")
         if err:
             await interaction.followup.send(err + " No post was created.", ephemeral=True)
             return
-        await interaction.followup.send(post_note(movie, thread, created, pitch), ephemeral=True)
+        await interaction.followup.send(post_note(movie, thread, created), ephemeral=True)
 
     @addmovie.autocomplete("title")
     async def title_autocomplete(self, interaction: discord.Interaction,
@@ -49,10 +47,10 @@ class Movies(commands.Cog):
         return [app_commands.Choice(name=label, value=value) for label, value in pairs[:25]]
 
 
-async def add_movie(bot: "FilmBuffsBot", user: discord.abc.User, title: str, pitch: str | None,
+async def add_movie(bot: "FilmBuffsBot", user: discord.abc.User, title: str,
                     source: str) -> tuple[Movie | None, discord.Thread | None, bool, str | None]:
     """The /addmovie part, shared with /nominate: read the autocomplete pick, look the
-    film up on TMDB and make sure it has a #movies post (Backlog, added by `user`).
+    film up on TMDB and make sure it has a #pre-watch post (Backlog, added by `user`).
     Returns (movie, post, created, None), or (None, None, False, error)."""
     tmdb_id = parse_choice(title)
     if tmdb_id is None:
@@ -66,16 +64,15 @@ async def add_movie(bot: "FilmBuffsBot", user: discord.abc.User, title: str, pit
         return None, None, False, "❌ Couldn't reach TMDB right now. Please try again in a minute."
     if movie is None:
         return None, None, False, f"❌ TMDB has no movie with ID {tmdb_id}."
-    thread, created = await bot.movies.ensure_post(movie, added_by=user, pitch=pitch,
+    thread, created = await bot.movies.ensure_post(movie, added_by=user,
                                                    status="backlog", source=source)
     return movie, thread, created, None
 
 
-def post_note(movie: Movie, thread: discord.Thread, created: bool, pitch: str | None) -> str:
+def post_note(movie: Movie, thread: discord.Thread, created: bool) -> str:
     if created:
         return f"✅ Added **{movie.display}** → {thread.jump_url}"
-    extra = " Post your pitch there as a message." if pitch else ""
-    return f"**{movie.display}** already has a post → {thread.jump_url}{extra}"
+    return f"**{movie.display}** already has a post → {thread.jump_url}"
 
 
 async def setup(bot: "FilmBuffsBot") -> None:

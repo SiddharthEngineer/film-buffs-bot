@@ -1,10 +1,10 @@
 """Post-watch discussions: one companion post per movie in #post-watch.
 
-#movies posts stay spoiler-free. A movie's post-watch post is
+#pre-watch posts stay spoiler-free. A movie's post-watch post is
 created lazily (the info card button, /spoiler, Mark as spoiler, or a Letterboxd
 entry) and never more than once. "Mark as spoiler" moves a message out of a
-#movies post into the post-watch post: it is re-sent there via webhook as its
-author, then the original is deleted. Nothing is ever reposted in the #movies
+#pre-watch post into the post-watch post: it is re-sent there via webhook as its
+author, then the original is deleted. Nothing is ever reposted in the #pre-watch
 post, so the order there never changes.
 
 Internal names (channel key movie_spoilers, "spoiler post", spoilers:<id>
@@ -41,7 +41,7 @@ MAX_FILES = 10
 # ------------------------------------------------------------------ pure logic
 
 def spoiler_post_name(display: str) -> str:
-    """`Title (Year)`, like the #movies post (Phase 16 dropped "— Post-watch")."""
+    """`Title (Year)`, like the #pre-watch post (Phase 16 dropped "— Post-watch")."""
     return truncate(display, 100)
 
 
@@ -49,7 +49,9 @@ def spoiler_post_name(display: str) -> str:
 # rewritten once at startup.
 #   2: links back to "#movies" (was "pre-watch discussion")
 #   3: Phase 16: title `Title (Year)`, embed-only starter with poster, tags
-STARTER_VERSION = "3"
+#   4: Phase 18: "← Haven't seen it yet? Spoiler free post in #pre-watch"
+#   5: the whole back line is the link: "Haven't seen it? Spoiler free discussion in #pre-watch"
+STARTER_VERSION = "5"
 
 # Bump to recreate post-watch posts that carry a "changed the post title"
 # notice (which can't be deleted). 1: the Phase 16 rollout's renames.
@@ -79,13 +81,13 @@ def post_activity(row) -> int:
 def starter_description(display: str, movies_url: str) -> str:
     return (f"⚠️ **Post-watch discussion for {display}. Spoilers allowed.** "
             f"Everything here may spoil the film, so only read on once you've seen it.\n\n"
-            f"← [Back to the spoiler-free post in #movies]({movies_url})")
+            f"[Haven't seen it? Spoiler free discussion in #pre-watch]({movies_url})")
 
 
 def starter_embed(display: str, movies_url: str, poster_url: str | None) -> discord.Embed:
     """The starter is this embed and no plain text: a forum's post list shows a
     starter's text but not its embeds, so the list shows just title + poster
-    (like #movies)."""
+    (like #pre-watch)."""
     e = discord.Embed(description=starter_description(display, movies_url), color=EMBED_COLOR)
     if poster_url:
         e.set_thumbnail(url=poster_url)
@@ -211,11 +213,13 @@ class SpoilerService:
                 return None
         return thread  # type: ignore[return-value]
 
-    # lazy creation -----------------------------------------------------------
+    # creation ------------------------------------------------------------------
     async def open(self, tmdb_id: int) -> tuple[discord.Thread, bool]:
         """Return (spoiler post, created). Creates it at most once per movie.
+        Since Phase 18 MovieService.ensure_post calls this for every new movie;
+        /spoiler and Mark as spoiler still call it in case one is missing.
 
-        Raises LookupError if the movie (or its #movies post) no longer exists.
+        Raises LookupError if the movie (or its #pre-watch post) no longer exists.
         """
         async with self._open_locks[tmdb_id]:
             movies_post = await self.bot.movies.find_post(tmdb_id)
@@ -240,6 +244,33 @@ class SpoilerService:
                     log.exception("%s failed after creating spoiler post for TMDB %s",
                                   step.__name__, tmdb_id)
             return thread, True
+
+    async def create_missing_posts(self) -> None:
+        """At startup: give every movie that has none its #post-watch post (Phase 18
+        backfill; afterwards only posts whose creation failed or that were deleted by
+        hand). Oldest #pre-watch post first, so the newest movies end up on top of
+        #post-watch. ~1 s apart. Each new post is archived right away (it still shows
+        in the forum; the first reply un-archives it), so the backfill doesn't push
+        the guild toward its active-thread cap."""
+        cur = await self.bot.db.conn.execute(
+            "SELECT tmdb_id FROM movies WHERE spoiler_thread_id IS NULL ORDER BY thread_id")
+        ids = [r["tmdb_id"] for r in await cur.fetchall()]
+        if not ids:
+            return
+        log.info("Creating %d missing #post-watch post(s)", len(ids))
+        made = 0
+        for tmdb_id in ids:
+            try:
+                thread, created = await self.open(tmdb_id)
+                made += created
+                if created:
+                    await thread.edit(archived=True, reason="Post-watch backfill")
+            except LookupError:
+                pass   # its #pre-watch post is gone; the bot forgot the movie
+            except (discord.HTTPException, RuntimeError):
+                log.exception("Could not create the #post-watch post for TMDB %s", tmdb_id)
+            await asyncio.sleep(1)   # gentle on rate limits for bulk creation
+        log.info("Created %d #post-watch post(s)", made)
 
     # poster and tags ----------------------------------------------------------
     async def poster_url(self, row) -> str | None:
@@ -296,11 +327,22 @@ class SpoilerService:
             log.exception("Could not retag the post-watch post for TMDB %s", tmdb_id)
 
     async def refresh_post(self, row) -> None:
-        """Bring an existing post-watch post's title, tags and starter up to date."""
+        """Bring an existing post-watch post's title, tags and starter up to date.
+        A post that was archived is archived again afterwards: bulk refreshes
+        would otherwise un-archive every post at once (active-thread cap,
+        DISCORD_NOTES)."""
         thread = await self.find_spoiler_post(row)
         movies_post = await self.bot.movies.find_post(row["tmdb_id"])
         if thread is None or movies_post is None:
             return
+        was_archived = bool(getattr(thread, "archived", False))
+        unarchived = await self._refresh_post(thread, movies_post, row)
+        if was_archived and unarchived:
+            await thread.edit(archived=True, reason="Post-watch post updated")
+
+    async def _refresh_post(self, thread, movies_post, row) -> bool:
+        """The refresh_post work; True if it un-archived the post."""
+        unarchived = False
         row = await self.bot.db.get_movie(row["tmdb_id"]) or row
         display = display_of(row)
         edits: dict = {}
@@ -314,18 +356,21 @@ class SpoilerService:
             # One edit, un-archiving in the same call (Discord refuses edits to
             # archived threads otherwise). Pinning is untouched.
             await thread.edit(archived=False, reason="Post-watch title and tags", **edits)
+            unarchived = True
         if row["spoiler_starter_message_id"]:
             embed = starter_embed(display, movies_post.jump_url, await self.poster_url(row))
             try:
                 starter = await thread.fetch_message(row["spoiler_starter_message_id"])
             except discord.NotFound:
-                return
+                return unarchived
             if not starter_is_current(starter, embed):
                 if not edits and getattr(thread, "archived", False):
                     await thread.edit(archived=False, reason="Updating the starter message")
+                    unarchived = True
                 # content=None clears the old plain-text starter.
                 await starter.edit(content=None, embed=embed,
                                    allowed_mentions=discord.AllowedMentions.none())
+        return unarchived
 
     async def refresh_starters(self) -> None:
         """Once per STARTER_VERSION: rewrite existing post-watch titles, starters and
@@ -475,7 +520,7 @@ class SpoilerService:
                           tmdb_id)
 
     async def _relink_movies_note(self, entry, thread_id: int, message_id: int) -> None:
-        """Point the entry's spoiler-free #movies note at its new embed."""
+        """Point the entry's spoiler-free #pre-watch note at its new embed."""
         from .letterboxd import movies_note
         if not entry["movies_message_id"]:
             return
@@ -492,7 +537,7 @@ class SpoilerService:
         except discord.NotFound:
             await self.bot.db.update_entry(entry["guid"], movies_message_id=None)
         except discord.HTTPException:
-            log.exception("Could not relink the #movies note for Letterboxd entry %s",
+            log.exception("Could not relink the #pre-watch note for Letterboxd entry %s",
                           entry["guid"])
 
     async def _resume_rebuild(self) -> None:
@@ -547,7 +592,7 @@ class SpoilerService:
 
     async def move(self, message: discord.Message, actor: discord.abc.User,
                    tmdb_id: int) -> discord.Message:
-        """Move a message from a #movies post into the movie's spoiler post.
+        """Move a message from a #pre-watch post into the movie's spoiler post.
 
         Returns the first moved copy. Raises AlreadyMoved if the original is gone,
         ValueError if it can't be moved (nothing is changed then).
@@ -565,7 +610,7 @@ class SpoilerService:
 
             spoiler_post, _ = await self.open(tmdb_id)
 
-            header = [f"-# moved from the spoiler-free #movies post by {actor.mention}"]
+            header = [f"-# moved from the spoiler-free #pre-watch post by {actor.mention}"]
             ref = message.reference
             if ref and ref.message_id:
                 # DeletedReferencedMessage (reply to a deleted message) has no author.

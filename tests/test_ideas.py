@@ -268,17 +268,15 @@ def test_recap_category_layout():
     import setup_server
     cfg = setup_server.load_config("server.yaml")
     cats = [c["key"] for c in cfg["categories"]]
-    # 📊 Recap above 🔧 Admin; private group categories go between them.
-    assert cats.index("voice") < cats.index("recap") < cats.index("admin")
+    # Phase 18: 📚 More (key recap) above 🔧 Admin; private group categories go between them.
+    assert cats.index("movies") < cats.index("recap") < cats.index("admin")
     assert all(cats.index("recap") < cats.index(k) < cats.index("admin")
                for k in cats if k.startswith("group_"))
     recap = next(c for c in cfg["categories"] if c["key"] == "recap")
-    assert recap["name"] == "📊 Recap"
-    wrapped, ideas = recap["channels"]
-    assert (wrapped["key"], wrapped["name"], ideas["key"], ideas["name"]) == (
-        "wrapped", "wrapped", "ideas", "ideas")
-    assert wrapped["preset"] == "read_only" and "Wrapped" in wrapped["topic"]
-    assert "send_messages" in wrapped["_overwrites"]["@everyone"]["deny"]
+    assert recap["name"] == "📚 More"
+    assert [c["key"] for c in recap["channels"]] == ["letterboxd_feed", "watch_log", "ideas"]
+    ideas = recap["channels"][-1]
+    assert ideas["name"] == "ideas"
     assert "@everyone" not in ideas["_overwrites"]            # members can post
     assert "pin_messages" in ideas["_overwrites"]["@bot"]["allow"]
 
@@ -306,4 +304,4 @@ def test_positions_put_recap_above_admin(tmp_path):
     payload, desc = r.desired_positions(channels)
     order = [p["id"] for p in sorted(payload, key=lambda p: p["position"])]
     assert order == [ids[k] for k in keys]
-    assert desc[0].endswith("🔊 Voice | 📊 Recap | 🎓 OSU | 🔧 Admin")
+    assert desc[0].endswith("🍿 Movies | 📚 More | 🎓 OSU | 🔧 Admin")

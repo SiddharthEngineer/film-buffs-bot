@@ -10,7 +10,8 @@ Unmanaged channels are only reported. The one exception is the `retire:` list
 in server.yaml: channels named there by ID are deleted, with safety checks,
 `retire_roles:`, which deletes roles this script created (by key), and
 `retire_messages:`, which deletes messages this script posted (by key; the
-embed title must match).
+embed title must match), and `retire_managed:`, which deletes channels and
+categories this script created (by key, once they're out of the layout).
 
 Messages are embeds by default. `sections:` instead makes a Components V2
 "page" (Phase 15): one accent-colored container, a text block per section
@@ -161,6 +162,12 @@ def load_config(path) -> dict:
     for r in cfg.get("retire", []):
         if not isinstance(r.get("id"), int) or not r.get("name"):
             raise ConfigError(f"retire entries need an integer id and a name: {r}")
+    for r in cfg.get("retire_managed", []):
+        key = r.get("key") or ""
+        if not key.startswith(("channel:", "category:")) or not r.get("name"):
+            raise ConfigError(f"retire_managed entries need a channel:/category: key and a name: {r}")
+        if key in seen:
+            raise ConfigError(f"{key!r} is both declared and retired")
     for r in cfg.get("retire_roles", []):
         if not r.get("key") or not r.get("name"):
             raise ConfigError(f"retire_roles entries need a key and a name: {r}")
@@ -821,6 +828,57 @@ class Reconciler:
                 await fresh.delete(reason=REASON)
             self.add("-", label, details, run)
 
+    async def plan_retire_managed(self) -> None:
+        """Delete channels/categories this script created, listed under `retire_managed:`
+        by key (no longer declared). Same safety checks as `retire:`; the key is
+        forgotten once it's gone. Runs after the moves, channels before categories."""
+        entries = []
+        for r in self.cfg.get("retire_managed", []):
+            cid = self.state.get(r["key"])
+            obj = self.guild.get_channel(cid) if cid else None
+            if obj is None:
+                if cid:
+                    async def forget(key=r["key"]):
+                        self.state.delete(key)
+                    self.add(">", r["name"], ["already deleted; forget its key"], forget)
+                continue
+            if obj.name != r["name"]:
+                raise ConfigError(f"retire_managed {r['key']}: name is {obj.name!r}, not "
+                                  f"{r['name']!r}; refusing to delete")
+            entries.append((r, obj))
+        retiring = {obj.id for _, obj in entries}
+        declared = {self.state.get(f"channel:{ch['key']}")
+                    for cat in self.cfg["categories"] for ch in cat["channels"]}
+        entries.sort(key=lambda e: isinstance(e[1], discord.CategoryChannel))
+        for r, obj in entries:
+            details = []
+            if isinstance(obj, discord.CategoryChannel):
+                staying = [c.name for c in obj.channels
+                           if c.id not in declared and c.id not in retiring]
+                if staying:
+                    raise ConfigError(f"retire category {obj.name!r}: still holds {staying}")
+                label = f'category "{obj.name}"'
+                details.append("empty once the moves and deletes above are done")
+            else:
+                label = f"{obj.type.name} channel {obj.name!r}"
+                if isinstance(obj, discord.abc.Messageable) and not isinstance(obj, discord.VoiceChannel):
+                    has = [m async for m in obj.history(limit=1)]
+                    if has and not r.get("allow_messages"):
+                        raise ConfigError(f"retire_managed {obj.name!r}: it has messages; add "
+                                          "allow_messages: true to delete it anyway")
+                    details.append("has messages (allowed)" if has else "no messages")
+
+            async def run(cid=obj.id, key=r["key"]):
+                fresh = await self.guild.fetch_channel(cid)
+                if isinstance(fresh, discord.CategoryChannel):
+                    children = [c for c in await self.guild.fetch_channels()
+                                if getattr(c, "category_id", None) == cid]
+                    if children:
+                        raise RuntimeError(f"category still holds {[c.name for c in children]}")
+                await fresh.delete(reason=REASON)
+                self.state.delete(key)
+            self.add("-", label, details, run)
+
     def plan_retire_roles(self) -> None:
         """Delete roles this script created, listed under `retire_roles:` (key + name)."""
         for r in self.cfg.get("retire_roles", []):
@@ -859,6 +917,7 @@ class Reconciler:
         for m in self.cfg.get("messages", []):
             await self.plan_message(m)
         await self.plan_retire_messages()
+        await self.plan_retire_managed()
         await self.plan_retire()
         self.plan_retire_roles()
 

@@ -1,8 +1,9 @@
-"""The button row under a movie's info card in #movies.
+"""The info card's version, and the old "Post-watch discussion" button.
 
-Before a post-watch discussion exists, the card has a persistent "Post-watch
-discussion" button (custom_id `spoilers:<tmdb_id>`, so it keeps working after
-restarts). Once the discussion exists, the card gets a plain link button.
+Since Phase 18 every movie gets its #post-watch post together with its
+#pre-watch post, and the card links to it in its text: cards have no buttons.
+`SpoilerButton` stays registered so a card that hasn't been refreshed yet
+(custom_id `spoilers:<tmdb_id>`) still works until the refresh removes it.
 """
 from __future__ import annotations
 
@@ -14,7 +15,10 @@ import discord
 log = logging.getLogger(__name__)
 
 # Bump when the card layout changes; old cards are refreshed once at startup.
-CARD_VERSION = 3   # 2: "Post-watch discussion" label + no-spoilers reminder; 3: no 👍 footer
+# 2: "Post-watch discussion" label + no-spoilers reminder; 3: no 👍 footer;
+# 4: no button, the reminder links the #post-watch post (Phase 18);
+# 5: the whole reminder line is the link, no arrow
+CARD_VERSION = 5
 SPOILER_BUTTON_LABEL = "Post-watch discussion"
 SPOILER_BUTTON_EMOJI = "🔓"
 
@@ -45,12 +49,3 @@ class SpoilerButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spoile
             f"{verb} the post-watch discussion → {thread.jump_url}\n"
             "-# ⚠️ Everything there may spoil the film.", ephemeral=True)
 
-
-def card_view(tmdb_id: int, spoiler_url: str | None) -> discord.ui.View:
-    view = discord.ui.View(timeout=None)
-    if spoiler_url:
-        view.add_item(discord.ui.Button(label=SPOILER_BUTTON_LABEL, emoji=SPOILER_BUTTON_EMOJI,
-                                        style=discord.ButtonStyle.link, url=spoiler_url))
-    else:
-        view.add_item(SpoilerButton(tmdb_id))
-    return view

@@ -544,14 +544,14 @@ class WeeklyService(RankedTrack):
 
     # watch week ------------------------------------------------------------
     async def start_watch(self, row, now: datetime) -> None:
-        """Pin the week's movie in #movies and its post-watch discussion in
+        """Pin the week's movie in #pre-watch and its post-watch discussion in
         #post-watch. A forum has one pinned post, so this replaces
         last week's pins."""
         tmdb_id = row["winner_tmdb_id"]
         post = await self.bot.movies.find_post(tmdb_id) if tmdb_id else None
         if post is not None:
             await self._safe(post.edit(archived=False, pinned=True, reason="This week's movie"),
-                             "pin #movies post")
+                             "pin #pre-watch post")
             try:
                 spoiler, _ = await self.bot.spoilers.open(tmdb_id)
                 await self._safe(spoiler.edit(archived=False, pinned=True,
@@ -703,7 +703,7 @@ class WeeklyService(RankedTrack):
                     post = await self.bot.movies.find_post(tmdb_id)
                     if post is not None and post.flags.pinned:
                         await self._safe(post.edit(pinned=False, reason="Pick cleared"),
-                                         "unpin #movies post")
+                                         "unpin #pre-watch post")
                     spoiler = await self.bot.spoilers.find_spoiler_post(movie)
                     if spoiler is not None and spoiler.flags.pinned:
                         await self._safe(spoiler.edit(pinned=False, reason="Pick cleared"),
