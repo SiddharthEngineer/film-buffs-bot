@@ -825,18 +825,25 @@ class Database:
         n, posted = await cur.fetchone()
         return imp, n, posted
 
-    async def shared_watchlist(self, user_ids: list[int]) -> list[aiosqlite.Row]:
-        """Films on every one of these members' uploaded watchlists, by title, with
-        their post (thread_id NULL if none)."""
+    async def watchlist_overlap(self, user_ids: list[int], min_count: int) -> list[aiosqlite.Row]:
+        """Films on at least `min_count` of these members' uploaded watchlists, most
+        shared first, then by title. Each row: tmdb_id, title, year, thread_id (NULL
+        if no post), n (how many of them) and users (comma-separated user IDs)."""
         ids = list(dict.fromkeys(user_ids))
         cur = await self.conn.execute(
             "SELECT w.tmdb_id, COALESCE(m.title, MAX(w.title)) AS title, "
-            "COALESCE(m.year, MAX(w.year)) AS year, m.thread_id FROM watchlist_items w "
-            "LEFT JOIN movies m ON m.tmdb_id = w.tmdb_id "
+            "COALESCE(m.year, MAX(w.year)) AS year, m.thread_id, "
+            "COUNT(DISTINCT w.user_id) AS n, GROUP_CONCAT(DISTINCT w.user_id) AS users "
+            "FROM watchlist_items w LEFT JOIN movies m ON m.tmdb_id = w.tmdb_id "
             f"WHERE w.user_id IN ({','.join('?' * len(ids))}) GROUP BY w.tmdb_id "
-            "HAVING COUNT(DISTINCT w.user_id) = ? ORDER BY title COLLATE NOCASE, year",
-            (*ids, len(ids)))
+            "HAVING COUNT(DISTINCT w.user_id) >= ? ORDER BY n DESC, title COLLATE NOCASE, year",
+            (*ids, min_count))
         return list(await cur.fetchall())
+
+    async def shared_watchlist(self, user_ids: list[int]) -> list[aiosqlite.Row]:
+        """Films on every one of these members' uploaded watchlists (the intersection)."""
+        ids = list(dict.fromkeys(user_ids))
+        return await self.watchlist_overlap(ids, len(ids))
 
     # weekly pick -----------------------------------------------------------
     async def get_week(self, week_start: str) -> aiosqlite.Row | None:

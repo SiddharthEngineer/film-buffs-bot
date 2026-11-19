@@ -354,7 +354,11 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
-## Phase 20: command cleanup (built 2026-11-19; see STATUS.md)
+## Phase 21: watchlist reports, sync links, buttons first (built 2026-11-19; see STATUS.md)
+Owner (2026-11-19): 🎬 Nominate this film in `#post-watch` posts too. `/watchlist show`: no users → the caller's own (error if not synced); users named → only them; two → intersection; more than two → films on two or more lists, with count and whose ("a report that can assist in picking new movies"). `/letterboxd sync` always links the account, overriding an old one. Backfill Wildwood into `#watch-log` with dates. Boards and `#welcome` point at the buttons, not `/nominate`.
+Chosen in the build: one named user shows their whole watchlist; up to 6 users; reports stay private; the `#watch-log` backfill doesn't ping.
+
+## Phase 20: command cleanup (deployed 2026-11-19; see STATUS.md)
 Owner (2026-11-19):
 1. Remove `/spoiler` (the card's link does it). 2. Remove `/nominations`. 3. Remove `/unnominate`.
 4. `/nominate` both shows your nomination and adds one, like the Vote button. 5. Add `/vote`, opening the Vote button's picker. → Both have a button and a command, and each shows your current pick and lets you pick again.

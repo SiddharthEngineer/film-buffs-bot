@@ -10,7 +10,7 @@ from filmbuffs.cogs.weekly import fit_list
 from filmbuffs.ideas import IdeasService, render_list
 from filmbuffs.vote_ui import (DYNAMIC_ITEMS, NominateFindButton, NominateHereButton,
                                NominatePickSelect, NominationButton, nominations_view)
-from tests.test_phase10 import make, settle
+from tests.test_phase10 import WK, FakeChannel, make, settle
 
 
 def ids(view) -> list[str]:
@@ -128,7 +128,7 @@ def test_command_set():
     assert not nominate.parameters[0].required
     wl = next(c for c in Weekly.__cog_app_commands__ if c.name == "watchlist")
     show = wl.get_command("show")
-    assert [p.name for p in show.parameters] == ["user1", "user2", "user3", "user4"]
+    assert [p.name for p in show.parameters] == [f"user{i}" for i in range(1, 7)]
     assert all(not p.required and p.type is discord.AppCommandOptionType.user
                for p in show.parameters)
 
@@ -147,3 +147,121 @@ def test_every_description_fits_discord():
                 assert len(p.description) <= 100, (c.qualified_name, p.name)
             seen += 1
     assert seen > 10
+
+
+# ------------------------------------------------------------------ Phase 21
+
+def test_here_film_finds_post_watch_posts_too(tmp_path):
+    from filmbuffs.vote_ui import here_film
+
+    async def run():
+        db, bot = await make(tmp_path)
+        await db.set_spoiler_post(2, 502, 602)
+        out = []
+        for cid in (102, 502, 999, None):
+            out.append(await here_film(SimpleNamespace(client=bot, channel_id=cid)))
+        await db.close()
+        return out
+    pre, post, other, none = asyncio.run(run())
+    assert pre["tmdb_id"] == 2 and post["tmdb_id"] == 2 and other is None and none is None
+
+
+def person(uid, name):
+    return SimpleNamespace(id=uid, display_name=name)
+
+
+def test_watchlist_reports(tmp_path):
+    from filmbuffs.cogs.weekly import Weekly
+
+    async def run():
+        db, bot = await make(tmp_path)
+        await db.replace_watchlist(10, [(1, "Film 1", 2001), (2, "Film 2", 2002),
+                                        (900, "Zodiac", 2007)], 3, [])
+        await db.replace_watchlist(11, [(2, "Film 2", 2002), (900, "Zodiac", 2007),
+                                        (901, "Alien", 1979)], 3, [])
+        await db.replace_watchlist(12, [(900, "Zodiac", 2007), (901, "Alien", 1979)], 2, [])
+        cog = Weekly(bot)
+        a, b, c = person(10, "Ann"), person(11, "Bo"), person(12, "Cy")
+        one = await cog.watchlist_report([a], 10)
+        other = await cog.watchlist_report([b], 10)
+        two = await cog.watchlist_report([a, c], 10)
+        three = await cog.watchlist_report([a, b, c], 10)
+        await db.close()
+        return one, other, two, three
+    one, other, two, three = asyncio.run(run())
+    assert one.title == "📋 Your watchlist: 3 films"
+    assert "[Film 1 (2001)](https://discord.com/channels/1/101)" in one.description
+    assert "• Zodiac (2007)" in one.description                  # no post: plain text
+    assert other.title == "📋 Bo's watchlist: 3 films"
+    # Two people: only what's on both (the intersection).
+    assert two.title == "📋 On both watchlists: 1 film"
+    assert "Zodiac" in two.description and "Film 1" not in two.description
+    assert "Alien" not in two.description
+    # Three: films on 2+ of them, most shared first, with whose.
+    assert three.title == "📋 Watchlist overlap: 3 films on 2+ of 3 watchlists"
+    lines = three.description.splitlines()[1:]
+    assert lines[0] == "• Zodiac (2007) · **3/3** · Ann, Bo and Cy"
+    assert lines[1] == "• Alien (1979) · **2/3** · Bo and Cy"
+    assert lines[2].startswith("• [Film 2 (2002)]") and lines[2].endswith("· **2/3** · Ann and Bo")
+    assert len(lines) == 3                                          # Film 1 is on one list
+
+
+def test_watchlist_missing_text():
+    from filmbuffs.cogs.weekly import missing_text
+    me = person(10, "Ann")
+    assert "You haven't synced your Letterboxd watchlist yet" in missing_text([me], 10, False)
+    assert missing_text([person(11, "Bo")], 10, True).startswith("❌ Bo hasn't synced")
+    assert missing_text([me, person(11, "Bo")], 10, True).startswith("❌ You and Bo haven't")
+
+
+def test_sync_links_the_export_account(tmp_path):
+    from filmbuffs.cogs.letterboxd import Letterboxd, preview_text
+    from filmbuffs.letterboxd import AlreadyLinked
+
+    async def run():
+        db, bot = await make(tmp_path)
+        linked = []
+
+        async def link(uid, name):
+            if name == "taken":
+                raise AlreadyLinked(name)
+            linked.append((uid, name))
+            await db.set_link(uid, name)
+        bot.config.channels = {}
+        cog = Letterboxd.__new__(Letterboxd)
+        bot.letterboxd = SimpleNamespace(link=link)
+        cog.bot = bot
+        first = await cog._link_from_sync(10, "annie")
+        same = await cog._link_from_sync(10, "Annie")
+        moved = await cog._link_from_sync(10, "annie2")
+        taken = await cog._link_from_sync(10, "taken")
+        row = await db.get_link(10)
+        await db.close()
+        return first, same, moved, taken, linked, row
+    first, same, moved, taken, linked, row = asyncio.run(run())
+    assert first.startswith("🔗 Linked to **annie**:")
+    assert same is None
+    assert moved.startswith("🔗 Linked to **annie2** (was **annie**)")
+    assert "linked to another member" in taken
+    assert linked == [(10, "annie"), (10, "annie2")] and row["username"] == "annie2"
+
+
+def test_backfill_log_posts_the_missing_pick_line(tmp_path):
+    async def run():
+        db, bot = await make(tmp_path)
+        wlog = FakeChannel()
+        bot.weekly.channel = lambda key: wlog if key == "watch_log" else None
+        await db.create_week(WK, state="picked")
+        await db.update_week(WK, winner_tmdb_id=3, winner_votes=1, runner_up_votes=0,
+                             vote_rounds='[{"counts": {}}]', event_id=555)
+        n = await bot.weekly.backfill_log()
+        again = await bot.weekly.backfill_log()
+        row = await db.get_week(WK)
+        await db.close()
+        return n, again, row, wlog.sent
+    n, again, row, sent = asyncio.run(run())
+    assert (n, again) == (1, 0) and row["log_message_id"] == 901
+    text, mentions = sent[0]
+    assert text.startswith("🎬 **Wk 48 · Nov 23–29 2026: [Film 3 (2003)](https://discord.com/channels/1/103)** · won 1–0")
+    assert "Watch it any time from **" in text and "https://discord.com/events/1/555" in text
+    assert "@" not in text and mentions.roles is False                # no ping

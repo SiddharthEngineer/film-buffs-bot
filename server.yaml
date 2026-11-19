@@ -115,7 +115,7 @@ categories:
         adopt: general          # take over the existing #general instead of creating one
       - key: watch_planning
         name: watch-planning
-        topic: "The 🎬 weekly ballot, always open. /nominate a film (one each), then click Vote and rank them. Commands only here: chat in #general."
+        topic: "The 🎬 weekly ballot, always open. Click My nomination to nominate a film (one each), then Vote and rank them. Chat in #general."
         preset: read_only       # Phase 19: commands still work (the text box stays)
       - key: watch_party
         name: Voice
@@ -131,7 +131,7 @@ categories:
         default_sort: latest_activity
         topic: |
           🚫 NO SPOILERS in this channel. Trailers, hype and first impressions only.
-          One post per movie, made by the bot. /nominate a film from any channel to put it on the weekly ballot in #watch-planning (that also adds its post here). This week's movie is pinned at the top.
+          One post per movie, made by the bot. Nominate a film in #watch-planning to put it on the weekly ballot (that also adds its post here). This week's movie is pinned at the top.
           Seen it? Every post links to the movie's spoiler discussion in #post-watch.
           Slipped up? Right-click (long-press on mobile) a message → Apps → Mark as spoiler moves it to #post-watch.
         overwrites:
@@ -255,8 +255,8 @@ messages:
         - **{#movie_spoilers}** is for after you've watched it: reviews, hot takes, impressions.
       - |
         ## 🗳️ Picking the weekly movie
-        - **Nominate** a film using **/nominate** to add it to this week's ballot.
-        - **Vote** in {#watch_planning}. Each ballot closes on **Sunday night** at 11:59 PM CST.
+        - **Nominate** a film in {#watch_planning} with the **My nomination** button to add it to this week's ballot.
+        - **Vote** there with the **Vote** button. Each ballot closes on **Sunday night** at 11:59 PM CST.
         - **Watch** the active movie, which gets a server event and is listed in {#watch_log}.
         - **Note** that we use instant-runoff ranked choice voting. Your nomination and vote ranking carry over week to week.
       - |

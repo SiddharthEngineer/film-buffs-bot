@@ -393,7 +393,8 @@ class WeeklyService(RankedTrack):
         return row["ballot_message_id"] if row else None
 
     def board_header(self, period: str | None, voters: int) -> tuple[str, str, str]:
-        footer = "-# **/nominate** a film, then **Vote**. **/help** explains how it works."
+        footer = ("-# **My nomination** to nominate a film, then **Vote** to rank. "
+                  "**/help** explains how it works.")
         if period is None:
             return ("## 🎬 Weekly vote", "No vote is open right now.", footer)
         s = self.sched(period)
@@ -486,6 +487,32 @@ class WeeklyService(RankedTrack):
             return None
         return await self._safe(ch.send(truncate(ping + text, 2000), allowed_mentions=mentions),
                                 "announce")
+
+    async def backfill_log(self) -> int:
+        """Weeks picked before Phase 19 were announced in #watch-planning (since
+        cleaned up), so #watch-log has no line for them until the week ends. Post the
+        pick line there now, without a ping, and make it the week's log entry."""
+        n = 0
+        for row in await self.bot.db.weeks_in_state("picked"):
+            if row["log_message_id"] or not row["winner_tmdb_id"]:
+                continue
+            movie = await self.bot.db.get_movie(row["winner_tmdb_id"])
+            if movie is None:
+                continue
+            week = row["week_start"]
+            s = self.sched(week)
+            event_url = (f"https://discord.com/events/{self.bot.config.guild_id}/{row['event_id']}"
+                         if row["event_id"] else None)
+            text = pick_text(date.fromisoformat(week), self.link(movie, esc(display(movie))),
+                             how_picked(row), event_url, when(s.watch_start, self.tz),
+                             when(s.watch_end, self.tz))
+            msg = await self._log(truncate(text, 2000))
+            if msg is None:
+                continue
+            await self.bot.db.update_week(week, log_message_id=msg.id)
+            log.info("Posted the missing #watch-log line for week %s (%s)", week, display(movie))
+            n += 1
+        return n
 
     async def strike_log(self, row, why: str) -> None:
         """A pick was replaced or cleared: cross out its #watch-log line."""

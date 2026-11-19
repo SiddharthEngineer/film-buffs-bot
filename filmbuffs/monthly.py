@@ -233,8 +233,8 @@ class GroupVoteService(RankedTrack):
 
     def board_header(self, period: str | None, voters: int) -> tuple[str, str, str]:
         g = self.group.name
-        footer = ("-# Separate from the server's weekly vote. **/nominate** a film here, then "
-                  "**Vote**. **/help** explains how it works.")
+        footer = ("-# Separate from the server's weekly vote. **My nomination**, then **Vote**. "
+                  "**/help** explains it.")
         if period is None:
             return (f"## 🌙 {g} monthly movie", "No vote is open right now.", footer)
         s = self.sched(period)

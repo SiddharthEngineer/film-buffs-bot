@@ -47,6 +47,18 @@ def fit_list(head: str, lines: list[str], budget: int) -> str:
     return body
 
 
+def missing_text(missing: list, caller_id: int, named: bool) -> str:
+    """/watchlist show when someone has no synced watchlist."""
+    if not named:
+        return ("❌ You haven't synced your Letterboxd watchlist yet. Run **/letterboxd sync** "
+                "with your Letterboxd export zip (Letterboxd → Settings → Data → Export your data).")
+    who = discord.utils.escape_markdown(join_names(
+        ["You" if m.id == caller_id else m.display_name for m in missing]))
+    verb = "hasn't" if len(missing) == 1 and missing[0].id != caller_id else "haven't"
+    return (f"❌ {who} {verb} synced a Letterboxd watchlist yet (**/letterboxd sync**), so "
+            "there's nothing to show.")
+
+
 class Weekly(commands.Cog):
     def __init__(self, bot: "FilmBuffsBot"):
         self.bot = bot
@@ -57,6 +69,7 @@ class Weekly(commands.Cog):
         self._retire_task = asyncio.create_task(self._retire_leaderboard())
         self._retire_monthly_task = asyncio.create_task(self._retire_main_monthly())
         self._clean_task = asyncio.create_task(self._clean_planning())
+        self._log_task = asyncio.create_task(self._backfill_log())
 
     async def cog_unload(self) -> None:
         self.bot.remove_dynamic_items(*DYNAMIC_ITEMS)
@@ -64,6 +77,7 @@ class Weekly(commands.Cog):
         self._retire_task.cancel()
         self._retire_monthly_task.cancel()
         self._clean_task.cancel()
+        self._log_task.cancel()
 
     async def _retire_leaderboard(self) -> None:
         """👍 no longer count (owner, 2026-11-15): delete the bot's pinned "🏆 Top 25
@@ -140,6 +154,13 @@ class Weekly(commands.Cog):
             await db.set_meta(key, "1")
             log.info("#watch-planning (%s): deleted %d old bot message(s); %d member "
                      "message(s) left alone", svc.pool.grp, deleted, members)
+
+    async def _backfill_log(self) -> None:
+        await self.bot.wait_until_ready()
+        try:
+            await self.bot.weekly.backfill_log()
+        except Exception:
+            log.exception("Backfilling #watch-log failed")
 
     def _context(self, interaction: discord.Interaction):
         """(pool, group vote or None, error) for the channel the command was used in."""
@@ -249,72 +270,78 @@ class Weekly(commands.Cog):
                                    description="Your uploaded Letterboxd watchlist")
 
     @watchlist.command(name="show",
-                       description="Your watchlist upload, or the films on everyone's watchlists")
-    @app_commands.describe(user1="Someone to compare with: shows the films on all your watchlists",
-                           user2="Another person to compare with", user3="Another person",
-                           user4="Another person")
+                       description="Watchlist report: yours, or the films several members want to see")
+    @app_commands.describe(
+        user1="Whose watchlist (default: yours). Two people: films on both",
+        user2="Two people: the films on both watchlists",
+        user3="Three or more: films on 2+ of the watchlists, with whose",
+        user4="Another person", user5="Another person", user6="Another person")
     async def watchlist_show(self, interaction: discord.Interaction,
                              user1: discord.Member | None = None,
                              user2: discord.Member | None = None,
                              user3: discord.Member | None = None,
-                             user4: discord.Member | None = None) -> None:
-        others = [m for m in (user1, user2, user3, user4) if m is not None]
-        if not others:
-            await self._watchlist_mine(interaction)
-            return
-        people = list({m.id: m for m in [interaction.user, *others]}.values())
-        if len(people) == 1:
-            await self._watchlist_mine(interaction)
-            return
-        await self._watchlist_shared(interaction, people)
-
-    async def _watchlist_mine(self, interaction: discord.Interaction) -> None:
-        imp, n, posted = await self.bot.db.watchlist_summary(interaction.user.id)
-        if imp is None and n == 0:
-            await interaction.response.send_message(
-                "You haven't uploaded a watchlist. **/letterboxd sync** takes your Letterboxd "
-                "export zip (optional). Its films get a post in #pre-watch if they have none, and "
-                "only break ties in the votes.", ephemeral=True)
-            return
-        when = f"<t:{int(datetime.fromisoformat(imp['imported_at']).timestamp())}:D>" if imp else "?"
-        unmatched = json.loads(imp["unmatched"]) if imp else []
-        await interaction.response.send_message(
-            f"📋 Uploaded {when}: {n} films, {posted} with a post."
-            + (f" {len(unmatched)} couldn't be matched." if unmatched else "")
-            + "\n-# **/letterboxd sync** again to update it, **/watchlist clear** to remove it. "
-            "Add people to **/watchlist show** to see the films on all your watchlists.",
-            ephemeral=True)
-
-    async def _watchlist_shared(self, interaction: discord.Interaction, people: list) -> None:
-        """The films on every listed member's uploaded watchlist (you're always included)."""
-        db = self.bot.db
+                             user4: discord.Member | None = None,
+                             user5: discord.Member | None = None,
+                             user6: discord.Member | None = None) -> None:
+        picked = [m for m in (user1, user2, user3, user4, user5, user6) if m is not None]
+        # No one named: your own. Anyone named: just them (you're not added).
+        people = list({m.id: m for m in picked or [interaction.user]}.values())
         missing = []
         for m in people:
-            _, n, _ = await db.watchlist_summary(m.id)
+            _, n, _ = await self.bot.db.watchlist_summary(m.id)
             if n == 0:
-                missing.append("You" if m.id == interaction.user.id else m.display_name)
+                missing.append(m)
         if missing:
             await interaction.response.send_message(
-                f"{join_names(missing)} {'have' if len(missing) > 1 or missing == ['You'] else 'has'}"
-                " no uploaded watchlist, so there's nothing to compare. **/letterboxd sync** "
-                "takes a Letterboxd export zip.", ephemeral=True,
+                missing_text(missing, interaction.user.id, bool(picked)), ephemeral=True,
                 allowed_mentions=discord.AllowedMentions.none())
             return
-        films = await db.shared_watchlist([m.id for m in people])
-        names = join_names(["you"] + [m.display_name for m in people
-                                      if m.id != interaction.user.id])
-        title = f"📋 On every watchlist: {len(films)} film{'s' * (len(films) != 1)}"
-        if not films:
-            body = f"No film is on all the watchlists of {names}."
+        await interaction.response.send_message(
+            embed=await self.watchlist_report(people, interaction.user.id), ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none())
+
+    async def watchlist_report(self, people: list, caller_id: int) -> discord.Embed:
+        """One person: their watchlist. Two: the films on both. Three or more: every
+        film on two or more of the watchlists, most shared first, with whose."""
+        db = self.bot.db
+        gid = self.bot.config.guild_id
+        names = {m.id: discord.utils.escape_markdown(m.display_name) for m in people}
+        everyone = join_names(list(names.values()))
+
+        def film(f) -> str:
+            return post_link(gid, f) if f["thread_id"] else discord.utils.escape_markdown(display(f))
+
+        def plural(n: int) -> str:
+            return f"{n} film{'s' * (n != 1)}"
+
+        k = len(people)
+        if k == 1:
+            m = people[0]
+            films = await db.watchlist_overlap([m.id], 1)
+            whose = "Your" if m.id == caller_id else f"{m.display_name}'s"
+            title = f"📋 {whose} watchlist: {plural(len(films))}"
+            head = "Linked titles have a post in #pre-watch."
+            lines = [f"• {film(f)}" for f in films]
+        elif k == 2:
+            films = await db.watchlist_overlap([m.id for m in people], 2)
+            title = f"📋 On both watchlists: {plural(len(films))}"
+            head = (f"Films on the watchlists of both {everyone}." if films else
+                    f"No film is on the watchlists of both {everyone}.")
+            lines = [f"• {film(f)}" for f in films]
         else:
-            gid = self.bot.config.guild_id
-            lines = [f"• {post_link(gid, f)}" if f["thread_id"] else f"• {display(f)}"
-                     for f in films]
-            body = fit_list(f"Films on the watchlists of {names}:", lines, 4000)
-        embed = discord.Embed(title=title[:256], description=body, color=EMBED_COLOR)
-        embed.set_footer(text="From uploaded Letterboxd watchlists (/letterboxd sync)")
-        await interaction.response.send_message(embed=embed, ephemeral=True,
-                                                allowed_mentions=discord.AllowedMentions.none())
+            films = await db.watchlist_overlap([m.id for m in people], 2)
+            title = f"📋 Watchlist overlap: {plural(len(films))} on 2+ of {k} watchlists"
+            head = (f"Films on two or more of the watchlists of {everyone}, most shared first."
+                    if films else f"No film is on two or more of the watchlists of {everyone}.")
+            lines = []
+            for f in films:
+                who = join_names([names[int(u)] for u in str(f["users"]).split(",")
+                                  if int(u) in names])
+                lines.append(f"• {film(f)} · **{f['n']}/{k}** · {who}")
+        embed = discord.Embed(title=title[:256], description=fit_list(head, lines, 4000),
+                              color=EMBED_COLOR)
+        embed.set_footer(text="From Letterboxd watchlists synced with /letterboxd sync")
+        return embed
 
     @watchlist.command(name="clear", description="Remove your uploaded watchlist")
     async def watchlist_clear(self, interaction: discord.Interaction) -> None:

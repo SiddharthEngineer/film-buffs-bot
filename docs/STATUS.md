@@ -1,5 +1,7 @@
 # Status (as of 2026-11-19)
 
+> **Phase 21 (2026-11-19):** 🎬 Nominate works in `#post-watch` posts too, `/watchlist show` is a watchlist report (yours, two people's intersection, or 2+ overlap for three or more), `/letterboxd sync` links the export's account, the boards and `#welcome` point at the buttons, and picks missing from `#watch-log` (Wildwood) are backfilled. See "Phase 21" at the end.
+
 > **Phase 20 (2026-11-19):** `/nominate` and the new `/vote` open the same private views as the board's buttons, and the nomination view can search and nominate; `/spoiler`, `/nominations` and `/unnominate` are gone; `/admin idea add`; `/watchlist show` compares members' watchlists. See "Phase 20" at the end.
 
 > **Phase 19 (2026-11-19):** one nomination each (several members can nominate the same film), `#watch-planning` is one board message, picks are announced in `#watch-log` (groups: their `#chat`), ping roles are on by default, and `#watch-planning` is commands-only. See "Phase 19" at the end.
@@ -360,7 +362,7 @@ Owner decisions are in ROADMAP "Phase 19". 214 unit tests pass (new `tests/test_
 - **Owner by hand (done 2026-11-19):** Server Members Intent on in the Developer Portal; default notifications → Only @mentions.
 - **Deploy log (2026-11-19):** DB copied to `backups/pre-phase19-20261119T052146Z.db`. Migration 16 kept one nomination each; one member's #2 (TMDB 1422) was dropped (they can nominate it again). Both old embed ballots became the boards (same message IDs). Cleanup deleted 4 old bot messages in `#watch-planning` and 1 in OSU's; 2 member messages were left. Ping backfill: 14 of 15 members got roles. `setup_server.py --apply`: 4 changes (both `#watch-planning` locks and topics, `#watch-log` topic, welcome page); a fresh `--plan` shows none left. Card refresh to version 6 (461 cards) was running.
 
-## Phase 20: command cleanup ✅ (built 2026-11-19; not deployed yet)
+## Phase 20: command cleanup ✅ (deployed 2026-11-19 06:03 UTC)
 Owner request (2026-11-19), seven changes. 224 unit tests pass (new `tests/test_phase20.py`). Bot v0.14.
 - **Removed:** `/spoiler` (the info card links the `#post-watch` post; Apps → Mark as spoiler stays), `/nominations` and `/unnominate`. The commands disappear at the next start (the bot syncs its guild commands).
 - **`/nominate [title]`:** no title → the same private view as the board's 📋 **My nomination** button (anywhere, groups included); with `title:` (autocomplete, as before) it nominates and shows that view. The view now nominates too: **🔎 Nominate a film / Change nomination** opens a modal for a title, the TMDB matches come back in a dropdown on the same private message (`noms:[grp:]pick`), and picking one does what `/addmovie` does and nominates it. Inside a `#pre-watch` post the view also offers **🎬 Nominate <film>** (`noms:[grp:]here:<tmdb id>`), which replaces the old "/nominate with no title inside a post". 🗑️ Withdraw stays.
@@ -370,3 +372,13 @@ Owner request (2026-11-19), seven changes. 224 unit tests pass (new `tests/test_
 - **/help** lists `/vote`, and its voting notes mention `/nominate` and `/vote`; README command table updated.
 - **Checked in the docs (DISCORD_NOTES):** a modal can answer a button click, and its submit can update the message the button was on.
 - **Owner by hand:** nothing. After the deploy, try `/nominate` (no title, then 🔎 search and pick), `/nominate` inside a `#pre-watch` post (🎬 button), `/vote`, `/watchlist show user1:<someone>`, `/admin idea add`, and check `/spoiler`, `/nominations` and `/unnominate` are gone (Discord may cache the command list for a minute; restart the app if they linger).
+
+## Phase 21: watchlist reports, sync links, buttons first ✅ (built 2026-11-19)
+Owner request (2026-11-19). 229 unit tests pass (more in `tests/test_phase20.py`). Bot v0.15.
+- **🎬 Nominate <film>** on the private nomination view also shows inside the film's `#post-watch` post (`here_film` checks `spoiler_thread_id` too).
+- **`/watchlist show [user1…user6]`**, from synced watchlists (`Database.watchlist_overlap`), private: no users → your own watchlist (error if you haven't synced one); one user → theirs; **two → the films on both** (intersection); **three or more → every film on 2+ of the lists**, most shared first, "**n/k** · whose". Once users are named, the caller isn't added. Anyone without a synced watchlist is named in an error.
+- **`/letterboxd sync` links you** to the export's account (`Letterboxd._link_from_sync`, after Apply, or on "already in sync"), replacing an older link; the preview says so. It no longer refuses an export from a different account than your link. Still refused: an account linked to another member. Linking marks the account's current RSS items as seen, as `/letterboxd link` does, so nothing is reposted.
+- **Buttons, not commands:** both boards' footers say "**My nomination** … then **Vote**" (no `/nominate`); empty-ballot texts point at My nomination. `server.yaml`: `#watch-planning` and `#pre-watch` topics and the welcome page's "Picking the weekly movie" send people to the buttons in `#watch-planning`; groups' `#watch-planning` topics likewise (generated in `groups.py`).
+- **`#watch-log` backfill** (`WeeklyService.backfill_log`, at every start): a week in state `picked` with no `log_message_id` (picked before Phase 19, announced in the since-cleaned `#watch-planning`) gets its pick line in `#watch-log` now, with watch dates and the event link, **no ping**, and it becomes the week's log entry (so `end_watch` posts nothing more). Live: week of Nov 16, **Wildwood**.
+- **Dismissed private replies coming back on mobile:** Discord keeps "Dismiss message" per device; it isn't synced, and bots can't change that. Ephemeral replies vanish on their own when the app reloads.
+

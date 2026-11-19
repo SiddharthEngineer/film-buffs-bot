@@ -236,11 +236,12 @@ class NominationButton(discord.ui.DynamicItem[discord.ui.Button],
 
 
 async def here_film(interaction: discord.Interaction):
-    """The movie whose #pre-watch post this interaction happened in, if any."""
+    """The movie whose #pre-watch or #post-watch post this interaction happened in."""
     db = getattr(interaction.client, "db", None)
     if db is None or interaction.channel_id is None:
         return None
-    return await db.get_movie_by_thread(interaction.channel_id)
+    return (await db.get_movie_by_thread(interaction.channel_id)
+            or await db.get_movie_by_spoiler_thread(interaction.channel_id))
 
 
 async def nominate_and_show(interaction: discord.Interaction, grp: str | None, pool,

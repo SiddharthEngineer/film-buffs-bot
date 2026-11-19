@@ -247,8 +247,7 @@ class PoolService:
         r = await db.nomination(user_id, self.grp)
         head = f"**Your {self.name} nomination**" if self.is_group else "**Your nomination**"
         if r is None:
-            return (f"-# You have no nomination{self._here()}. **/nominate** adds one"
-                    + (" (run it in this group's channels)." if self.is_group else "."))
+            return f"-# You have no nomination{self._here()}. **🔎 Nominate a film** adds one."
         on = {e["tmdb_id"] for e in await db.ballot_entries(self.grp)}
         ok = await self._ok()
         name = display(r) if r["title"] is not None else f"*(post deleted, TMDB {r['tmdb_id']})*"
@@ -267,7 +266,7 @@ class PoolService:
             else:
                 why = {"up_next": "Up Next", "watched": "watched together"}.get(
                     r["status"], "post deleted")
-            note = f" · not eligible now ({why}); **/nominate** another film"
+            note = f" · not eligible now ({why}); pick another film"
         else:
             note = " · waiting: the ballot is full (25 films); it joins when a spot opens"
         return (f"{head}: {name}{note}\n-# One nomination each. Nominating another film "
@@ -350,7 +349,7 @@ class RankedTrack:
         left = [e for e in films if e["tmdb_id"] not in mine]
         new = {e["tmdb_id"] for e in left if last and e["joined_at"] > last}
         if not films:
-            status = "*No films on the ballot yet. **/nominate** one.*"
+            status = "*No films on the ballot yet. **My nomination** on the board adds one.*"
         elif not mine:
             status = "*Nothing ranked yet. Pick your 1st choice below.*"
         elif left:
@@ -460,7 +459,7 @@ class RankedTrack:
         body = fit_lines(rows, BOARD_TEXT - len(heading) - len(details) - len(footer) - 40)
         if period:
             films_text = (f"### 🎞️ On the ballot ({len(films)})\n{body}" if films else
-                          "### 🎞️ On the ballot\n*No films yet. Be the first: **/nominate** one.*")
+                          "### 🎞️ On the ballot\n*No films yet. Be the first: click **My nomination**.*")
         else:
             films_text = ""
         parts: list = [discord.ui.TextDisplay(f"{heading}\n{details}".strip())]

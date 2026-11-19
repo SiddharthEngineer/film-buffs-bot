@@ -162,15 +162,19 @@ class Letterboxd(commands.Cog):
             if plan is None:
                 return
             if plan.nothing_to_do:
+                linked = await self._link_from_sync(uid, export.username)
                 await interaction.followup.send(
                     "✅ Already in sync: nothing new, changed or removed since last time."
+                    + (f"\n{linked}" if linked else "")
                     + (f"\n-# {plan.counts()['unmatched_films']} films couldn't be matched on "
                        "TMDB; they're stored without posts." if plan.unmatched else ""),
                     ephemeral=True)
                 return
             view = SyncView(self, interaction.user, export)
+            mine = await self.bot.db.get_link(uid)
             view.message = await interaction.followup.send(
-                preview_text(plan, self.bot.config.tz), view=view, ephemeral=True, wait=True)
+                preview_text(plan, self.bot.config.tz, mine["username"] if mine else None),
+                view=view, ephemeral=True, wait=True)
             handed_off = True          # the view clears _syncing when it's done
         finally:
             if not handed_off:
@@ -184,11 +188,28 @@ class Letterboxd(commands.Cog):
         if other is not None and other["discord_user_id"] != uid:
             return (f"❌ That export is from **{export.username}**, which is linked to another "
                     "member. Upload your own export.")
-        mine = await self.bot.db.get_link(uid)
-        if mine is not None and mine["username"].lower() != export.username:
-            return (f"❌ You're linked to **{mine['username']}**, but that export is from "
-                    f"**{export.username}**. Upload the export of your linked account.")
         return None
+
+    async def _link_from_sync(self, uid: int, username: str) -> str | None:
+        """A sync always links the member to the export's account (Phase 21), replacing
+        an older link. Returns a line for the final note, or None if nothing changed."""
+        mine = await self.bot.db.get_link(uid)
+        if mine is not None and mine["username"].lower() == username.lower():
+            return None
+        was = f" (was **{mine['username']}**)" if mine is not None else ""
+        try:
+            await self.svc.link(uid, username)
+        except AlreadyLinked:
+            return (f"⚠️ **{username}** is linked to another member, so your account wasn't "
+                    "linked. Ask an admin.")
+        except (UserNotFound, LetterboxdError) as e:
+            log.warning("Linking %s to %s after a sync failed: %s", uid, username, e)
+            return (f"⚠️ Couldn't reach Letterboxd to link **{username}**; run "
+                    f"**/letterboxd link {username}** later.")
+        log.info("Sync linked %s to Letterboxd %s%s", uid, username,
+                 f" (was {mine['username']})" if mine else "")
+        return (f"🔗 Linked to **{username}**{was}: new diary entries will show up in "
+                f"{self._feed_mention()}.")
 
     async def _plan(self, interaction: discord.Interaction, uid: int,
                     export: Export) -> SyncPlan | None:
@@ -249,6 +270,11 @@ class Letterboxd(commands.Cog):
         finally:
             self._syncing.discard(uid)
         lines = [f"✅ **Letterboxd sync done** ({export.username})"]
+        try:
+            linked = await self._link_from_sync(uid, export.username)
+        except Exception:
+            log.exception("Linking %s after a sync failed", uid)
+            linked = "⚠️ Linking your account failed; run **/letterboxd link**."
         bits = [(res.stored, "new rows stored"), (res.updated, "updated"),
                 (res.removed, "removed"), (res.posts_created, "#pre-watch posts created"),
                 (res.reviews_posted, "reviews posted"), (res.embeds_edited, "embeds edited"),
@@ -256,6 +282,8 @@ class Letterboxd(commands.Cog):
         lines.append(" · ".join(f"{n} {label}" for n, label in bits if n) or "Nothing to change.")
         if plan.watchlist is not None:
             lines.append(f"📋 Watchlist: {len({t for t, _, _ in plan.watchlist})} films.")
+        if linked:
+            lines.append(linked)
         if res.failed:
             lines.append(f"⚠️ {res.failed} Discord steps failed; run **/letterboxd sync** again "
                          "to retry them.")
@@ -287,7 +315,8 @@ class Letterboxd(commands.Cog):
         return f"<#{cid}>" if cid else "#letterboxd-feed"
 
 
-def preview_text(plan: SyncPlan, tz) -> str:
+def preview_text(plan: SyncPlan, tz, linked: str | None = None) -> str:
+    """The preview; `linked` is the member's currently linked username (None: none)."""
     when = ""
     if plan.export.exported_at:
         dt = datetime.fromisoformat(plan.export.exported_at).astimezone(tz)
@@ -296,6 +325,10 @@ def preview_text(plan: SyncPlan, tz) -> str:
     examples = change_lines(plan)
     if examples:
         lines += ["", *examples]
+    if linked is None:
+        lines.append(f"🔗 This also links your Discord account to **{plan.username}**.")
+    elif linked.lower() != plan.username.lower():
+        lines.append(f"🔗 This also links you to **{plan.username}** instead of **{linked}**.")
     lines.append(f"-# About {fmt_duration(plan.est_seconds())}. Nothing changes until you "
                  "press **Apply**.")
     text = "\n".join(lines)
