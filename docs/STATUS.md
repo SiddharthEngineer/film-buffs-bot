@@ -386,7 +386,7 @@ Owner request (2026-11-19). 229 unit tests pass (more in `tests/test_phase20.py`
 
 - **Deploy log (2026-11-19):** restarted 06:24 UTC; the backfill posted Wildwood's line in `#watch-log` (week 2026-11-16, message 1572860182214479884). `setup_server.py --apply`: 4 changes (both `#watch-planning` topics, `#pre-watch` topic, the welcome page, including the owner's earlier welcome edit); a fresh `--plan` shows none left.
 
-## Phase 22: watchlists from linked accounts ✅ (built 2026-11-19)
+## Phase 22: watchlists from linked accounts ✅ (deployed 2026-11-19 06:42 UTC, migration 17; DB copied to `backups/pre-phase22-20261119T064215Z.db`; awaiting owner test)
 Owner (2026-11-19): `/letterboxd link` is what ties a member to a Letterboxd account; not everyone will run sync. 231 unit tests pass. Bot v0.16, migration 17.
 - **`filmbuffs/watchlists.py`** (`bot.watchlists`): reads `letterboxd.com/<user>/watchlist/` and its `page/N/` pages (allowed by robots.txt, checked 2026-11-19; 28 films a page as `data-item-name="Title (Year)"`; ~1 s between pages, honest User-Agent, ≤ 60 pages), matches them to TMDB with the cached `TitleResolver`, and replaces the member's `watchlist_items` (source `letterboxd`). Re-read at most every 6 hours, or when the linked account changed. Migration 17 adds `watchlist_accounts` (which account a stored watchlist came from). No posts are created.
 - **`/watchlist show`** uses the linked accounts: unlinked people get "hasn't linked a Letterboxd account (/letterboxd link)". If Letterboxd doesn't answer, older stored data from the same account is used with a ⚠️ note; otherwise it says so. The first read of a big watchlist can take a minute (TMDB matching; cached afterwards). `/letterboxd link` starts a background read right away.
