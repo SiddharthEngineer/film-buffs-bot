@@ -406,3 +406,4 @@ Owner (2026-11-19): `/help` is for the commands only; the how-it-works text goes
 
 ## Week numbers (2026-11-19)
 Owner: Wildwood's line should say "Wk 1", not "Wk 47", and count up from there. `weekly.week_number()` counts Mondays from the fixed `WEEK_ONE = 2026-11-16` (not `first_watch_week`, so moving that never renumbers old lines; no reset at the new year). Used by the pick announcement and log lines. 234 unit tests pass.
+- **Live (2026-11-19 17:43 UTC):** deployed; Wildwood's `#watch-log` line (message 1572860182214479884) edited from "Wk 47" to "Wk 1" with a one-off REST edit. Nov 23–29 will be Wk 2.
