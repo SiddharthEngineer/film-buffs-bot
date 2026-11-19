@@ -258,7 +258,7 @@ messages:
         - **Nominate** a film using **/nominate** to add it to this week's ballot.
         - **Vote** in {#watch_planning}. Each ballot closes on **Sunday night** at 11:59 PM CST.
         - **Watch** the active movie, which gets a server event and is listed in {#watch_log}.
-        - Note: we use instant-runoff ranked choice voting. Your nomination and vote ranking carry over week to week.
+        - **Note** that we use instant-runoff ranked choice voting. Your nomination and vote ranking carry over week to week.
       - |
         ## 📒 Letterboxd
         - **/letterboxd link** with your username. Your new diary entries show up on the movie's post.
