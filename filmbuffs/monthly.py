@@ -233,14 +233,8 @@ class GroupVoteService(RankedTrack):
 
     def board_header(self, period: str | None, voters: int) -> tuple[str, str, str]:
         g = self.group.name
-        chat = self.group.channels.get("chat")
-        chat = f"<#{chat}>" if chat else "the group's chat"
-        footer = (f"-# This vote is completely independent from the server's weekly vote: "
-                  f"its own nominations and votes. "
-                  f"**/nominate** here: one film each (any film {g} hasn't picked before), and "
-                  f"nominating again swaps it. **Vote** to rank the films, best first; your "
-                  f"ranking carries over to next month. 🔔 **Pings** pings you in {chat} when "
-                  f"the movie is picked. 🆕 = joined in the last 2 days.")
+        footer = ("-# Separate from the server's weekly vote. **/nominate** a film here, then "
+                  "**Vote**. **/help** explains how it works.")
         if period is None:
             return (f"## 🌙 {g} monthly movie", "No vote is open right now.", footer)
         s = self.sched(period)

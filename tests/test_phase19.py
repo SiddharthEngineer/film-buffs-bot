@@ -307,3 +307,24 @@ def test_one_nomination_text_everywhere():
     from pathlib import Path
     for f in ("filmbuffs/weekly.py", "filmbuffs/monthly.py", "filmbuffs/groups.py", "server.yaml"):
         assert "up to 3" not in Path(f).read_text(), f
+
+
+def test_boards_are_short_and_help_has_the_details():
+    from filmbuffs.help import help_text
+    from tests.test_phase15 import _commands
+    text = help_text(_commands(), {}, admin=False, welcome_channel_id=5, watch_log_channel_id=9)
+    for bit in ("one film each", "instant runoff", "carries over", "Sunday at 11:59 PM CT",
+                "<#9>", "@Weekly Pings", "🆕", "last day of the month"):
+        assert bit in text, bit
+
+    async def run():
+        import tempfile
+        from pathlib import Path as P
+        db, bot = await make(P(tempfile.mkdtemp()))
+        weekly = bot.weekly.board_header(WK, 0)[2]
+        group = bot.osu.board_header(MO, 0)[2]
+        await db.close()
+        return weekly, group
+    weekly, group = asyncio.run(run())
+    assert len(weekly) < 100 and "/help" in weekly
+    assert len(group) < 120 and "/help" in group

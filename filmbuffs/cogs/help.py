@@ -26,7 +26,8 @@ class Help(commands.Cog):
             self.bot.tree.get_commands(type=discord.AppCommandType.message))
         text = help_text(cmds, getattr(self.bot, "command_ids", {}),
                          is_admin(interaction.user, self.bot.config.admin_role),
-                         self.bot.config.channels.get("welcome"))
+                         self.bot.config.channels.get("welcome"),
+                         self.bot.config.channels.get("watch_log"))
         embed = discord.Embed(title="📖 Commands", description=text[:4096], color=EMBED_COLOR)
         await interaction.response.send_message(embed=embed, ephemeral=True,
                                                 allowed_mentions=discord.AllowedMentions.none())

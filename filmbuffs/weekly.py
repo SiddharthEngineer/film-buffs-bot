@@ -393,12 +393,7 @@ class WeeklyService(RankedTrack):
         return row["ballot_message_id"] if row else None
 
     def board_header(self, period: str | None, voters: int) -> tuple[str, str, str]:
-        footer = ("-# **/nominate** a film: one each, and nominating again swaps it. Several "
-                  "people can nominate the same film. **Vote** to rank the films, best first; "
-                  "a lower pick only counts if your higher ones are knocked out (instant "
-                  "runoff). Your ranking carries over each week. 🔔 **Pings** turns "
-                  f"@Weekly Pings on or off: it pings you in {self.ref('watch_log')} when a movie is picked. "
-                  "🆕 = joined in the last 2 days.")
+        footer = "-# **/nominate** a film, then **Vote**. **/help** explains how it works."
         if period is None:
             return ("## 🎬 Weekly vote", "No vote is open right now.", footer)
         s = self.sched(period)

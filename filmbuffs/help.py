@@ -22,8 +22,27 @@ MENU_TEXT = {
     "Mark as spoiler": "move a message out of a #pre-watch post into its post-watch discussion",
     "Add to ideas": "add a message in #ideas to the pinned ideas list",
 }
-GROUP_NOTE = ("-# In a group's channels, **/nominate**, **/nominations**, **/unnominate** and "
-              "**/schedule** act on that group's monthly vote.")
+def voting_notes(watch_log: str = "#watch-log") -> list[str]:
+    """How nominating and voting work (Phase 19: moved here from the boards in
+    #watch-planning, which now show just the ballot)."""
+    return [
+        "-# **Nominating:** one film each; nominating again swaps it. Several people can "
+        "nominate the same film, and the ballot lists them all. If yours wins, you can "
+        "nominate something new.",
+        "-# **Voting:** click **Vote** on the board in #watch-planning and rank as many films "
+        "as you like, best first. It's instant runoff: a lower pick only counts if your higher "
+        "ones are knocked out. Your ranking carries over to the next vote. 🆕 marks films that "
+        "joined the ballot in the last 2 days.",
+        f"-# **Results:** the weekly vote closes Sunday at 11:59 PM CT. The winner is announced "
+        f"in {watch_log}, pinging @Weekly Pings, and gets a server event. **🔔 Pings** on the "
+        f"board turns the ping on or off.",
+    ]
+
+
+GROUP_NOTE = ("-# **Groups:** in a group's channels, **/nominate**, **/nominations**, "
+              "**/unnominate** and **/schedule** act on that group's monthly vote. It's separate "
+              "from the weekly vote, closes on the last day of the month, and its pick is "
+              "announced in the group's #chat.")
 
 
 def is_admin_only(cmd) -> bool:
@@ -53,7 +72,8 @@ def command_line(cmd, ids: dict[str, int]) -> list[str]:
     return out
 
 
-def help_text(commands, ids: dict[str, int], admin: bool, welcome_channel_id: int | None) -> str:
+def help_text(commands, ids: dict[str, int], admin: bool, welcome_channel_id: int | None,
+              watch_log_channel_id: int | None = None) -> str:
     by_name = {c.name: c for c in commands if c.name != "help"}   # they're already in it
     placed: set[str] = set()
     blocks: list[str] = []
@@ -67,7 +87,8 @@ def help_text(commands, ids: dict[str, int], admin: bool, welcome_channel_id: in
             placed.add(n)
             lines += command_line(cmd, ids)
         if heading.startswith("🗳️") and lines:
-            lines.append(GROUP_NOTE)
+            log_ref = f"<#{watch_log_channel_id}>" if watch_log_channel_id else "#watch-log"
+            lines += voting_notes(log_ref) + [GROUP_NOTE]
         if lines:
             blocks.append(f"**{heading}**\n" + "\n".join(lines))
     tail = (f"New here? The whole tour is in <#{welcome_channel_id}>." if welcome_channel_id
