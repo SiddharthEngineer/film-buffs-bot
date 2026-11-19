@@ -339,3 +339,34 @@ def test_refresh_reads_every_page_and_caches(tmp_path, monkeypatch):
     assert other.films == 3
     assert [r["tmdb_id"] for r in items] == [901, 900]          # by title
     assert not gone.ok and "no user **nobody**" in gone.error
+
+
+# ------------------------------------------------------------------ Phase 23: /info
+
+def test_info_sections_and_groups():
+    from filmbuffs.info import channel_ref, command_ref, info_embeds
+    ch, cmd = channel_ref({"watch_planning": 3, "ideas": 4}), command_ref({"letterboxd": 22})
+    member = info_embeds(ch, cmd, 15, [])
+    titles = [e.title for e in member]
+    assert titles == ["🗳️ The weekly movie", "🍿 Movie posts", "📒 Letterboxd", "📚 More"]
+    assert member[0].author.name == "ℹ️ How Film Buffs works"
+    assert "<#3>" in member[0].description and "**/vote**" in member[0].description
+    lb = member[2].description
+    assert "</letterboxd link:22>" in lb and "about every 15 minutes" in lb
+    assert "must be from the account you linked" in lb and "**three or more**" in lb
+    assert "/admin" not in " ".join(e.description for e in member)
+    grouped = info_embeds(ch, cmd, 15, ["OSU"])
+    assert grouped[1].title == "🌙 OSU's monthly movie"
+    total = sum(len(e.title) + len(e.description) + len(e.author.name or "") for e in grouped)
+    assert total < 6000                                                  # Discord's total
+
+
+def test_admin_commands_are_hidden_from_members():
+    # Discord hides commands with default permissions from members without them.
+    from filmbuffs.cogs.admin import Admin
+    from filmbuffs.cogs.help import Help
+    group = Admin(SimpleNamespace()).__cog_app_commands_group__
+    assert group.default_permissions == discord.Permissions(manage_guild=True)
+    for c in Help.__cog_app_commands__:
+        assert c.default_permissions is None                            # /help, /info: everyone
+    assert {c.name for c in Help.__cog_app_commands__} == {"help", "info"}

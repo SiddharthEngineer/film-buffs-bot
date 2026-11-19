@@ -354,6 +354,9 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
+## Phase 23: /info (built 2026-11-19; see STATUS.md)
+Owner (2026-11-19): `/help` only lists commands; a new `/info` explains weekly voting/nominating, Letterboxd link/sync and other rules people may be curious about. Admin commands stay hidden from non-admins.
+
 ## Phase 22: watchlists from linked accounts (built 2026-11-19; see STATUS.md)
 Owner (2026-11-19, correcting Phase 21): `/watchlist show` uses the account from `/letterboxd link`, not the sync upload. `/letterboxd link` is the one way to connect a member and an account; `/letterboxd sync` refuses an export from any other account.
 Chosen in the build: watchlists are read from the public watchlist pages and cached 6 hours.

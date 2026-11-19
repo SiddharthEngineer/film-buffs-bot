@@ -1,5 +1,7 @@
 # Status (as of 2026-11-19)
 
+> **Phase 23 (2026-11-19):** `/help` is just the command list; the new `/info` explains how everything works. See "Phase 23" at the end.
+
 > **Phase 22 (2026-11-19):** `/watchlist show` reads linked members' public Letterboxd watchlists (no sync needed), and `/letterboxd sync` only accepts the linked account's export. See "Phase 22" at the end.
 
 > **Phase 21 (2026-11-19):** 🎬 Nominate works in `#post-watch` posts too, `/watchlist show` is a watchlist report (yours, two people's intersection, or 2+ overlap for three or more), `/letterboxd sync` links the export's account, the boards and `#welcome` point at the buttons, and picks missing from `#watch-log` (Wildwood) are backfilled. See "Phase 21" at the end.
@@ -393,4 +395,10 @@ Owner (2026-11-19): `/letterboxd link` is what ties a member to a Letterboxd acc
 - **`/letterboxd sync`** no longer links: the export must be from your linked account. Not linked → "Link your Letterboxd account first". A different account → refused. (Phase 21's sync-linking is reverted.) A sync still replaces the stored watchlist with the export's; the next `/watchlist show` re-reads Letterboxd.
 - **Side effect:** watchlist films still break ties in the votes, and now that covers every linked member whose watchlist has been read, not only those who synced.
 - **Checked live** (read-only, a public account): two pages parsed to 56 films.
+
+## Phase 23: `/info` ✅ (built 2026-11-19)
+Owner (2026-11-19): `/help` is for the commands only; the how-it-works text goes in a separate command, with more about Letterboxd and other details people may be curious about. 233 unit tests pass. Bot v0.17.
+- **`/help`** lost the Nominating/Voting/Results/Groups notes (`help.voting_notes`, `GROUP_NOTE` removed); its last line points at `/info` and `#welcome`.
+- **`/info`** (`filmbuffs/info.py`, `cogs/help.py`): private embeds. 🗳️ The weekly movie (one nomination, which films can be nominated, the 25-film ballot, instant runoff and how ties break, carry-over, 🆕, Sunday close, `#watch-log`, pins, skipped weeks); 🍿 Movie posts (the two posts, what each tag means, In Theaters/Streaming, 📓 Reviews, Mark as spoiler); 📒 Letterboxd (link: what's posted where, ratings only in post-watch, lists and earlier entries not posted; sync: what it brings in, preview, must match the link; watchlist reports); 📚 More (pings, ideas, /help, #welcome). A member of a private group also gets a 🌙 section on its monthly vote, and nobody else does. About 4,900 characters, under Discord's 6,000 per message.
+- **Admin commands:** already hidden from members. Discord has `/admin` and Apps → Add to ideas registered with default permission Manage Server (checked live 2026-11-19: `default_member_permissions` 32, no server overrides), and no role in the server grants Manage Server or Administrator, so only the owner sees them. `admin_only()` still checks at run time. New test keeps it that way.
 

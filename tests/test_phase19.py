@@ -309,11 +309,11 @@ def test_one_nomination_text_everywhere():
         assert "up to 3" not in Path(f).read_text(), f
 
 
-def test_boards_are_short_and_help_has_the_details():
-    from filmbuffs.help import help_text
-    from tests.test_phase15 import _commands
-    text = help_text(_commands(), {}, admin=False, welcome_channel_id=5, watch_log_channel_id=9)
-    for bit in ("one film each", "instant runoff", "carries over", "Sunday at 11:59 PM CT",
+def test_boards_are_short_and_info_has_the_details():
+    from filmbuffs.info import channel_ref, command_ref, info_sections
+    secs = info_sections(channel_ref({"watch_log": 9}), command_ref({}), 15, ["OSU"])
+    text = "\n".join(t for _, t in secs)
+    for bit in ("**one**", "instant runoff", "carries over", "Sunday at 11:59 PM CT",
                 "<#9>", "@Weekly Pings", "🆕", "last day of the month"):
         assert bit in text, bit
 

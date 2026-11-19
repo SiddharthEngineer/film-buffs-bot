@@ -16,36 +16,13 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
     ("📒 Letterboxd", ("letterboxd", "watchlist")),
     ("🔧 Admin", ("admin", "Add to ideas")),
 ]
+# /info explains how things work; /help is only the commands (owner, 2026-11-19).
 MORE = "📚 More"
 # Context menus have no description of their own.
 MENU_TEXT = {
     "Mark as spoiler": "move a message out of a #pre-watch post into its post-watch discussion",
     "Add to ideas": "add a message in #ideas to the pinned ideas list",
 }
-def voting_notes(watch_log: str = "#watch-log") -> list[str]:
-    """How nominating and voting work (Phase 19: moved here from the boards in
-    #watch-planning, which now show just the ballot)."""
-    return [
-        "-# **Nominating:** **/nominate** (or **My nomination** on the board) shows yours and "
-        "picks a film: one film each; nominating again swaps it. Several people can "
-        "nominate the same film, and the ballot lists them all. If yours wins, you can "
-        "nominate something new.",
-        "-# **Voting:** **/vote** (or **Vote** on the board in #watch-planning) and rank as many films "
-        "as you like, best first. It's instant runoff: a lower pick only counts if your higher "
-        "ones are knocked out. Your ranking carries over to the next vote. 🆕 marks films that "
-        "joined the ballot in the last 2 days.",
-        f"-# **Results:** the weekly vote closes Sunday at 11:59 PM CT. The winner is announced "
-        f"in {watch_log}, pinging @Weekly Pings, and gets a server event. **🔔 Pings** on the "
-        f"board turns the ping on or off.",
-    ]
-
-
-GROUP_NOTE = ("-# **Groups:** in a group's channels, **/nominate**, **/vote** "
-              "and **/schedule** act on that group's monthly vote. It's separate "
-              "from the weekly vote, closes on the last day of the month, and its pick is "
-              "announced in the group's #chat.")
-
-
 def is_admin_only(cmd) -> bool:
     perms = getattr(cmd, "default_permissions", None)
     return bool(perms and (perms.manage_guild or perms.administrator))
@@ -73,9 +50,8 @@ def command_line(cmd, ids: dict[str, int]) -> list[str]:
     return out
 
 
-def help_text(commands, ids: dict[str, int], admin: bool, welcome_channel_id: int | None,
-              watch_log_channel_id: int | None = None) -> str:
-    by_name = {c.name: c for c in commands if c.name != "help"}   # they're already in it
+def help_text(commands, ids: dict[str, int], admin: bool, welcome_channel_id: int | None) -> str:
+    by_name = {c.name: c for c in commands if c.name not in ("help", "info")}  # in the tail
     placed: set[str] = set()
     blocks: list[str] = []
     for heading, names in SECTIONS + [(MORE, tuple(sorted(set(by_name) - {
@@ -87,11 +63,9 @@ def help_text(commands, ids: dict[str, int], admin: bool, welcome_channel_id: in
                 continue
             placed.add(n)
             lines += command_line(cmd, ids)
-        if heading.startswith("🗳️") and lines:
-            log_ref = f"<#{watch_log_channel_id}>" if watch_log_channel_id else "#watch-log"
-            lines += voting_notes(log_ref) + [GROUP_NOTE]
         if lines:
             blocks.append(f"**{heading}**\n" + "\n".join(lines))
-    tail = (f"New here? The whole tour is in <#{welcome_channel_id}>." if welcome_channel_id
-            else "New here? The whole tour is in #welcome.")
+    info = f"</info:{ids['info']}>" if ids.get("info") else "**/info**"
+    tour = f"<#{welcome_channel_id}>" if welcome_channel_id else "#welcome"
+    tail = f"How voting, Letterboxd and the rest work: {info}. New here? The tour is in {tour}."
     return "\n\n".join(blocks + [tail])

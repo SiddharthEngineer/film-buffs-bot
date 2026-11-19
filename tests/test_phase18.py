@@ -270,7 +270,8 @@ def test_group_vote_is_described_as_independent():
               for ch in c["channels"] if ch["name"] == "watch-planning")
     assert "completely independent from the server's weekly vote" in wp["topic"]
     assert len(wp["topic"]) <= 1024
-    # Phase 19: the board says it in short; /help has the details.
+    # Phase 19: the board says it in short; /info has the details (Phase 23).
     assert "Separate from the server's weekly vote." in Path("filmbuffs/monthly.py").read_text()
-    from filmbuffs.help import GROUP_NOTE
-    assert "separate from the weekly vote" in GROUP_NOTE
+    from filmbuffs.info import info_sections
+    text = info_sections(str, str, 15, ["OSU"])[1][1]
+    assert "completely separate from the weekly one" in text

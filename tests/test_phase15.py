@@ -196,7 +196,9 @@ def test_help_for_members_hides_admin_commands():
     assert "Apps → Mark as spoiler" in text
     assert "admin" not in text and "Add to ideas" not in text and "🔧 Admin" not in text
     assert "📚 More" in text and "**/zzz**" in text              # unlisted commands still show
-    assert "group's monthly vote" in text                         # under Picking movies
+    # Phase 23: /help is just the commands; the how-it-works text lives in /info.
+    assert "instant runoff" not in text and "monthly vote" not in text
+    assert text.endswith("work: **/info**. New here? The tour is in <#5>.")
     assert text.endswith("<#5>.")
     assert text.index("🎬 Movies") < text.index("🗳️ Picking") < text.index("📒 Letterboxd")
 
