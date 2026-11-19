@@ -252,12 +252,12 @@ messages:
         ## 🍿 Movies and spoilers
         Every movie gets **two** posts, so you never get spoiled by accident:
         - **{#movies}** is spoiler-free: trailers, hype and first impressions only.
-        - **{#movie_spoilers}** is for after you've watched it: reviews, hot takes, spoilers welcome.
+        - **{#movie_spoilers}** is for after you've watched it: reviews, hot takes, impressions.
       - |
         ## 🗳️ Picking the weekly movie
-        - **Nominate** a film using **/nominate**. You get one nomination; nominating again swaps it. If a friend nominated the same film, you're both listed on the ballot.
-        - **Vote** in {#watch_planning}. The ballot is always open and closes **Sunday night** at 11:59 PM Central Time.
-        - **Watch** on your own time. The winner is announced in {#watch_log} (you're pinged unless you turn 🔔 Pings off) and gets a server event.
+        - **Nominate** a film using **/nominate** to add it to this week's ballot.
+        - **Vote** in {#watch_planning}. Each ballot closes on **Sunday night** at 11:59 PM CST.
+        - **Watch** the active movie, which gets a server event and is listed in {#watch_log}.
         - Note: we use instant-runoff ranked choice voting. Your nomination and vote ranking carry over week to week.
       - |
         ## 📒 Letterboxd
