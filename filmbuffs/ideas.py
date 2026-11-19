@@ -1,7 +1,8 @@
 """The ideas list in #ideas (Phase 14).
 
 Members chat about ideas in #ideas; admins curate the list with the
-"Add to ideas" message menu and /admin idea done|drop. The bot keeps one
+"Add to ideas" message menu, /admin idea add (typed in their own words, Phase 20)
+and /admin idea done|drop. The bot keeps one
 pinned message listing every active idea (masked links to the messages they
 came from) and edits it in place on every change and at startup. Its ID is
 bot_meta 'ideas_list_message'.
@@ -112,6 +113,15 @@ class IdeasService:
             text=clean_text(text), suggested_by=message.author.id,
             channel_id=message.channel.id, message_id=message.id, added_by=by)
         log.info("%s added idea #%s from message %s", by, idea_id, message.id)
+        await self.refresh()
+        return idea_id
+
+    async def add_text(self, text: str, suggested_by: int, by: int) -> int:
+        """/admin idea add: an idea typed by an admin, with no source message."""
+        idea_id = await self.bot.db.add_idea(
+            text=clean_text(text), suggested_by=suggested_by,
+            channel_id=None, message_id=None, added_by=by)
+        log.info("%s added idea #%s (typed, by %s)", by, idea_id, suggested_by)
         await self.refresh()
         return idea_id
 

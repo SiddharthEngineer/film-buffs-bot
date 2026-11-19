@@ -11,7 +11,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ..ideas import choice_name
+from ..ideas import TEXT_MAX, choice_name, one_line
 from ..pool import post_link
 from ..tmdb import TMDBError, parse_choice
 
@@ -233,8 +233,29 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Admin fixe
             "entries stay; nothing new will be posted.", ephemeral=True,
             allowed_mentions=discord.AllowedMentions.none())
 
-    # /admin idea done|drop (Phase 14) -----------------------------------------
-    idea = app_commands.Group(name="idea", description="Take an idea off the #ideas list")
+    # /admin idea add|done|drop (Phase 14; add: Phase 20) -----------------------
+    idea = app_commands.Group(name="idea", description="Manage the #ideas list")
+
+    @idea.command(name="add", description="Add an idea to the #ideas list in your own words")
+    @app_commands.describe(text="The idea, in one line",
+                           by="Whose idea it is (default: you)")
+    @admin_only()
+    async def idea_add(self, interaction: discord.Interaction,
+                       text: app_commands.Range[str, 1, TEXT_MAX],
+                       by: discord.Member | None = None) -> None:
+        if not one_line(text):
+            await interaction.response.send_message("❌ The idea needs some text.", ephemeral=True)
+            return
+        if self.bot.ideas.channel() is None:
+            await interaction.response.send_message(
+                "#ideas isn't set up yet (run setup_server.py --apply, then restart the bot).",
+                ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        idea_id = await self.bot.ideas.add_text(text, (by or interaction.user).id,
+                                                interaction.user.id)
+        await interaction.followup.send(f"💡 Added idea #{idea_id} to the pinned list.",
+                                        ephemeral=True)
 
     async def _close_idea(self, interaction: discord.Interaction, idea: str, status: str) -> None:
         row = await self.bot.db.get_idea(int(idea)) if idea.strip().isdigit() else None

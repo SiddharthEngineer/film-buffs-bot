@@ -11,8 +11,8 @@ from discord import app_commands
 
 # Heading → top-level command names, in display order.
 SECTIONS: list[tuple[str, tuple[str, ...]]] = [
-    ("🎬 Movies and spoilers", ("addmovie", "spoiler", "Mark as spoiler")),
-    ("🗳️ Picking movies", ("nominate", "nominations", "unnominate", "schedule")),
+    ("🎬 Movies and spoilers", ("addmovie", "Mark as spoiler")),
+    ("🗳️ Picking movies", ("nominate", "vote", "schedule")),
     ("📒 Letterboxd", ("letterboxd", "watchlist")),
     ("🔧 Admin", ("admin", "Add to ideas")),
 ]
@@ -26,10 +26,11 @@ def voting_notes(watch_log: str = "#watch-log") -> list[str]:
     """How nominating and voting work (Phase 19: moved here from the boards in
     #watch-planning, which now show just the ballot)."""
     return [
-        "-# **Nominating:** one film each; nominating again swaps it. Several people can "
+        "-# **Nominating:** **/nominate** (or **My nomination** on the board) shows yours and "
+        "picks a film: one film each; nominating again swaps it. Several people can "
         "nominate the same film, and the ballot lists them all. If yours wins, you can "
         "nominate something new.",
-        "-# **Voting:** click **Vote** on the board in #watch-planning and rank as many films "
+        "-# **Voting:** **/vote** (or **Vote** on the board in #watch-planning) and rank as many films "
         "as you like, best first. It's instant runoff: a lower pick only counts if your higher "
         "ones are knocked out. Your ranking carries over to the next vote. 🆕 marks films that "
         "joined the ballot in the last 2 days.",
@@ -39,8 +40,8 @@ def voting_notes(watch_log: str = "#watch-log") -> list[str]:
     ]
 
 
-GROUP_NOTE = ("-# **Groups:** in a group's channels, **/nominate**, **/nominations**, "
-              "**/unnominate** and **/schedule** act on that group's monthly vote. It's separate "
+GROUP_NOTE = ("-# **Groups:** in a group's channels, **/nominate**, **/vote** "
+              "and **/schedule** act on that group's monthly vote. It's separate "
               "from the weekly vote, closes on the last day of the month, and its pick is "
               "announced in the group's #chat.")
 

@@ -273,13 +273,23 @@ class PoolService:
         return (f"{head}: {name}{note}\n-# One nomination each. Nominating another film "
                 f"replaces it; if it wins, you can nominate something new.")
 
-    async def my_view(self, user_id: int, notice: str | None = None):
-        from .vote_ui import nominations_view
+    async def my_view(self, user_id: int, notice: str | None = None, here=None,
+                      results: list[tuple[str, str]] | None = None):
+        """(text, view) for the private nomination view: /nominate and 📋 My nomination.
+        `here`: the movie row of the post it's opened in (offers "Nominate <it>");
+        `results`: TMDB (label, value) matches to pick from after a search."""
         text = await self._summary(user_id)
-        has = await self.bot.db.nomination(user_id, self.grp) is not None
         if notice:
             text = f"{notice}\n{text}"
-        return text, nominations_view(has, self.grp)
+        return text, await self.my_controls(user_id, here, results)
+
+    async def my_controls(self, user_id: int, here=None,
+                          results: list[tuple[str, str]] | None = None):
+        from .vote_ui import nominations_view
+        mine = await self.bot.db.nomination(user_id, self.grp)
+        if here is not None and mine is not None and mine["tmdb_id"] == here["tmdb_id"]:
+            here = None         # already their nomination
+        return nominations_view(mine is not None, self.grp, here, results)
 
     async def withdraw_button(self, user_id: int) -> str | None:
         """🗑️ Withdraw on the private view."""

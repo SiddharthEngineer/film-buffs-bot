@@ -825,6 +825,19 @@ class Database:
         n, posted = await cur.fetchone()
         return imp, n, posted
 
+    async def shared_watchlist(self, user_ids: list[int]) -> list[aiosqlite.Row]:
+        """Films on every one of these members' uploaded watchlists, by title, with
+        their post (thread_id NULL if none)."""
+        ids = list(dict.fromkeys(user_ids))
+        cur = await self.conn.execute(
+            "SELECT w.tmdb_id, COALESCE(m.title, MAX(w.title)) AS title, "
+            "COALESCE(m.year, MAX(w.year)) AS year, m.thread_id FROM watchlist_items w "
+            "LEFT JOIN movies m ON m.tmdb_id = w.tmdb_id "
+            f"WHERE w.user_id IN ({','.join('?' * len(ids))}) GROUP BY w.tmdb_id "
+            "HAVING COUNT(DISTINCT w.user_id) = ? ORDER BY title COLLATE NOCASE, year",
+            (*ids, len(ids)))
+        return list(await cur.fetchall())
+
     # weekly pick -----------------------------------------------------------
     async def get_week(self, week_start: str) -> aiosqlite.Row | None:
         cur = await self.conn.execute("SELECT * FROM weeks WHERE week_start=?", (week_start,))

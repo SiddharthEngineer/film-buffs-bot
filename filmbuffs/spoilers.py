@@ -1,7 +1,7 @@
 """Post-watch discussions: one companion post per movie in #post-watch.
 
 #pre-watch posts stay spoiler-free. A movie's post-watch post is
-created lazily (the info card button, /spoiler, Mark as spoiler, or a Letterboxd
+created lazily (the info card button, Mark as spoiler, or a Letterboxd
 entry) and never more than once. "Mark as spoiler" moves a message out of a
 #pre-watch post into the post-watch post: it is re-sent there via webhook as its
 author, then the original is deleted. Nothing is ever reposted in the #pre-watch
@@ -217,7 +217,7 @@ class SpoilerService:
     async def open(self, tmdb_id: int) -> tuple[discord.Thread, bool]:
         """Return (spoiler post, created). Creates it at most once per movie.
         Since Phase 18 MovieService.ensure_post calls this for every new movie;
-        /spoiler and Mark as spoiler still call it in case one is missing.
+        Mark as spoiler still calls it in case one is missing.
 
         Raises LookupError if the movie (or its #pre-watch post) no longer exists.
         """

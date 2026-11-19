@@ -222,8 +222,9 @@ def test_help_fits_and_covers_the_real_bot_commands():
                     and cls.__module__ == ext and not cls.__cog_is_app_commands_group__):
                 cmds += cls.__cog_app_commands__
     names = {c.name for c in cmds}
-    assert {"help", "nominate", "nominations", "unnominate", "schedule", "letterboxd",
-            "watchlist", "addmovie", "spoiler"} <= names
+    assert {"help", "nominate", "vote", "schedule", "letterboxd",
+            "watchlist", "addmovie"} <= names
+    assert not {"nominations", "unnominate", "spoiler"} & names     # removed in Phase 20
     text = help_text(cmds, {}, admin=True, welcome_channel_id=1)
     assert len(text) <= 4096 and "📚 More" not in text       # every command has a section
     for n in names - {"help"}:                 # /help doesn't list itself

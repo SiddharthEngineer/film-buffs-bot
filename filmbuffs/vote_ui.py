@@ -12,7 +12,10 @@ away.
 All components are DynamicItems keyed by the vote: a main watch week
 (`vote:2026-11-23`) or a group's month (`vote:osu:2026-12`), so they keep
 working after a restart; state lives in the DB, not the view. Nomination
-buttons carry the group the same way (`noms:show`, `noms:osu:show`). Group
+buttons carry the group the same way (`noms:show`, `noms:osu:show`). The private
+nomination view (Phase 20) also nominates: 🔎 opens a title modal, the TMDB matches
+come back as a dropdown (`noms:pick`), and inside a movie post 🎬 nominates that
+film (`noms:here:<tmdb id>`). Group
 components only work for members with the group's role. Old main monthly
 buttons (`vote:2026-12`, Phase 10) just say the vote is closed. The role buttons on the How to
 page (`role:weekly_ping`) are posted by setup_server.py and handled here.
@@ -25,6 +28,7 @@ import re
 import discord
 
 from .pool import ordinal
+from .tmdb import CHOICE_PREFIX, TMDBError
 
 log = logging.getLogger(__name__)
 
@@ -199,7 +203,7 @@ class MyNominationsButton(discord.ui.DynamicItem[discord.ui.Button],
         pool = pool_for(interaction.client, self.grp)
         if not await check(interaction, self.grp, pool):
             return
-        text, view = await pool.my_view(interaction.user.id)
+        text, view = await pool.my_view(interaction.user.id, here=await here_film(interaction))
         await send_private(interaction, text, view)
 
 
@@ -225,9 +229,137 @@ class NominationButton(discord.ui.DynamicItem[discord.ui.Button],
         notice = None
         if self.op == "del" and self.rank == 1:
             notice = await pool.withdraw_button(interaction.user.id)
-        text, view = await pool.my_view(interaction.user.id, notice=notice)
+        text, view = await pool.my_view(interaction.user.id, notice=notice,
+                                        here=await here_film(interaction))
         await interaction.response.edit_message(content=text, view=view,
                                                 allowed_mentions=discord.AllowedMentions.none())
+
+
+async def here_film(interaction: discord.Interaction):
+    """The movie whose #pre-watch post this interaction happened in, if any."""
+    db = getattr(interaction.client, "db", None)
+    if db is None or interaction.channel_id is None:
+        return None
+    return await db.get_movie_by_thread(interaction.channel_id)
+
+
+async def nominate_and_show(interaction: discord.Interaction, grp: str | None, pool,
+                            choice: str) -> None:
+    """Nominate a film picked on the private view (search result or "this film") and
+    redraw the view. The interaction must already be deferred."""
+    from .cogs.movies import add_movie, post_note
+    movie, thread, created, err = await add_movie(interaction.client, interaction.user,
+                                                  choice, source="nominate")
+    if err:
+        text, view = await pool.my_view(interaction.user.id, notice=err,
+                                        here=await here_film(interaction))
+    else:
+        reply = await pool.nominate(interaction.user.id, movie.id)
+        text = post_note(movie, thread, created) + "\n" + reply if created else reply
+        view = await pool.my_controls(interaction.user.id, here=await here_film(interaction))
+    await interaction.edit_original_response(content=text[:2000], view=view,
+                                             allowed_mentions=discord.AllowedMentions.none())
+
+
+class NominateModal(discord.ui.Modal, title="Nominate a film"):
+    def __init__(self, grp: str | None):
+        super().__init__()
+        self.grp = grp
+        self.query = discord.ui.TextInput(label="Movie title", max_length=100, required=True,
+                                          placeholder="e.g. Paris, Texas")
+        self.add_item(self.query)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        pool = pool_for(interaction.client, self.grp)
+        if not await check(interaction, self.grp, pool):
+            return
+        # Opened from a button, so this edits the private view it came from.
+        await interaction.response.defer()
+        query = self.query.value.strip()
+        here = await here_film(interaction)
+        try:
+            pairs = await interaction.client.tmdb.autocomplete(query, budget=4.0)
+        except TMDBError as e:
+            log.warning("Nominate search failed: %s", e)
+            text, view = await pool.my_view(
+                interaction.user.id, here=here,
+                notice="❌ Couldn't reach TMDB right now. Please try again in a minute.")
+        else:
+            if pairs:
+                notice = f"🔎 Films matching **{discord.utils.escape_markdown(query)}**: pick one below."
+            else:
+                notice = f"No films match **{discord.utils.escape_markdown(query)}**. Try another title."
+            text, view = await pool.my_view(interaction.user.id, notice=notice, here=here,
+                                            results=pairs)
+        await interaction.edit_original_response(content=text[:2000], view=view,
+                                                 allowed_mentions=discord.AllowedMentions.none())
+
+
+class NominateFindButton(discord.ui.DynamicItem[discord.ui.Button],
+                         template=r"noms:" + GRP + r"find"):
+    """🔎 Nominate a film / Change nomination: a modal asks for the title."""
+    def __init__(self, grp: str | None = None, change: bool = False):
+        super().__init__(discord.ui.Button(
+            label="Change nomination" if change else "Nominate a film", emoji="🔎",
+            style=discord.ButtonStyle.primary, custom_id=f"{_noms(grp)}find"))
+        self.grp = grp
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match: re.Match[str], /):
+        return cls(match["grp"])
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        pool = pool_for(interaction.client, self.grp)
+        if not await check(interaction, self.grp, pool):
+            return
+        await interaction.response.send_modal(NominateModal(self.grp))
+
+
+class NominatePickSelect(discord.ui.DynamicItem[discord.ui.Select],
+                         template=r"noms:" + GRP + r"pick"):
+    """The search results on the private view; picking one nominates it."""
+    def __init__(self, grp: str | None = None, results: list[tuple[str, str]] | None = None):
+        options = [discord.SelectOption(label=label[:100], value=value[:100])
+                   for label, value in (results or [])[:25]]
+        super().__init__(discord.ui.Select(
+            custom_id=f"{_noms(grp)}pick", placeholder="Pick the film to nominate…",
+            min_values=1, max_values=1,
+            options=options or [discord.SelectOption(label="-", value="-")]))
+        self.grp = grp
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match: re.Match[str], /):
+        return cls(match["grp"])
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        pool = pool_for(interaction.client, self.grp)
+        if not await check(interaction, self.grp, pool):
+            return
+        await interaction.response.defer()
+        values = self.item.values
+        await nominate_and_show(interaction, self.grp, pool, values[0] if values else "")
+
+
+class NominateHereButton(discord.ui.DynamicItem[discord.ui.Button],
+                         template=r"noms:" + GRP + r"here:(?P<tmdb>\d+)"):
+    """"Nominate <film>" on the private view when it's opened inside that film's post."""
+    def __init__(self, tmdb_id: int, grp: str | None = None, title: str = "this film"):
+        label = f"Nominate {title}"
+        super().__init__(discord.ui.Button(
+            label=label if len(label) <= 80 else label[:79] + "…", emoji="🎬",
+            style=discord.ButtonStyle.success, custom_id=f"{_noms(grp)}here:{tmdb_id}"))
+        self.tmdb_id, self.grp = tmdb_id, grp
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match: re.Match[str], /):
+        return cls(int(match["tmdb"]), match["grp"])
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        pool = pool_for(interaction.client, self.grp)
+        if not await check(interaction, self.grp, pool):
+            return
+        await interaction.response.defer()
+        await nominate_and_show(interaction, self.grp, pool, f"{CHOICE_PREFIX}{self.tmdb_id}")
 
 
 # ping roles ----------------------------------------------------------------------
@@ -295,7 +427,8 @@ class RoleButton(discord.ui.DynamicItem[discord.ui.Button], template=r"role:(?P<
 
 
 DYNAMIC_ITEMS = (VoteButton, RankSelect, UndoButton, ClearButton, MyNominationsButton,
-                 NominationButton, PingButton, RoleButton)
+                 NominationButton, NominateFindButton, NominatePickSelect, NominateHereButton,
+                 PingButton, RoleButton)
 
 
 def board_buttons(vid: str | None, grp: str | None = None) -> discord.ui.ActionRow:
@@ -321,9 +454,17 @@ def picker_view(vid: str, choices: list[tuple], next_rank: int,
     return view if view.children else None
 
 
-def nominations_view(has: bool, grp: str | None = None) -> discord.ui.View | None:
-    if not has:
-        return None
+def nominations_view(has: bool, grp: str | None = None, here=None,
+                     results: list[tuple[str, str]] | None = None) -> discord.ui.View:
+    """The private nomination view (/nominate, 📋 My nomination): search results to
+    pick from (after a search), 🔎 Nominate a film / Change nomination, 🎬 Nominate
+    <this film> (inside a movie post, `here` = its row), 🗑️ Withdraw."""
     view = discord.ui.View(timeout=600)
-    view.add_item(NominationButton("del", 1, grp))
+    if results:
+        view.add_item(NominatePickSelect(grp, results))
+    view.add_item(NominateFindButton(grp, change=has))
+    if here is not None and here["title"]:
+        view.add_item(NominateHereButton(here["tmdb_id"], grp, here["title"]))
+    if has:
+        view.add_item(NominationButton("del", 1, grp))
     return view

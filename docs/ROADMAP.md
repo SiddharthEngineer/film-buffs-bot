@@ -354,6 +354,15 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
+## Phase 20: command cleanup (built 2026-11-19; see STATUS.md)
+Owner (2026-11-19):
+1. Remove `/spoiler` (the card's link does it). 2. Remove `/nominations`. 3. Remove `/unnominate`.
+4. `/nominate` both shows your nomination and adds one, like the Vote button. 5. Add `/vote`, opening the Vote button's picker. → Both have a button and a command, and each shows your current pick and lets you pick again.
+6. `/admin idea add` for ideas in the owner's own words.
+7. `/watchlist show` takes one or more members and shows the films on all their watchlists (the intersection).
+
+Chosen in the build: picking a new nomination from the private view uses a title modal → TMDB matches in a dropdown (a dropdown can't search, and `/nominate title:` keeps autocomplete). `/watchlist show` always includes the caller and takes up to 4 others. `/admin idea add` takes an optional `by:` member (default: the admin).
+
 ## Phase 11: stats page, private member views, Film Buffs Wrapped (defined, not planned)
 
 Owner (2026-11-13): each member's own stats stay **private**; **group-wide totals are public**. No website: everything happens inside Discord (a web page would need Discord login, a domain with HTTPS and a public port, which is more to run and secure than a private server needs). Details still to be worked out with the owner before a step-by-step plan is written.

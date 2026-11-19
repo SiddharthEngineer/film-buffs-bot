@@ -1,4 +1,5 @@
-"""Post-watch discussions: /spoiler and the "Mark as spoiler" context menu.
+"""Post-watch discussions: the "Mark as spoiler" context menu (/spoiler went in
+Phase 20: the info card links the post-watch post).
 
 Info cards link their #post-watch post in text (Phase 18); the old button's
 handler, kept for cards not yet refreshed, lives in filmbuffs/cards.py.
@@ -46,31 +47,6 @@ class Spoilers(commands.Cog):
         await self.bot.movies.refresh_old_cards()
         await self.svc.refresh_starters()
         await self.svc.rebuild_posts()
-
-    # /spoiler ----------------------------------------------------------------
-    @app_commands.command(name="spoiler",
-                          description="Open this movie's post-watch discussion (spoilers allowed)")
-    @app_commands.guild_only()
-    async def spoiler(self, interaction: discord.Interaction) -> None:
-        channel = interaction.channel
-        row = await self.svc.movie_for_spoiler_post(channel)
-        if row is not None:
-            movies_post = await self.bot.movies.find_post(row["tmdb_id"])
-            back = f" The spoiler-free post is {movies_post.jump_url}." if movies_post else ""
-            await interaction.response.send_message(
-                f"You're already in the post-watch discussion.{back}", ephemeral=True)
-            return
-        row = await self.svc.movie_for_movies_post(channel)
-        if row is None:
-            await interaction.response.send_message(
-                "Use /spoiler inside a movie's post in #pre-watch.", ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        thread, created = await self.svc.open(row["tmdb_id"])
-        verb = "Opened" if created else "Here's"
-        await interaction.followup.send(
-            f"{verb} the post-watch discussion → {thread.jump_url}\n"
-            "-# ⚠️ Everything there may spoil the film.", ephemeral=True)
 
     # Mark as spoiler ---------------------------------------------------------
     async def mark_as_spoiler(self, interaction: discord.Interaction,

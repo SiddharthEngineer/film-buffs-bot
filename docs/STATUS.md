@@ -1,5 +1,7 @@
 # Status (as of 2026-11-19)
 
+> **Phase 20 (2026-11-19):** `/nominate` and the new `/vote` open the same private views as the board's buttons, and the nomination view can search and nominate; `/spoiler`, `/nominations` and `/unnominate` are gone; `/admin idea add`; `/watchlist show` compares members' watchlists. See "Phase 20" at the end.
+
 > **Phase 19 (2026-11-19):** one nomination each (several members can nominate the same film), `#watch-planning` is one board message, picks are announced in `#watch-log` (groups: their `#chat`), ping roles are on by default, and `#watch-planning` is commands-only. See "Phase 19" at the end.
 
 > **Phase 18 (2026-11-16):** `#movies` is now **`#pre-watch`** (key `movies`), and the server has four categories: 🎬 Film Buffs, 🍿 Movies, 📚 More (was 📊 Recap) and 🔧 Admin, plus the groups. See "Phase 18" at the end. Older sections use the names of their time.
@@ -357,3 +359,14 @@ Owner decisions are in ROADMAP "Phase 19". 214 unit tests pass (new `tests/test_
 - **Text:** the welcome page's voting section, the `#watch-planning`, `#watch-log` and group topics now say one nomination each and that picks are announced in `#watch-log`. Bot v0.13.
 - **Owner by hand (done 2026-11-19):** Server Members Intent on in the Developer Portal; default notifications → Only @mentions.
 - **Deploy log (2026-11-19):** DB copied to `backups/pre-phase19-20261119T052146Z.db`. Migration 16 kept one nomination each; one member's #2 (TMDB 1422) was dropped (they can nominate it again). Both old embed ballots became the boards (same message IDs). Cleanup deleted 4 old bot messages in `#watch-planning` and 1 in OSU's; 2 member messages were left. Ping backfill: 14 of 15 members got roles. `setup_server.py --apply`: 4 changes (both `#watch-planning` locks and topics, `#watch-log` topic, welcome page); a fresh `--plan` shows none left. Card refresh to version 6 (461 cards) was running.
+
+## Phase 20: command cleanup ✅ (built 2026-11-19; not deployed yet)
+Owner request (2026-11-19), seven changes. 224 unit tests pass (new `tests/test_phase20.py`). Bot v0.14.
+- **Removed:** `/spoiler` (the info card links the `#post-watch` post; Apps → Mark as spoiler stays), `/nominations` and `/unnominate`. The commands disappear at the next start (the bot syncs its guild commands).
+- **`/nominate [title]`:** no title → the same private view as the board's 📋 **My nomination** button (anywhere, groups included); with `title:` (autocomplete, as before) it nominates and shows that view. The view now nominates too: **🔎 Nominate a film / Change nomination** opens a modal for a title, the TMDB matches come back in a dropdown on the same private message (`noms:[grp:]pick`), and picking one does what `/addmovie` does and nominates it. Inside a `#pre-watch` post the view also offers **🎬 Nominate <film>** (`noms:[grp:]here:<tmdb id>`), which replaces the old "/nominate with no title inside a post". 🗑️ Withdraw stays.
+- **`/vote`:** the same private ranking picker as the board's 🗳️ Vote button, for the open weekly vote (in a group's channels: the group's monthly vote). "No vote is open right now" otherwise.
+- **`/admin idea add text: [by:]`:** an idea typed by an admin, credited to `by:` (default the admin), with no message link. Admin-only like done/drop.
+- **`/watchlist show [user1…user4]`:** no users → your upload summary, as before. With users → an embed of the films on **every** uploaded watchlist, the caller's included (`Database.shared_watchlist`), linked to their posts where they have one, "…and N more" past 4,000 chars. If anyone has no upload, it says who. Private (ephemeral), like before.
+- **/help** lists `/vote`, and its voting notes mention `/nominate` and `/vote`; README command table updated.
+- **Checked in the docs (DISCORD_NOTES):** a modal can answer a button click, and its submit can update the message the button was on.
+- **Owner by hand:** nothing. After the deploy, try `/nominate` (no title, then 🔎 search and pick), `/nominate` inside a `#pre-watch` post (🎬 button), `/vote`, `/watchlist show user1:<someone>`, `/admin idea add`, and check `/spoiler`, `/nominations` and `/unnominate` are gone (Discord may cache the command list for a minute; restart the app if they linger).

@@ -168,13 +168,14 @@ def test_idea_commands_are_admin_only():
     from filmbuffs.cogs.admin import Admin
     group = Admin(SimpleNamespace()).__cog_app_commands_group__
     subs = group.get_command("idea")
-    assert {c.name for c in subs.commands} == {"done", "drop"}
+    assert {c.name for c in subs.commands} == {"add", "done", "drop"}
     for cmd in [ctx, *subs.commands]:
         with pytest.raises(NotAdmin):
             run_checks(cmd.checks, member())
         run_checks(cmd.checks, member(manage_guild=True))
-    # No member-facing /idea add (owner, 2026-11-15).
-    assert group.get_command("add") is None and subs.get_command("add") is None
+    # No member-facing /idea add (owner, 2026-11-15); /admin idea add is admin-only
+    # (owner, 2026-11-19), checked in the loop above.
+    assert group.get_command("add") is None
     assert admin_only  # the shared gate is reused, not copied
 
 
