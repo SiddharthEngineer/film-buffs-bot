@@ -27,11 +27,12 @@ from .weekly import WeeklyService
 
 log = logging.getLogger("filmbuffs")
 
-VERSION = "0.12"
+VERSION = "0.13"
 USER_AGENT = f"FilmBuffsBot/{VERSION} (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd",
               "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly",
-              "filmbuffs.cogs.availability", "filmbuffs.cogs.ideas", "filmbuffs.cogs.help"]
+              "filmbuffs.cogs.availability", "filmbuffs.cogs.ideas", "filmbuffs.cogs.help",
+              "filmbuffs.cogs.members"]
 
 
 def git_commit() -> str:
@@ -46,6 +47,9 @@ def git_commit() -> str:
 class FilmBuffsBot(commands.Bot):
     def __init__(self, config: Config):
         intents = discord.Intents.default()
+        # Phase 19: ping roles for new members, and names instead of raw mentions.
+        # Privileged: "Server Members Intent" must be on in the Developer Portal.
+        intents.members = True
         super().__init__(command_prefix=commands.when_mentioned, intents=intents,
                          help_command=None,
                          allowed_mentions=discord.AllowedMentions(everyone=False, roles=False))

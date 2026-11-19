@@ -45,6 +45,13 @@ Things checked against current docs or live tests while building. Re-check anyth
 
 - **System messages** (live-tested 2026-11-16): the bot **can** delete the "pinned a message" notice (type 6) with Manage Messages, but **not** a thread's "changed the post title" notice (type 4): DELETE returns 403 `50021` "Cannot execute action on a system message". So renaming a forum post leaves a permanent notice in it; avoid bulk renames (the Phase 16 rollout left one in each of the 108 `#post-watch` posts). `setup_server.py` pins could delete their own pin notice right after pinning. A post created with its final title has no such notice (live-tested 2026-11-16), so Phase 17 recreates renamed posts instead. Re-sending a fetched message's `embeds` reproduces the embed exactly (same check).
 
+- **Commands without Send Messages** (Phase 19): the docs don't link USE_APPLICATION_COMMANDS ("Allows members to use application commands, including slash commands and context menu commands") to SEND_MESSAGES either way. **Owner-checked 2026-11-19** with a non-admin account on `#welcome` (Send Messages denied): the text box is still there for `/` commands. So commands-only channels just deny Send Messages.
+- **Mentions in embeds** (owner report, 2026-11-18): a `<@id>` in an embed shows as the raw ID on a phone that hasn't loaded that member (a new member saw one). Bot pages (embeds, Components V2) write names as text since Phase 19.
+- **Default notifications** (checked 2026-11-18, guild resource): `default_message_notifications` 0 = ALL_MESSAGES, 1 = ONLY_MENTIONS ("members will receive notifications only for messages that @mention them by default"); Modify Guild needs MANAGE_GUILD. The docs don't say how it applies to members who already changed their own settings. The owner sets it by hand.
+- **Per-member notification settings** (including how followed forum posts notify) aren't in the bot API. support.discord.com returns 403 to automated readers, so the help-center defaults weren't checked.
+- **Server Members intent** (checked 2026-11-18, gateway): GUILD_MEMBERS is privileged and covers GUILD_MEMBER_ADD/UPDATE/REMOVE (updates to the bot itself arrive without it). It must be on in the Developer Portal or the bot can't connect when it asks for it.
+- **AutoMod** (checked 2026-11-18, not used): rules can only *exempt* channels (≤ 50), not target them; ≤ 10 regex patterns of ≤ 260 chars; 6 keyword rules per guild; MANAGE_GUILD needed.
+
 ## TMDB
 - v3 API key (`api_key` param) or v4 read token (`Authorization: Bearer`) both work for `/3` endpoints.
 - `/movie/{id}?append_to_response=credits` gives runtime, genres and crew (directors) in one call.

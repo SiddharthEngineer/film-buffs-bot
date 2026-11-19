@@ -469,6 +469,30 @@ MIGRATIONS = [
             UNION ALL SELECT 4, 'Off-machine backups: keep a copy of the nightly backup somewhere other than the server')
         WHERE NOT EXISTS (SELECT 1 FROM ideas) ORDER BY n;
     """,
+    # 16 — Phase 19: one nomination per member per pool, and several members can
+    #   nominate the same film (owner, 2026-11-18). pool_nominations loses `rank`
+    #   and the one-nominator-per-film rule. Each member keeps the nomination
+    #   that's on the ballot now, else their #1. ballot_entries.user_id is the
+    #   film's first nominator; the ballot lists every nominator.
+    """
+    CREATE TABLE pool_nominations_new (
+        grp           TEXT NOT NULL,
+        user_id       INTEGER NOT NULL,
+        tmdb_id       INTEGER NOT NULL,
+        nominated_at  TEXT NOT NULL,
+        PRIMARY KEY (grp, user_id)
+    );
+    INSERT INTO pool_nominations_new(grp, user_id, tmdb_id, nominated_at)
+        SELECT p.grp, p.user_id, p.tmdb_id, p.nominated_at FROM pool_nominations p
+        WHERE p.rank = (
+            SELECT q.rank FROM pool_nominations q
+            LEFT JOIN ballot_entries b
+                ON b.grp = q.grp AND b.tmdb_id = q.tmdb_id AND b.user_id = q.user_id
+            WHERE q.grp = p.grp AND q.user_id = p.user_id
+            ORDER BY (b.tmdb_id IS NULL), q.rank LIMIT 1);
+    DROP TABLE pool_nominations;
+    ALTER TABLE pool_nominations_new RENAME TO pool_nominations;
+    """,
 ]
 
 
@@ -925,7 +949,7 @@ class Database:
     # Phase 10/12: nomination pools, live ballots, rolling rankings ----------
     # grp is 'main' (the weekly vote) or a group key.
     async def pool(self, user_id: int | None = None, grp: str = "main") -> list[aiosqlite.Row]:
-        """A pool's nominations with their movie, by member then rank."""
+        """A pool's nominations (one per member) with their movie, oldest first."""
         where, params = "WHERE p.grp=?", [grp]
         if user_id is not None:
             where += " AND p.user_id=?"
@@ -933,35 +957,40 @@ class Database:
         cur = await self.conn.execute(
             "SELECT p.*, m.title, m.year, m.status, m.thread_id FROM pool_nominations p "
             f"LEFT JOIN movies m ON m.tmdb_id = p.tmdb_id {where} "
-            "ORDER BY p.user_id, p.rank", params)
+            "ORDER BY p.nominated_at, p.user_id", params)
         return list(await cur.fetchall())
 
-    async def pool_owner(self, tmdb_id: int, grp: str = "main") -> int | None:
-        cur = await self.conn.execute(
-            "SELECT user_id FROM pool_nominations WHERE grp=? AND tmdb_id=?", (grp, tmdb_id))
-        row = await cur.fetchone()
-        return row[0] if row else None
+    async def nomination(self, user_id: int, grp: str = "main") -> aiosqlite.Row | None:
+        rows = await self.pool(user_id, grp)
+        return rows[0] if rows else None
 
-    async def set_pool(self, user_id: int, items: list[tuple[int, str]],
-                       grp: str = "main") -> None:
-        """Replace a member's list in a pool: [(tmdb_id, nominated_at)] best first."""
+    async def nominators(self, grp: str = "main") -> dict[int, list[int]]:
+        """tmdb_id -> the members who nominated it, first nominator first."""
+        out: dict[int, list[int]] = {}
+        for r in await self.pool(grp=grp):
+            out.setdefault(r["tmdb_id"], []).append(r["user_id"])
+        return out
+
+    async def set_nomination(self, user_id: int, tmdb_id: int | None, grp: str = "main",
+                             at: str | None = None) -> None:
+        """Set (or with None, withdraw) a member's one nomination in a pool."""
         await self.conn.execute("DELETE FROM pool_nominations WHERE grp=? AND user_id=?",
                                 (grp, user_id))
-        await self.conn.executemany(
-            "INSERT INTO pool_nominations(grp, user_id, rank, tmdb_id, nominated_at) "
-            "VALUES (?,?,?,?,?)",
-            [(grp, user_id, i, t, at) for i, (t, at) in enumerate(items, 1)])
+        if tmdb_id is not None:
+            await self.conn.execute(
+                "INSERT INTO pool_nominations(grp, user_id, tmdb_id, nominated_at) "
+                "VALUES (?,?,?,?)", (grp, user_id, tmdb_id, at or utcnow()))
         await self.conn.commit()
 
-    async def remove_from_pool(self, tmdb_id: int, grp: str = "main") -> int | None:
-        """Take a film out of a pool (it won, or was picked). Returns its nominator."""
-        owner = await self.pool_owner(tmdb_id, grp)
-        if owner is None:
-            return None
-        rest = [(r["tmdb_id"], r["nominated_at"]) for r in await self.pool(owner, grp)
-                if r["tmdb_id"] != tmdb_id]
-        await self.set_pool(owner, rest, grp)
-        return owner
+    async def remove_from_pool(self, tmdb_id: int, grp: str = "main") -> list[int]:
+        """Take a film out of a pool (it won, or was picked). Returns its nominators."""
+        cur = await self.conn.execute(
+            "SELECT user_id FROM pool_nominations WHERE grp=? AND tmdb_id=?", (grp, tmdb_id))
+        users = [r[0] for r in await cur.fetchall()]
+        await self.conn.execute("DELETE FROM pool_nominations WHERE grp=? AND tmdb_id=?",
+                                (grp, tmdb_id))
+        await self.conn.commit()
+        return users
 
     async def ballot_entries(self, grp: str = "main") -> list[aiosqlite.Row]:
         cur = await self.conn.execute(

@@ -1,7 +1,7 @@
 """Buttons and private pickers for the ranked votes and nominations (Phases 5R, 10).
 
-Each ballot message (🎬 weekly in #watch-planning, 🌙 monthly in each private
-group's #watch-planning) has a 🗳️ Vote button, a 📋 My nominations button and
+Each board (the one message in #watch-planning: 🎬 weekly, or 🌙 monthly in each
+private group's #watch-planning) has a 🗳️ Vote button, a 📋 My nomination button and
 a 🔔 Pings button (toggles @Weekly Pings, or the group's opt-in ping role). Vote sends the member a private
 (ephemeral) picker: one dropdown with the films they haven't ranked yet, so
 each pick becomes their next rank, plus Undo last / Clear. Discord can't fit
@@ -186,7 +186,7 @@ def _noms(grp: str | None) -> str:
 class MyNominationsButton(discord.ui.DynamicItem[discord.ui.Button],
                           template=r"noms:" + GRP + r"show"):
     def __init__(self, grp: str | None = None):
-        super().__init__(discord.ui.Button(label="My nominations", emoji="📋",
+        super().__init__(discord.ui.Button(label="My nomination", emoji="📋",
                                            style=discord.ButtonStyle.secondary,
                                            custom_id=f"{_noms(grp)}show"))
         self.grp = grp
@@ -205,11 +205,12 @@ class MyNominationsButton(discord.ui.DynamicItem[discord.ui.Button],
 
 class NominationButton(discord.ui.DynamicItem[discord.ui.Button],
                        template=r"noms:" + GRP + r"(?P<op>up|del):(?P<rank>[1-3])"):
-    def __init__(self, op: str, rank: int, grp: str | None = None):
-        label = f"Move #{rank} up" if op == "up" else f"Withdraw #{rank}"
+    """🗑️ Withdraw on the private view (`noms:del:1`). Since Phase 19 a member has
+    one nomination; old `up`/`del:2` buttons on open private views just withdraw
+    nothing and show the current state."""
+    def __init__(self, op: str = "del", rank: int = 1, grp: str | None = None):
         super().__init__(discord.ui.Button(
-            label=label, emoji="⬆️" if op == "up" else "🗑️",
-            style=discord.ButtonStyle.secondary if op == "up" else discord.ButtonStyle.danger,
+            label="Withdraw", emoji="🗑️", style=discord.ButtonStyle.danger,
             custom_id=f"{_noms(grp)}{op}:{rank}"))
         self.op, self.rank, self.grp = op, rank, grp
 
@@ -221,7 +222,9 @@ class NominationButton(discord.ui.DynamicItem[discord.ui.Button],
         pool = pool_for(interaction.client, self.grp)
         if not await check(interaction, self.grp, pool):
             return
-        notice = await pool.change(interaction.user.id, self.op, self.rank)
+        notice = None
+        if self.op == "del" and self.rank == 1:
+            notice = await pool.withdraw_button(interaction.user.id)
         text, view = await pool.my_view(interaction.user.id, notice=notice)
         await interaction.response.edit_message(content=text, view=view,
                                                 allowed_mentions=discord.AllowedMentions.none())
@@ -295,12 +298,14 @@ DYNAMIC_ITEMS = (VoteButton, RankSelect, UndoButton, ClearButton, MyNominationsB
                  NominationButton, PingButton, RoleButton)
 
 
-def ballot_view(vid: str, grp: str | None = None) -> discord.ui.View:
-    view = discord.ui.View(timeout=None)
-    view.add_item(VoteButton(vid))
-    view.add_item(MyNominationsButton(grp))
-    view.add_item(PingButton(grp))
-    return view
+def board_buttons(vid: str | None, grp: str | None = None) -> discord.ui.ActionRow:
+    """The board's buttons: 🗳️ Vote (only while a vote is open), 📋 My nomination, 🔔 Pings."""
+    row = discord.ui.ActionRow()
+    if vid:
+        row.add_item(VoteButton(vid))
+    row.add_item(MyNominationsButton(grp))
+    row.add_item(PingButton(grp))
+    return row
 
 
 def picker_view(vid: str, choices: list[tuple], next_rank: int,
@@ -316,14 +321,9 @@ def picker_view(vid: str, choices: list[tuple], next_rank: int,
     return view if view.children else None
 
 
-def nominations_view(n: int, grp: str | None = None) -> discord.ui.View | None:
-    if n == 0:
+def nominations_view(has: bool, grp: str | None = None) -> discord.ui.View | None:
+    if not has:
         return None
     view = discord.ui.View(timeout=600)
-    for r in range(2, n + 1):
-        view.add_item(NominationButton("up", r, grp))
-    for r in range(1, n + 1):
-        b = NominationButton("del", r, grp)
-        b.item.row = 1
-        view.add_item(b)
+    view.add_item(NominationButton("del", 1, grp))
     return view

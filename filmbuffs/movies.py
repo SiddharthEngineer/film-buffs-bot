@@ -67,7 +67,24 @@ def truncate(text: str, limit: int) -> str:
     return cut + "…"
 
 
-def build_embed(movie: Movie, added_by: discord.abc.User | int | None,
+def added_by_text(added_by: discord.abc.User | int | str) -> str:
+    """Plain name (Phase 19): `<@id>` in an embed shows as a raw ID on phones that
+    haven't loaded the member. A bare ID (no name known) still falls back to it."""
+    if isinstance(added_by, str):
+        return added_by
+    if isinstance(added_by, int):
+        return f"<@{added_by}>"
+    return discord.utils.escape_markdown(added_by.display_name)
+
+
+def set_added_by(e: discord.Embed, name: str) -> discord.Embed:
+    for i, f in enumerate(e.fields):
+        if f.name == "Added by":
+            e.set_field_at(i, name=f.name, value=name, inline=f.inline)
+    return e
+
+
+def build_embed(movie: Movie, added_by: discord.abc.User | int | str | None,
                 availability: Availability | None = None) -> discord.Embed:
     e = discord.Embed(title=movie.display, url=movie.tmdb_url,
                       description=truncate(movie.overview, 600) or "*No synopsis on TMDB.*",
@@ -83,8 +100,7 @@ def build_embed(movie: Movie, added_by: discord.abc.User | int | None,
                 value=f"[TMDB]({movie.tmdb_url}) · [Letterboxd]({movie.letterboxd_url})",
                 inline=False)
     if added_by is not None:
-        uid = added_by if isinstance(added_by, int) else added_by.id
-        e.add_field(name="Added by", value=f"<@{uid}>", inline=True)
+        e.add_field(name="Added by", value=added_by_text(added_by), inline=True)
     return set_availability(e, availability)
 
 
@@ -157,9 +173,13 @@ class MovieService:
             svc = getattr(self.bot, "availability", None)
             av = await svc.for_new_post(movie.id) if svc else None
             flags: list[str] = av.flags if av else []
+            shown = added_by
+            if isinstance(added_by, int):
+                from .names import member_name
+                shown = await member_name(self.bot, added_by)
             created = await self.forum.create_thread(
                 name=truncate(movie.display, 100),
-                embed=build_embed(movie, added_by, av),
+                embed=build_embed(movie, shown, av),
                 applied_tags=self.applied_tags(status, flags, genres),
                 reason=f"Movie post ({source})",
             )
@@ -209,8 +229,11 @@ class MovieService:
         starter = await thread.fetch_message(row["starter_message_id"])
         kwargs: dict = {"view": None}   # removes the pre-Phase 18 button
         if starter.embeds:
-            kwargs["embed"] = set_availability(starter.embeds[0],
-                                               Availability.from_json(row["availability"]),
+            e = starter.embeds[0]
+            if row["added_by"]:
+                from .names import member_name
+                set_added_by(e, await member_name(self.bot, row["added_by"]))
+            kwargs["embed"] = set_availability(e, Availability.from_json(row["availability"]),
                                                self.spoiler_url(row))
         await starter.edit(**kwargs)
         await self.bot.db.set_card_version(tmdb_id, CARD_VERSION)

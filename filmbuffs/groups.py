@@ -2,8 +2,9 @@
 
 A group is one entry under `groups:` in server.yaml. `expand()` turns each
 entry into the layout setup_server.py manages: a membership role, an opt-in
-ping role (`<role> Pings`, toggled with the 🔔 Pings button on the group's
-ballot; group announcements ping it), a category, and #watch-planning, #chat and #voice channels that
+ping role (`<role> Pings`, given with the group role since Phase 19 and toggled
+with the 🔔 Pings button on the group's board; group announcements in #chat ping
+it), a category, and #watch-planning (commands only), #chat and #voice channels that
 only the role and the bot can see. Discord always shows them to the server
 owner and to Administrator roles; that can't be turned off.
 
@@ -85,13 +86,15 @@ def expand(cfg: dict) -> None:
             "channels": [
                 {"key": channel_key(key, "watch_planning"), "name": "watch-planning",
                  "topic": (f"{g['name']}'s monthly movie. Voting here is completely independent "
-                           f"from the server's weekly vote: nominations and votes are completely "
-                           f"separate. /nominate up to 3 films here (your #1 is "
-                           f"on the ballot), then click Vote on the 🌙 ballot and rank them; 🔔 Pings "
-                           f"toggles pings when a movie is picked. The vote closes on the last day of the month; the discussion is in the "
-                           f"voice channel on the 1st. Only {role_name} members can see this "
-                           f"category."),
-                 "overwrites": {**hidden, who: {"allow": ["view_channel"]},
+                           f"from the server's weekly vote. /nominate a film here (one each), then click Vote on the "
+                           f"🌙 board and rank them. The vote closes on the last day of the month; "
+                           f"the discussion is in the voice channel on the 1st. Commands only "
+                           f"here: chat in #chat. Only {role_name} members can see this category."),
+                 # Phase 19: commands only (the text box stays; members just can't post).
+                 "overwrites": {**hidden, who: {"allow": ["view_channel"],
+                                                "deny": ["send_messages", "send_messages_in_threads",
+                                                         "create_public_threads",
+                                                         "create_private_threads"]},
                                 "@bot": {"allow": BOT_TEXT}}},
                 {"key": channel_key(key, "chat"), "name": "chat",
                  "topic": f"Chat for {g['name']}.",

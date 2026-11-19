@@ -71,7 +71,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now film-buffs-bot
 
 `.env` needs `DISCORD_TOKEN`, `DISCORD_GUILD_ID` and `TMDB_API_KEY` (a TMDB v3 key or v4 read-access token both work).
 
-Discord application settings: **Message Content** intent on, **Server Members** and **Presence** off, Public Bot off. Invite with scopes `bot applications.commands` and permissions integer `2832634816326736` (View Channels, Manage Channels, Manage Roles, Manage Threads, Send Messages, Send Messages in Threads, Manage Messages, Pin Messages, Manage Webhooks, Embed Links, Add Reactions, Read Message History, Send Polls, Create Events). Pin Messages (added in Phase 5; used for the forum pins) is a separate permission from Manage Messages now. Manage Roles is only there because Discord requires it to set channel permission overwrites.
+Discord application settings: **Message Content** and **Server Members** intents on (Server Members since Phase 19: ping roles for new members, names on bot pages), **Presence** off, Public Bot off. The bot won't log in if the code asks for Server Members and the portal has it off. Invite with scopes `bot applications.commands` and permissions integer `2832634816326736` (View Channels, Manage Channels, Manage Roles, Manage Threads, Send Messages, Send Messages in Threads, Manage Messages, Pin Messages, Manage Webhooks, Embed Links, Add Reactions, Read Message History, Send Polls, Create Events). Pin Messages (added in Phase 5; used for the forum pins) is a separate permission from Manage Messages now. Manage Roles is only there because Discord requires it to set channel permission overwrites.
 
 Check the connection (read-only, from `/srv/film-buffs-bot`):
 

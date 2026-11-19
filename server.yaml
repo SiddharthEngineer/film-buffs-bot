@@ -28,9 +28,9 @@ letterboxd:
   poll_minutes: 15
   jitter_seconds: [3, 12]
 
-# Weekly pick (Phase 10), America/Chicago. Members keep up to 3 ranked
-# nominations (/nominate); the ballot
-# is each member's highest eligible one (at most 25: Discord's dropdown limit).
+# Weekly pick (Phase 10), America/Chicago. Members have one nomination each
+# (/nominate; Phase 19), and several can nominate the same film. The ballot is
+# every eligible nominated film (at most 25: Discord's dropdown limit).
 # For each watch week (Mon 12:00 AM to Sun 11:59 PM), its ranked-choice vote
 # (instant runoff) runs the whole week before: Mon 12:00 AM → Sun 11:59 PM.
 # Rankings carry over from week to week.
@@ -115,7 +115,8 @@ categories:
         adopt: general          # take over the existing #general instead of creating one
       - key: watch_planning
         name: watch-planning
-        topic: "The 🎬 weekly ballot is always open. /nominate up to 3 films (your #1 is on the ballot), then click Vote and rank them. /schedule shows what's on. Chat welcome."
+        topic: "The 🎬 weekly ballot, always open. /nominate a film (one each), then click Vote and rank them. Commands only here: chat in #general."
+        preset: read_only       # Phase 19: commands still work (the text box stays)
       - key: watch_party
         name: Voice
         type: voice
@@ -213,7 +214,7 @@ categories:
         preset: read_only
       - key: watch_log
         name: watch-log
-        topic: "One line per weekly pick."
+        topic: "Every weekly pick, announced when the vote closes. @Weekly Pings is pinged here."
         preset: read_only
       - key: ideas
         name: ideas
@@ -254,10 +255,10 @@ messages:
         - **{#movie_spoilers}** is for after you've watched it: reviews, hot takes, spoilers welcome.
       - |
         ## 🗳️ Picking the weekly movie
-        - **Nominate** a film using **/nominate**. You can keep up to 3, but only your highest one is put on the ballot.
+        - **Nominate** a film using **/nominate**. You get one nomination; nominating again swaps it. If a friend nominated the same film, you're both listed on the ballot.
         - **Vote** in {#watch_planning}. The ballot is always open and closes **Sunday night** at 11:59 PM Central Time.
-        - **Watch** on your own time. The winner is announced in {#watch_planning} and gets a server event.
-        - Note: we use instant-runoff ranked choice voting. Your nominations and vote rankings carry over week to week.
+        - **Watch** on your own time. The winner is announced in {#watch_log} (you're pinged unless you turn 🔔 Pings off) and gets a server event.
+        - Note: we use instant-runoff ranked choice voting. Your nomination and vote ranking carry over week to week.
       - |
         ## 📒 Letterboxd
         - **/letterboxd link** with your username. Your new diary entries show up on the movie's post.

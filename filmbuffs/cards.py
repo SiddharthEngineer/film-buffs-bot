@@ -18,7 +18,8 @@ log = logging.getLogger(__name__)
 # 2: "Post-watch discussion" label + no-spoilers reminder; 3: no 👍 footer;
 # 4: no button, the reminder links the #post-watch post (Phase 18);
 # 5: the whole reminder line is the link, no arrow
-CARD_VERSION = 5
+# 6: "Added by" shows the member's name, not a mention (Phase 19)
+CARD_VERSION = 6
 SPOILER_BUTTON_LABEL = "Post-watch discussion"
 SPOILER_BUTTON_EMOJI = "🔓"
 

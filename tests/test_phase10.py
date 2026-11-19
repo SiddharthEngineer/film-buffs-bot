@@ -12,7 +12,7 @@ from filmbuffs.db import Database
 from filmbuffs.groups import Group
 from filmbuffs.monthly import (GroupVoteService, MonthSchedule, add_months, months_to_create,
                                next_month_action)
-from filmbuffs.pool import PoolService, desired_entries, place
+from filmbuffs.pool import PoolService, desired_entries
 from filmbuffs.weekly import WeeklyService
 
 TZ = ZoneInfo("America/Chicago")
@@ -63,40 +63,29 @@ async def settle():
         await asyncio.sleep(0)
 
 
-def row(tid, user, rank, status="backlog", at="2026-11-13T00:00:00+00:00", title="x"):
-    return {"tmdb_id": tid, "user_id": user, "rank": rank, "status": status,
-            "nominated_at": at, "title": title}
+def row(tid, user, status="backlog", at="2026-11-13T00:00:00+00:00", title="x"):
+    return {"tmdb_id": tid, "user_id": user, "status": status, "nominated_at": at,
+            "title": title}
 
 
 # ------------------------------------------------------------------ pure helpers
 
-def test_desired_entries_takes_each_members_best_eligible():
-    pool = [row(1, 10, 1, status="up_next"), row(2, 10, 2), row(3, 10, 3),
-            row(4, 11, 1, title=None), row(5, 11, 2), row(6, 12, 1, status="watched")]
+def test_desired_entries_takes_every_eligible_film_once():
+    pool = [row(1, 10, status="up_next"), row(2, 11, at="2026-11-13T00:00:02+00:00"),
+            row(2, 12, at="2026-11-13T00:00:01+00:00"),        # same film, nominated first
+            row(4, 13, title=None), row(5, 14), row(6, 15, status="watched")]
     add, remove, owners = desired_entries(pool, [])
-    assert add == [(2, 10), (5, 11)] and remove == [] and owners == []
-    # Already on the ballot: kept in place; gone ones removed.
-    add, remove, owners = desired_entries(pool, [(5, 11), (9, 13)])
-    assert add == [(2, 10)] and remove == [9]
+    assert add == [(5, 14), (2, 12)] and remove == [] and owners == []
+    # Already on the ballot: kept in place; gone ones removed; first nominator follows.
+    add, remove, owners = desired_entries(pool, [(2, 11), (9, 13)])
+    assert add == [(5, 14)] and remove == [9] and owners == [(2, 12)]
 
 
 def test_desired_entries_caps_and_keeps_existing_first():
-    pool = [row(i, i, 1, at=f"2026-11-13T00:00:{i:02d}+00:00") for i in range(1, 31)]
+    pool = [row(i, i, at=f"2026-11-13T00:00:{i:02d}+00:00") for i in range(1, 31)]
     current = [(30, 30)]
     add, _, _ = desired_entries(pool, current)
     assert len(add) == 24 and (30, 30) not in add and add[0] == (1, 1)
-
-
-def test_place_rules():
-    assert place([], 5, None) == ([5], None, None)
-    assert place([1, 2, 3], 5, None) == (None, None, "full")
-    assert place([1, 2], 5, 1) == ([5, 1, 2], None, None)
-    assert place([1, 2], 5, 3) == ([1, 2, 5], None, None)
-    assert place([1], 5, 3) == ([1, 5], None, None)                    # no gaps
-    assert place([1, 2, 3], 5, 2) == ([1, 5, 3], 2, None)              # full: replaces #2
-    assert place([1, 2, 3], 3, 1) == ([3, 1, 2], None, None)           # move
-    assert place([1, 2, 3], 2, 2)[2] == "same"
-    assert place([1, 2, 3], 2, None)[2] == "same"
 
 
 # ------------------------------------------------------------------ pool + ballot
@@ -105,47 +94,46 @@ def test_nominate_rules_and_ballot(tmp_path):
     async def run():
         db, bot = await make(tmp_path)
         p = bot.pool
-        out = [await p.nominate(10, 1), await p.nominate(10, 2), await p.nominate(10, 3),
-               await p.nominate(10, 4),                 # full
-               await p.nominate(10, 4, rank=1),         # replaces #1
-               await p.nominate(11, 2),                 # someone else's
+        out = [await p.nominate(10, 1),
+               await p.nominate(10, 1),                 # same again
+               await p.nominate(10, 2),                 # replaces Film 1
+               await p.nominate(11, 2),                 # someone else's: both listed
                await p.nominate(11, 7),                 # watched together
-               await p.nominate(11, 8),                 # up next
-               await p.nominate(11, 5),
-               await p.nominate(10, 3, rank=1)]         # reorder
+               await p.nominate(11, 8)]                 # up next
         mine = [r["tmdb_id"] for r in await db.pool(10)]
         ballot = [(e["tmdb_id"], e["user_id"]) for e in await db.ballot_entries()]
-        out.append(await p.unnominate(10, 3))
-        out.append(await p.unnominate(10, 99))
+        noms = await db.nominators()
+        out.append(await p.unnominate(10))
+        out.append(await p.unnominate(10))
         ballot2 = [(e["tmdb_id"], e["user_id"]) for e in await db.ballot_entries()]
+        out.append(await p.unnominate(11))
+        ballot3 = await db.ballot_entries()
         await settle()
         await db.close()
-        return out, mine, ballot, ballot2
-    out, mine, ballot, ballot2 = asyncio.run(run())
-    assert out[0].startswith("✅ Nominated **Film 1 (2001)** to your #1")
-    assert "already have 3" in out[3]
-    assert "replacing **Film 1 (2001)**" in out[4]
-    assert "already nominated by <@10>" in out[5]
-    assert "watched together" in out[6] and "Up Next" in out[7]
-    assert out[9].startswith("✅ Moved **Film 3 (2003)** to your #1")
-    assert mine == [3, 4, 2]
-    assert ballot == [(5, 11), (3, 10)] or ballot == [(3, 10), (5, 11)]
-    assert "Withdrew **Film 3" in out[10] and "isn't one of your" in out[11]
-    assert sorted(ballot2) == [(4, 10), (5, 11)]          # Film 4 moved up onto the ballot
+        return out, mine, ballot, noms, ballot2, ballot3
+    out, mine, ballot, noms, ballot2, ballot3 = asyncio.run(run())
+    assert out[0].startswith("✅ Nominated **Film 1 (2001)**.")
+    assert "already your nomination" in out[1]
+    assert out[2].startswith("✅ Nominated **Film 2 (2002)**, replacing **Film 1 (2001)**.")
+    assert "1 other member nominated it too" in out[3]
+    assert "watched together" in out[4] and "Up Next" in out[5]
+    assert mine == [2] and ballot == [(2, 10)] and noms == {2: [10, 11]}
+    assert "Withdrew **Film 2" in out[6] and "no nomination" in out[7]
+    assert ballot2 == [(2, 11)]                           # still on: Nikhil nominated it too
+    assert ballot3 == []
 
 
 def test_leaving_film_drops_from_that_tracks_rankings_only(tmp_path):
     async def run():
         db, bot = await make(tmp_path)
         await bot.pool.nominate(10, 1)
-        await bot.pool.nominate(10, 2)
         await bot.pool.nominate(11, 3)
         await bot.pool.nominate(12, 4)
         await bot.osu.pool.nominate(10, 1)                 # same film in the OSU pool
         await bot.osu.pool.nominate(11, 4)
         await db.set_track_ranking("weekly", 20, [1, 3, 4])
         await db.set_track_ranking("group:osu", 20, [4, 1])
-        await bot.pool.unnominate(10, 1)                   # Film 2 moves up, Film 1 leaves main
+        await bot.pool.nominate(10, 2)                     # swaps: Film 1 leaves main
         w, m = await db.track_ranking("weekly", 20), await db.track_ranking("group:osu", 20)
         ballot = sorted(e["tmdb_id"] for e in await db.ballot_entries())
         osu = sorted(e["tmdb_id"] for e in await db.ballot_entries("osu"))
@@ -161,9 +149,8 @@ def test_leaving_film_drops_from_that_tracks_rankings_only(tmp_path):
 
 async def open_week(db, bot):
     await db.create_week(WK)
-    for uid, films in ((10, [1, 2]), (11, [3]), (12, [4])):
-        for t in films:
-            await bot.pool.nominate(uid, t)
+    for uid, t in ((10, 1), (11, 3), (12, 4)):
+        await bot.pool.nominate(uid, t)
 
 
 def test_weekly_close_runs_irv_and_rankings_carry_over(tmp_path):
@@ -203,18 +190,17 @@ def test_group_pool_is_independent(tmp_path):
                await p.nominate(11, 8),                    # Up Next on the weekly: fine too
                await bot.pool.nominate(12, 1),
                await p.nominate(13, 1),                    # in the main pool too: fine
-               await p.nominate(13, 2), await p.nominate(13, 3),
-               await p.nominate(13, 4)]                    # full (3 per pool)
+               await p.nominate(13, 2)]                    # swaps 13's OSU nomination
         main = sorted(e["tmdb_id"] for e in await db.ballot_entries())
         osu = sorted(e["tmdb_id"] for e in await db.ballot_entries("osu"))
         await settle()
         await db.close()
         return out, main, osu
     out, main, osu = asyncio.run(run())
-    assert out[0].startswith("✅ Nominated **Film 7 (2007)** to your #1 for OSU")
+    assert out[0].startswith("✅ Nominated **Film 7 (2007)** for OSU.")
     assert out[1].startswith("✅") and out[3].startswith("✅")
-    assert "already have 3 nominations for OSU" in out[6]
-    assert main == [1] and osu == [1, 7, 8]
+    assert "replacing **Film 1 (2001)**" in out[4]
+    assert main == [1] and osu == [2, 7, 8]
 
 
 def test_weekly_close_ignores_groups(tmp_path):
@@ -247,28 +233,48 @@ class FakeChannel:
         return SimpleNamespace(id=900 + len(self.sent))
 
 
-def test_weekly_pick_is_announced_in_watch_planning(tmp_path):
+def test_weekly_pick_is_announced_in_watch_log(tmp_path):
     async def run():
         db, bot = await make(tmp_path)
-        planning, ann = FakeChannel(), FakeChannel()
-        chans = {1: planning, 2: ann}
-        bot.config.channels = {"watch_planning": 1, "announcements": 2}
+        planning, wlog = FakeChannel(), FakeChannel()
+        chans = {1: planning, 2: wlog}
+        bot.config.channels = {"watch_planning": 1, "watch_log": 2}
         bot.config.roles = {"weekly_ping": 77}
         bot.get_channel = chans.get
         bot.weekly.channel = lambda key: chans.get(bot.config.channels.get(key))
-        bot.weekly.refresh_ballot = lambda week: asyncio.sleep(0)
+        bot.weekly.refresh_board = lambda: asyncio.sleep(0)
         await open_week(db, bot)
         await db.set_track_ranking("weekly", 20, [3])
         await bot.weekly.close_vote(await db.get_week(WK), local(2026, 11, 22, 23, 59))
         w = dict(await db.get_week(WK))
+        # The week ends: no second #watch-log line (the announcement is the entry).
+        await bot.weekly.end_watch(await db.get_week(WK), local(2026, 11, 29, 23, 59))
+        done = dict(await db.get_week(WK))
         await settle()
         await db.close()
-        return planning.sent, ann.sent, w
-    planning, ann, w = asyncio.run(run())
-    assert ann == []
-    assert len(planning) == 1 and planning[0][0].startswith("<@&77> 🎬 **Weekly movie · Nov 23–29")
-    assert "Winner of the ranked vote" in planning[0][0]
-    assert [r.id for r in planning[0][1].roles] == [77] and w["announcement_id"] == 901
+        return planning.sent, wlog.sent, w, done
+    planning, wlog, w, done = asyncio.run(run())
+    assert planning == []
+    assert len(wlog) == 1 and wlog[0][0].startswith("<@&77> 🎬 **Wk 48 · Nov 23–29 2026: ")
+    assert "won 1–0" in wlog[0][0] and "-# **Round 1:**" in wlog[0][0]
+    assert [r.id for r in wlog[0][1].roles] == [77]
+    assert w["announcement_id"] == w["log_message_id"] == 901
+    assert done["state"] == "done" and done["log_message_id"] == 901
+
+
+def test_week_picked_before_phase19_is_logged_at_the_end(tmp_path):
+    async def run():
+        db, bot = await make(tmp_path)
+        wlog = FakeChannel()
+        bot.config.channels = {"watch_log": 2}
+        bot.weekly.channel = lambda key: wlog if key == "watch_log" else None
+        await db.create_week(WK, state="picked")
+        await db.update_week(WK, winner_tmdb_id=3, winner_votes=3, runner_up_votes=2)
+        await bot.weekly.end_watch(await db.get_week(WK), local(2026, 11, 29, 23, 59))
+        await db.close()
+        return wlog.sent
+    sent = asyncio.run(run())
+    assert len(sent) == 1 and "Film 3 (2003) · won 3–2" in sent[0][0]
 
 
 def test_weekly_close_edge_cases(tmp_path):
@@ -436,11 +442,12 @@ def test_vote_ids_carry_the_group():
     assert VoteButton("osu:2026-12").item.custom_id == "vote:osu:2026-12"
     assert MyNominationsButton("osu").item.custom_id == "noms:osu:show"
     assert MyNominationsButton().item.custom_id == "noms:show"
-    assert NominationButton("up", 2, "osu").item.custom_id == "noms:osu:up:2"
-    from filmbuffs.vote_ui import PingButton, ballot_view
+    assert NominationButton("del", 1, "osu").item.custom_id == "noms:osu:del:1"
+    from filmbuffs.vote_ui import PingButton, board_buttons
     assert PingButton().item.custom_id == "pings:main"
-    assert [c.custom_id for c in ballot_view("osu:2026-12", "osu").children] == [
+    assert [c.custom_id for c in board_buttons("osu:2026-12", "osu").children] == [
         "vote:osu:2026-12", "noms:osu:show", "pings:osu"]
+    assert [c.custom_id for c in board_buttons(None).children] == ["noms:show", "pings:main"]
     for cls, cid, want in ((VoteButton, "vote:osu:2026-12", "osu"),
                            (VoteButton, "vote:2026-11-23", None),
                            (NominationButton, "noms:up:2", None),
@@ -473,12 +480,12 @@ def test_migration_moves_open_5r_ballot_into_the_pool(tmp_path):
         await db.close()
         db = Database(tmp_path / "t.db")
         await db.connect()
-        pool = [(r["user_id"], r["rank"], r["tmdb_id"]) for r in await db.pool()]
+        pool = [(r["user_id"], r["tmdb_id"]) for r in await db.pool()]
         states = {r["week_start"]: r["state"] for r in await db.weeks_in_state("voting", "picked")}
         await db.close()
         return pool, states
     pool, states = asyncio.run(run())
-    assert pool == [(10, 1, 5)]
+    assert pool == [(10, 5)]
     assert states == {"2026-11-16": "picked", "2026-11-23": "voting"}
 
 

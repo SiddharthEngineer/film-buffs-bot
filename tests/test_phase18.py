@@ -123,7 +123,7 @@ def test_update_card_links_post_watch_and_drops_button(tmp_path):
     assert [f.name for f in edit["embed"].fields] == [REMINDER_NAME]
     assert edit["embed"].fields[-1].value == (
         "[Already seen it? Discussion in #post-watch](https://discord.com/channels/1/4242)")
-    assert row["card_version"] == 5
+    assert row["card_version"] == 6
 
 
 # ------------------------------------------------------------- server.yaml

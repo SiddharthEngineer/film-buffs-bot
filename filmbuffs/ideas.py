@@ -57,22 +57,24 @@ def message_url(guild_id: int, channel_id: int, message_id: int) -> str:
     return f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
 
 
-def idea_line(idea, guild_id: int) -> str:
+def idea_line(idea, guild_id: int, names: dict[int, str] | None = None) -> str:
     text = shorten(idea["text"], LINE_TEXT_MAX)
     if idea["message_id"] and idea["channel_id"]:
         line = f"• [{text}]({message_url(guild_id, idea['channel_id'], idea['message_id'])})"
     else:
         line = f"• {text}"
     if idea["suggested_by"]:
-        line += f" · <@{idea['suggested_by']}>"
+        # A plain name: a mention in an embed is a raw ID on phones (Phase 19).
+        who = (names or {}).get(idea["suggested_by"])
+        line += f" · {who}" if who else f" · <@{idea['suggested_by']}>"
     else:
         line += " · 🛠️ planned"
     return line
 
 
-def render_list(ideas, guild_id: int) -> discord.Embed:
+def render_list(ideas, guild_id: int, names: dict[int, str] | None = None) -> discord.Embed:
     """The pinned list. Lines that don't fit in the description are summed up at the end."""
-    lines = [idea_line(i, guild_id) for i in ideas]
+    lines = [idea_line(i, guild_id, names) for i in ideas]
     body = INTRO + "\n"
     if not lines:
         return discord.Embed(title=TITLE, description=body + "\n" + EMPTY, color=COLOR)
@@ -127,7 +129,11 @@ class IdeasService:
             if ch is None:
                 return
             db = self.bot.db
-            embed = render_list(await db.active_ideas(), self.bot.config.guild_id)
+            from .names import member_names
+            ideas = await db.active_ideas()
+            names = await member_names(self.bot, [i["suggested_by"] for i in ideas
+                                                  if i["suggested_by"]])
+            embed = render_list(ideas, self.bot.config.guild_id, names)
             mid = await db.get_meta(META_LIST)
             if mid and embed.to_dict() == self._rendered:
                 return

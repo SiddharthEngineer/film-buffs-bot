@@ -224,7 +224,8 @@ def test_list_message_is_posted_pinned_and_edited_in_place(tmp_path):
         ch = FakeChannel()
         bot = SimpleNamespace(db=db, config=SimpleNamespace(channels={"ideas": IDEAS_CH},
                                                             guild_id=GUILD),
-                              get_channel=lambda cid: ch if cid == IDEAS_CH else None)
+                              get_channel=lambda cid: ch if cid == IDEAS_CH else None,
+                              get_user=lambda uid: SimpleNamespace(display_name=f"user_{uid}"))
         svc = IdeasService(bot)
         await svc.refresh()                                  # startup: post + pin
         first = int(await db.get_meta(META_LIST))
@@ -244,7 +245,7 @@ def test_list_message_is_posted_pinned_and_edited_in_place(tmp_path):
         return ch, first, edits_idle, edits_added, text_added, text_closed, second
     ch, first, edits_idle, edits_added, text_added, text_closed, second = asyncio.run(run())
     assert edits_idle == 0 and edits_added == 1
-    assert f"[Trivia night](https://discord.com/channels/{GUILD}/{IDEAS_CH}/55) · <@7>" in text_added
+    assert f"[Trivia night](https://discord.com/channels/{GUILD}/{IDEAS_CH}/55) · user\\_7" in text_added   # a name, not a mention
     assert "Trivia" not in text_closed
     assert second != first and ch.messages[second].pinned
     assert "Stats page" not in ch.messages[second].embed.description   # idea 1 dropped

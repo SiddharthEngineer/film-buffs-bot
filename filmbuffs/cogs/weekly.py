@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 
 LEADERBOARD_META = "leaderboard_planning_message_id"
 RETIRED_MONTHLY_META = "retired_monthly_ballots"
+PLANNING_CLEANED_META = "planning_cleaned:"     # + pool grp
 NOT_MEMBER = "🔒 That's only for members of this group."
 
 
@@ -39,12 +40,14 @@ class Weekly(commands.Cog):
         self.tick.start()
         self._retire_task = asyncio.create_task(self._retire_leaderboard())
         self._retire_monthly_task = asyncio.create_task(self._retire_main_monthly())
+        self._clean_task = asyncio.create_task(self._clean_planning())
 
     async def cog_unload(self) -> None:
         self.bot.remove_dynamic_items(*DYNAMIC_ITEMS)
         self.tick.cancel()
         self._retire_task.cancel()
         self._retire_monthly_task.cancel()
+        self._clean_task.cancel()
 
     async def _retire_leaderboard(self) -> None:
         """👍 no longer count (owner, 2026-11-15): delete the bot's pinned "🏆 Top 25
@@ -90,6 +93,38 @@ class Weekly(commands.Cog):
             return
         await db.set_meta(RETIRED_MONTHLY_META, None)
 
+    async def _clean_planning(self) -> None:
+        """Phase 19: each #watch-planning keeps only the board. Once per channel,
+        delete the bot's older messages there (past ballots, pick announcements,
+        "vote is open" notices). Members' messages are left alone and counted."""
+        await self.bot.wait_until_ready()
+        db = self.bot.db
+        for svc in [self.bot.weekly, *self.bot.group_votes.values()]:
+            key = PLANNING_CLEANED_META + svc.pool.grp
+            ch = svc.board_channel()
+            if ch is None or await db.get_meta(key):
+                continue
+            try:
+                await svc.refresh_board()
+                board = int(await db.get_meta(svc.board_meta) or 0)
+                deleted = members = 0
+                async for m in ch.history(limit=None):
+                    if m.id == board:
+                        continue
+                    if m.author.id != self.bot.user.id:
+                        members += m.type == discord.MessageType.default
+                        continue
+                    await m.delete()
+                    deleted += 1
+                    await asyncio.sleep(1)
+            except discord.HTTPException:
+                log.exception("Cleaning #watch-planning (%s) failed; will retry next start",
+                              svc.pool.grp)
+                continue
+            await db.set_meta(key, "1")
+            log.info("#watch-planning (%s): deleted %d old bot message(s); %d member "
+                     "message(s) left alone", svc.pool.grp, deleted, members)
+
     def _context(self, interaction: discord.Interaction):
         """(pool, group vote or None, error) for the channel the command was used in."""
         grp = self.bot.group_of(interaction.channel)
@@ -128,12 +163,10 @@ class Weekly(commands.Cog):
     # commands --------------------------------------------------------------
     @app_commands.command(name="nominate",
                           description="Nominate a movie for this channel's ballot (adds its post if needed)")
-    @app_commands.describe(title="Start typing and pick the movie (default: the post you're in)",
-                           rank="Where it goes in your list (1 = on the ballot). With 3 already, "
-                                "it replaces that one")
+    @app_commands.describe(title="Start typing and pick the movie (default: the post you're in). "
+                                 "Replaces your current nomination")
     @app_commands.guild_only()
-    async def nominate(self, interaction: discord.Interaction, title: str | None = None,
-                       rank: app_commands.Range[int, 1, 3] | None = None) -> None:
+    async def nominate(self, interaction: discord.Interaction, title: str | None = None) -> None:
         pool, group, err = self._context(interaction)
         if err:
             await interaction.response.send_message(err, ephemeral=True)
@@ -160,7 +193,7 @@ class Weekly(commands.Cog):
                     ephemeral=True)
                 return
             tmdb_id = row["tmdb_id"]
-        reply = await pool.nominate(interaction.user.id, tmdb_id, rank)
+        reply = await pool.nominate(interaction.user.id, tmdb_id)
         await interaction.followup.send((note + reply)[:2000], ephemeral=True,
                                         allowed_mentions=discord.AllowedMentions.none())
 
@@ -168,40 +201,19 @@ class Weekly(commands.Cog):
     async def _nominate_title(self, interaction: discord.Interaction, current: str):
         return await self._title_autocomplete(interaction, current)
 
-    @app_commands.command(name="unnominate", description="Withdraw one of your nominations")
-    @app_commands.describe(film="Which of your nominations")
+    @app_commands.command(name="unnominate", description="Withdraw your nomination")
     @app_commands.guild_only()
-    async def unnominate(self, interaction: discord.Interaction, film: str) -> None:
+    async def unnominate(self, interaction: discord.Interaction) -> None:
         pool, _, err = self._context(interaction)
         if err:
             await interaction.response.send_message(err, ephemeral=True)
             return
-        try:
-            tmdb_id = int(film)
-        except ValueError:
-            await interaction.response.send_message(
-                "❌ Pick one of your nominations from the list.", ephemeral=True)
-            return
         await interaction.response.send_message(
-            await pool.unnominate(interaction.user.id, tmdb_id), ephemeral=True,
+            await pool.unnominate(interaction.user.id), ephemeral=True,
             allowed_mentions=discord.AllowedMentions.none())
 
-    @unnominate.autocomplete("film")
-    async def _unnominate_film(self, interaction: discord.Interaction, current: str):
-        pool, _, err = self._context(interaction)
-        if err:
-            return []
-        cur = current.lower()
-        out = []
-        for r in await self.bot.db.pool(interaction.user.id, pool.grp):
-            name = f"#{r['rank']} " + (f"{r['title']} ({r['year']})" if r["title"] else
-                                       f"TMDB {r['tmdb_id']}")
-            if cur in name.lower():
-                out.append(app_commands.Choice(name=name[:100], value=str(r["tmdb_id"])))
-        return out
-
     @app_commands.command(name="nominations",
-                          description="Your nominations (private): reorder or withdraw them")
+                          description="Your nomination (private): see or withdraw it")
     @app_commands.guild_only()
     async def nominations(self, interaction: discord.Interaction) -> None:
         pool, _, err = self._context(interaction)
@@ -212,7 +224,7 @@ class Weekly(commands.Cog):
         await send_private(interaction, text, view)
 
     @app_commands.command(name="schedule",
-                          description="What's on, the open vote and your nominations")
+                          description="What's on, the open vote and your nomination")
     @app_commands.guild_only()
     async def schedule(self, interaction: discord.Interaction) -> None:
         pool, group, err = self._context(interaction)

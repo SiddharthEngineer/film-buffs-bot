@@ -344,6 +344,16 @@ Owner (2026-11-16), from newcomer feedback ("too complicated, too much going on"
 - **OSU:** its `#watch-planning` topic and ballot say the group vote is completely separate from the weekly one.
 - **Phase 11 note:** `#wrapped` is gone; if stats come back, they need a new channel (or a pinned message in `#general`).
 
+## Phase 19: one nomination each, a one-message #watch-planning, pings by default (built 2026-11-19; see STATUS.md)
+Owner (2026-11-18), five changes:
+1. **Notifications:** members get pinged when the weekly movie (or their group's monthly movie) is picked, and notified for posts they follow; nothing else unless they opt in. → @Weekly Pings for new members, the group Pings role with the group role, a one-time backfill for **everyone** (owner chose this over new members only), and the server default set to **Only @mentions by hand** (the owner chose not to give the bot Manage Server). How followed posts notify is each member's own setting; the bot can't change it.
+2. **A raw user ID on a phone** (a new member saw `<@…>` instead of a name): mentions in embeds only resolve if the client has the member loaded. → names as text on the board, the info card and the `#ideas` list.
+3. **Commands-only channels:** members can write only in `#general`, `#ideas` and the movie posts (plus each group's `#chat`). `#welcome` and `#watch-planning` keep a text box for `/` commands. → Send Messages denied there (the owner confirmed the box stays on `#welcome`, so no AutoMod needed).
+4. **`#watch-planning` is one message:** the current ballot with Vote, My nomination and Pings, made prettier. Picks are announced in **`#watch-log`** with the ping (owner chose this over `#general`); the current movie is the event. Old bot messages there are deleted.
+5. **One nomination each, duplicates allowed** (owner: "I only want them to have one nomination"). Ranked nominations go; several members can nominate the same film, and the ballot lists them all. (Voting stays ranked, instant runoff.)
+
+Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
+
 ## Phase 11: stats page, private member views, Film Buffs Wrapped (defined, not planned)
 
 Owner (2026-11-13): each member's own stats stay **private**; **group-wide totals are public**. No website: everything happens inside Discord (a web page would need Discord login, a domain with HTTPS and a public port, which is more to run and secure than a private server needs). Details still to be worked out with the owner before a step-by-step plan is written.
@@ -389,6 +399,8 @@ Answered 2026-11-15 (Phase 12): monthly moves into private, role-gated groups (O
 Answered 2026-11-15 (Phase 12): group channels are `#watch-planning` / `#chat` / `#voice`; `@Monthly Movie` is deleted and `@OSU` created fresh.
 
 Answered 2026-11-15 (Phase 12b): no pinned instructions; picks announced in each `#watch-planning`, not `#announcements`; opt-in group ping roles; 🔔 Pings button on each ballot.
+
+Answered 2026-11-18 (Phase 19): one nomination each; picks pinged in `#watch-log`; ping roles for everyone once; default notifications set by hand; `#welcome` keeps its text box with Send Messages denied.
 
 Answered 2026-11-15 (Phases 13–16): delete Moderator; rename `@Weekly Movie` → `@Weekly Pings`; Mention Everyone off, Create Events and Create Expressions stay; one pinned welcome message with sections, `/help` lists commands; a Recap category with `#wrapped` (bot-only) and `#ideas` (pinned list of active ideas); `#post-watch` keeps the weekly pin, gets Reviews + genre + decade tags, and its starter goes into an embed so the forum list shows only title and poster. Later the same day: Phase 15 uses a Components V2 message; Phases 13, 14 and 16 are built in parallel, then 15; no `/idea add` (admins curate the list, members chat); 📊 Recap goes above 🔧 Admin; `#welcome-and-rules` → `#welcome`, one page, no bot embed if Discord has a better page format.
 

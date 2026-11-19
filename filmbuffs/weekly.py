@@ -1,16 +1,17 @@
 """Weekly pick (Phase 10): rolling nominations → one always-open ranked vote → watch week.
 
-Members keep up to 3 ranked nominations in the main pool (see pool.py;
-private groups have pools of their own). The ballot is each member's highest eligible nomination,
-and it updates as nominations change.
+Members have one nomination each in the main pool (see pool.py; private
+groups have pools of their own). The ballot is every eligible nominated film,
+and it updates as nominations change. #watch-planning holds one message, the
+board (pool.py RankedTrack), edited in place (Phase 19).
 
 For a watch week starting Monday T (America/Chicago):
   vote   T-7 Mon 12:00 AM → T-1 Sun 11:59 PM   ranked choice (instant runoff) on
          whatever is on the ballot at the close. Rankings carry over from the
          week before; a film that joins late is just unranked.
   watch  T Mon 12:00 AM → T+6 Sun 11:59 PM     winner tagged Up Next, server event,
-         announcement in #watch-planning; at the end it's tagged Watched and logged
-         in #watch-log.
+         announcement in #watch-log pinging @Weekly Pings (that line is the log
+         entry); at the end it's tagged Watched.
 So every week runs this week's watch and next week's vote. Sunday night ends
 this week's watch, then closes the vote for next week.
 
@@ -216,7 +217,7 @@ def _neg_added(added_at: str | None) -> float:
 
 
 def runoff_text(result: dict, names: dict[int, str]) -> str:
-    """Round-by-round summary for #watch-planning."""
+    """Round-by-round summary for the pick announcement."""
     lines = []
     for i, r in enumerate(result["rounds"], 1):
         counts = sorted(r["counts"].items(), key=lambda kv: (-kv[1], names.get(kv[0], "")))
@@ -255,6 +256,20 @@ def log_line(week: date, title: str | None, how: str | None = None,
     if skipped:
         return f"{head} · no pick ({skipped})"
     return f"{head} · {title} · {how or 'picked by an admin'}"
+
+
+def pick_text(week: date, link: str, how: str, event_url: str | None, start: str, end: str,
+              detail: str = "") -> str:
+    """The #watch-log announcement of a weekly pick (Phase 19)."""
+    iso = week.isocalendar()
+    text = (f"🎬 **Wk {iso.week} · {date_range(week)} {week.year}: {link}** · {how}\n"
+            f"Watch it any time from **{start}** to **{end}**, then talk about it in "
+            f"its #post-watch post.")
+    if event_url:
+        text += f"\n📅 [Event]({event_url})"
+    lines = [ln.removeprefix("-# ").strip() for ln in detail.splitlines()]
+    text += "".join(f"\n-# {ln}" for ln in lines if ln)
+    return text
 
 
 # ------------------------------------------------------------------ service
@@ -307,8 +322,12 @@ class WeeklyService(RankedTrack):
         return row
 
     async def refresh_open(self) -> None:
-        for row in await self.bot.db.weeks_in_state("voting"):
-            await self.refresh_ballot(row["week_start"])
+        await self.refresh_board()
+
+    def ref(self, key: str) -> str:
+        """A channel mention (normal channels render fine on phones), or #name."""
+        cid = self.bot.config.channels.get(key)
+        return f"<#{cid}>" if cid else "#" + key.replace("_", "-")
 
     # tick ------------------------------------------------------------------
     async def tick(self, now: datetime | None = None) -> None:
@@ -354,97 +373,39 @@ class WeeklyService(RankedTrack):
                 return
 
     async def opened(self, week_start: str) -> None:
-        """A new weekly vote just opened (rankings carry over)."""
-        await self.refresh_ballot(week_start)
-        row = await self.bot.db.get_week(week_start)
-        planning = self.channel("watch_planning")
-        if planning:
-            s = self.sched(week_start)
-            link = self.ballot_url(row)
-            await self._safe(planning.send(
-                f"🗳️ **Weekly vote for {date_range(s.week)} is open** until "
-                f"**{when(s.vote_close, self.tz)}**. Your ranking from last week carried over; "
-                f"click **Vote** to check it" + (f" → {link}" if link else "."),
-                allowed_mentions=discord.AllowedMentions.none()), "vote notice")
+        """A new weekly vote just opened (rankings carry over). The board switches
+        to it; no separate notice (Phase 19: #watch-planning is one message)."""
+        await self.refresh_board()
 
-    # ballot ----------------------------------------------------------------
-    async def render_ballot(self, week_start: str) -> discord.Embed:
-        db = self.bot.db
-        s = self.sched(week_start)
-        row = await db.get_week(week_start)
-        movies = await db.movies_by_id()
-        st = row["state"]
-        if st == "voting":
-            films = await self.ballot_films()
-            lines = self.ballot_lines(films, movies)
-        else:
-            films = [dict(o) for o in await db.options(week_start)]
-            lines = [f"`{i:>2}.` {self.link(o)} · nominated by "
-                     f"<@{o['nominated_by']}>" for i, o in enumerate(films, 1)]
-        rng = date_range(s.week)
-        if st == "voting":
-            n = await self.voter_count()
-            head = (f"🗳️ **Voting is open until {when(s.vote_close, self.tz)}.** Click **Vote** "
-                    f"and rank as many films as you like, best first. Your ranking carries over "
-                    f"from week to week, so only change it when you want to. Lower picks only "
-                    f"count if your higher ones are knocked out (instant runoff).\n"
-                    f"**{n} member{' has' if n == 1 else 's have'} a ranking.** Results are "
-                    f"posted when voting closes.\n"
-                    f"-# **/nominate** adds a film (up to 3 each, ranked; your highest one is "
-                    f"on the ballot). 🔔 **Pings**: get @Weekly Pings when it's picked. 🆕 = joined in the last 2 days.")
-        elif row["override_by"] and row["winner_tmdb_id"]:
-            m = movies.get(row["winner_tmdb_id"])
-            head = (f"🎬 An admin picked {self.link(m)} for this "
-                    f"week, so voting closed early.")
-        elif st == "skipped":
-            head = f"⏭️ No pick for this week: {row['skip_reason']}."
-        elif row["winner_tmdb_id"] and row["winner_votes"] is None:
-            m = movies.get(row["winner_tmdb_id"])
-            head = (f"🏁 {self.link(m)} was the only film on the "
-                    f"ballot, so it wins without a vote.")
-        else:
-            m = movies.get(row["winner_tmdb_id"])
-            n = row["total_votes"] or 0
-            head = (f"🏁 Voting closed. {self.link(m)} "
-                    f"{how_picked(row)} ({n} voter{'s' * (n != 1)}).")
-        body = "\n".join(lines) or "*No films on the ballot yet. Use **/nominate** to add one.*"
-        e = discord.Embed(title=f"🎬 Weekly ballot · watch week {rng}",
-                          description=truncate(f"{head}\n\n**Films ({len(films)})**\n{body}", 4096),
-                          color=0xE5A00D)
-        return e
+    # board -----------------------------------------------------------------
+    def board_channel(self):
+        return self.channel("watch_planning")
 
-    async def refresh_ballot(self, week_start: str) -> None:
-        from .vote_ui import ballot_view
-        row = await self.bot.db.get_week(week_start)
-        ch = self.channel("watch_planning")
-        if row is None or ch is None:
-            return
-        embed = await self.render_ballot(week_start)
-        voting = row["state"] == "voting"
-        view = ballot_view(week_start, "main") if voting else None
-        key = f"{voting}|{embed.description}"
-        if not row["ballot_message_id"]:
-            msg = await ch.send(embed=embed, view=view,
-                                allowed_mentions=discord.AllowedMentions.none())
-            await self.bot.db.update_week(week_start, ballot_message_id=msg.id,
-                                          ballot_opened_at=utcnow())
-            self._rendered[msg.id] = key
-            return
-        if self._rendered.get(row["ballot_message_id"]) == key:
-            return
-        try:
-            await ch.get_partial_message(row["ballot_message_id"]).edit(
-                embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
-        except discord.NotFound:
-            log.warning("Ballot message for %s was deleted; posting a new one", week_start)
-            await self.bot.db.update_week(week_start, ballot_message_id=None)
-            return await self.refresh_ballot(week_start)
-        self._rendered[row["ballot_message_id"]] = key
+    async def voting_period(self) -> str | None:
+        rows = await self.bot.db.weeks_in_state("voting")
+        now = datetime.now(timezone.utc)
+        open_ = [r["week_start"] for r in rows if now < self.sched(r["week_start"]).vote_close]
+        return min(open_) if open_ else None
 
-    def ballot_url(self, row) -> str:
-        cfg = self.bot.config
-        return (f"https://discord.com/channels/{cfg.guild_id}/{cfg.channels['watch_planning']}/"
-                f"{row['ballot_message_id']}") if row["ballot_message_id"] else ""
+    async def legacy_ballot_id(self) -> int | None:
+        period = await self.voting_period()
+        row = await self.bot.db.get_week(period) if period else None
+        return row["ballot_message_id"] if row else None
+
+    def board_header(self, period: str | None, voters: int) -> tuple[str, str, str]:
+        footer = ("-# **/nominate** a film: one each, and nominating again swaps it. Several "
+                  "people can nominate the same film. **Vote** to rank the films, best first; "
+                  "a lower pick only counts if your higher ones are knocked out (instant "
+                  "runoff). Your ranking carries over each week. 🔔 **Pings** turns "
+                  f"@Weekly Pings on or off: it pings you in {self.ref('watch_log')} when a movie is picked. "
+                  "🆕 = joined in the last 2 days.")
+        if period is None:
+            return ("## 🎬 Weekly vote", "No vote is open right now.", footer)
+        s = self.sched(period)
+        who = f"**{voters}** member{' has' if voters == 1 else 's have'} voted"
+        return (f"## 🎬 Weekly vote · watch week {date_range(s.week)}",
+                f"🗳️ Voting closes **{when(s.vote_close, self.tz)}** · {who}. "
+                f"Results go to {self.ref('watch_log')}.", footer)
 
     # vote ------------------------------------------------------------------
     async def close_vote(self, row, now: datetime) -> None:
@@ -473,7 +434,7 @@ class WeeklyService(RankedTrack):
             w = by_id[candidates[0]["tmdb_id"]]
             await self._crown(
                 row, w, now, how=SOLE_NOMINATION,
-                line="It was the only film on the ballot, so it wins without a vote.",
+                line="",
                 poll_closed_at=utcnow(), total_votes=len(ballots))
             return
         result = instant_runoff(list(ballots.values()), candidates, self.bot.config.tie_break)
@@ -491,14 +452,14 @@ class WeeklyService(RankedTrack):
         how = won_text(won, ru, n_rounds)
         await self._crown(
             row, w, now, how=how,
-            line=(f"Winner of the ranked vote ({how}, {voters} voter{'s' * (voters != 1)}).\n"
-                  f"-# Instant runoff: each round, every ballot counts for its highest-ranked "
-                  f"film still in the race.\n" + runoff_text(result, names)),
+            line=(f"{voters} voter{'s' * (voters != 1)}. Instant runoff: each round, every "
+                  f"ballot counts for its highest-ranked film still in the race.\n"
+                  + runoff_text(result, names)),
             winner_votes=won, runner_up_votes=ru)
 
     async def _crown(self, row, w, now: datetime, *, how: str, line: str, **fields) -> None:
         """Make option row `w` the week's movie: Up Next, event, an announcement in
-        #watch-planning pinging @Weekly Pings (not #announcements, owner 2026-11-15),
+        #watch-log pinging @Weekly Pings (Phase 19; was #watch-planning),
         state picked. It leaves the pool."""
         week = row["week_start"]
         db = self.bot.db
@@ -510,21 +471,37 @@ class WeeklyService(RankedTrack):
         await self.pool.picked(winner["tmdb_id"])
         await self._safe(self.bot.movies.retag(winner["tmdb_id"]), "retag winner")
         event = await self._safe(self.create_event(week, winner, now), "create event")
-        s = self.sched(week)
-        event_link = f"\n📅 Event: {event.url}" if event else ""
-        ping, mentions = role_ping(self.bot, "weekly_ping")
-        text = (f"{ping}🎬 **Weekly movie · {date_range(s.week)}: "
-                f"{self.link(winner, esc(winner['title']))}**\n"
-                f"Watch it any time from **{when(s.watch_start, self.tz)}** to "
-                f"**{when(s.watch_end, self.tz)}**, then talk about it in the post-watch "
-                f"discussion.{event_link}\n{line}")
-        ch = self.channel("watch_planning")
-        ann_msg = await self._safe(ch.send(truncate(text, 2000), allowed_mentions=mentions),
-                                   "announce") if ch else None
+        ann_msg = await self.announce(week, winner, how, event, line)
         await db.update_week(week, state="picked", event_id=event.id if event else None,
-                             announcement_id=ann_msg.id if ann_msg else None)
+                             announcement_id=ann_msg.id if ann_msg else None,
+                             log_message_id=ann_msg.id if ann_msg else None)
         log.info("Watch week %s: %s, %s", week, winner["title"], how)
-        await self._safe(self.refresh_ballot(week), "ballot refresh")
+        await self._safe(self.refresh_board(), "board refresh")
+
+    async def announce(self, week: str, winner: dict, how: str, event, detail: str = ""):
+        """The pick, in #watch-log, pinging @Weekly Pings (Phase 19: #watch-planning
+        is just the board). This line is also the week's log entry."""
+        s = self.sched(week)
+        ping, mentions = role_ping(self.bot, "weekly_ping")
+        text = pick_text(date.fromisoformat(week), self.link(winner, esc(winner["title"])), how,
+                         event.url if event else None, when(s.watch_start, self.tz),
+                         when(s.watch_end, self.tz), detail)
+        ch = self.channel("watch_log")
+        if ch is None:
+            return None
+        return await self._safe(ch.send(truncate(ping + text, 2000), allowed_mentions=mentions),
+                                "announce")
+
+    async def strike_log(self, row, why: str) -> None:
+        """A pick was replaced or cleared: cross out its #watch-log line."""
+        mid = row["log_message_id"]
+        ch = self.channel("watch_log")
+        if not mid or ch is None:
+            return
+        rng = date_range(date.fromisoformat(row["week_start"]))
+        await self._safe(ch.get_partial_message(mid).edit(
+            content=f"~~Weekly movie · {rng}~~ ({why})",
+            allowed_mentions=discord.AllowedMentions.none()), "strike log line")
 
     async def create_event(self, week: str, winner: dict, now: datetime):
         s = self.sched(week)
@@ -570,10 +547,11 @@ class WeeklyService(RankedTrack):
             await db.set_status(tmdb_id, "watched")
             await self._safe(self.bot.movies.retag(tmdb_id), "retag watched")
         title = display(movie) if movie else f"TMDB {tmdb_id}"
-        line = log_line(date.fromisoformat(week), title, how_picked(row))
-        log_msg = await self._log(line)
-        await db.update_week(week, state="done", ended_at=utcnow(),
-                             log_message_id=log_msg.id if log_msg else None)
+        log_id = row["log_message_id"]
+        if not log_id:      # picked before Phase 19: announced in #watch-planning
+            log_msg = await self._log(log_line(date.fromisoformat(week), title, how_picked(row)))
+            log_id = log_msg.id if log_msg else None
+        await db.update_week(week, state="done", ended_at=utcnow(), log_message_id=log_id)
         log.info("Watch week %s ended: %s", week, title)
 
     async def _log(self, line: str):
@@ -587,15 +565,10 @@ class WeeklyService(RankedTrack):
         week = row["week_start"]
         await self.bot.db.update_week(week, state="skipped", skip_reason=reason)
         log.info("Watch week %s skipped: %s", week, reason)
-        rng = date_range(date.fromisoformat(week))
-        planning = self.channel("watch_planning")
-        if planning:
-            await self._safe(planning.send(f"⏭️ No weekly movie for {rng}: {reason}."),
-                             "skip notice")
         log_msg = await self._log(log_line(date.fromisoformat(week), None, skipped=reason))
         if log_msg:
             await self.bot.db.update_week(week, log_message_id=log_msg.id)
-        await self._safe(self.refresh_ballot(week), "ballot refresh")
+        await self._safe(self.refresh_board(), "board refresh")
 
     async def _safe(self, coro, what: str):
         try:
@@ -658,30 +631,25 @@ class WeeklyService(RankedTrack):
                 event = await self._safe(self.update_event(row["event_id"], ws, winner), "edit event")
             if event is None:
                 event = await self._safe(self.create_event(ws, winner, now), "create event")
-            await db.update_week(ws, event_id=event.id if event else None)
-            event_link = f"\n📅 Event: {event.url}" if event else ""
-            ping, mentions = role_ping(self.bot, "weekly_ping")
-            text = (f"{ping}🎬 **Weekly movie · {date_range(week)}: {self.link(movie)}** (picked "
-                    f"by an admin)\nWatch it any time until **{when(s.watch_end, self.tz)}**, "
-                    f"then talk about it in the post-watch discussion.{event_link}")
-            planning = self.channel("watch_planning")
-            if planning:
-                await self._safe(planning.send(text, allowed_mentions=mentions), "announce")
+            await self.strike_log(row, "replaced by an admin pick")
+            ann = await self.announce(ws, winner, "picked by an admin", event)
+            await db.update_week(ws, event_id=event.id if event else None,
+                                 announcement_id=ann.id if ann else None,
+                                 log_message_id=ann.id if ann else None)
             row = await db.get_week(ws)
             if now >= s.watch_start:
                 await self.start_watch(row, now)
                 notes.append("pinned it in both forums")
             log.info("%s picked TMDB %s for %s", admin_id, tmdb_id, ws)
-        if row["ballot_message_id"]:
-            await self._safe(self.refresh_ballot(ws), "ballot refresh")
+        await self._safe(self.refresh_board(), "board refresh")
         self.pool.refresh_soon()
         extra = f" ({'; '.join(notes)})" if notes else ""
         return f"✅ **{display(movie)}** is the movie for {date_range(week)}{extra}."
 
     async def admin_clear(self, admin_id: int, which: str, now: datetime | None = None) -> str:
         """Undo this or next week's pick: the movie goes back to its old status,
-        its pins and the bot's event go, and the week becomes skipped (no
-        watch-log line). /admin pick can still set a movie for it afterwards."""
+        its pins and the bot's event go, its #watch-log line is crossed out, and
+        the week becomes skipped. /admin pick can still set a movie for it afterwards."""
         now = now or datetime.now(timezone.utc)
         db = self.bot.db
         cur = monday_of(now.astimezone(self.tz).date())
@@ -723,11 +691,7 @@ class WeeklyService(RankedTrack):
                                  winner_tmdb_id=None, winner_prev_status=None, event_id=None,
                                  pinned_at=None, override_by=admin_id)
             title = display(movie) if movie else f"TMDB {tmdb_id}"
-            planning = self.channel("watch_planning")
-            if planning:
-                await self._safe(planning.send(
-                    f"⏭️ **{title}** is no longer the movie for {date_range(week)}.",
-                    allowed_mentions=discord.AllowedMentions.none()), "clear notice")
+            await self.strike_log(row, f"{esc(title)} was cleared by an admin")
             log.info("%s cleared the pick (TMDB %s) for %s", admin_id, tmdb_id, ws)
         return f"✅ Cleared **{title}** for {date_range(week)} ({'; '.join(notes)})."
 
@@ -768,7 +732,6 @@ class WeeklyService(RankedTrack):
                     out.append(head + "no pick.")
                 continue
             st = row["state"]
-            link = f" → {self.ballot_url(row)}" if row["ballot_message_id"] else ""
             if st in ("picked", "done"):
                 m = await db.get_movie(row["winner_tmdb_id"])
                 name = f"**{self.link(m)}**" if m else "the picked film"
@@ -781,6 +744,8 @@ class WeeklyService(RankedTrack):
                 you = (f" You've ranked {len(ranked)} film{'s' * (len(ranked) != 1)}."
                        if ranked else " You haven't ranked anything yet: click **Vote** on the "
                        "ballot.")
+                url = await self.board_url()
+                link = f" → {url}" if url else ""
                 out.append(head + f"voting open until {when(s.vote_close, self.tz)}{link}.{you}")
         out.append("")
         out.append(await self.pool._summary(user_id))

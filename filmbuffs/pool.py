@@ -1,12 +1,12 @@
-"""Phases 10 and 12: nomination pools, live ballots and rolling rankings.
+"""Phases 10, 12 and 19: nomination pools, live ballots and rolling rankings.
 
 There is one pool per vote: 'main' for the main server's weekly vote, and one
 per private group (server.yaml `groups:`) for its monthly vote. They are fully
-separate: a film can sit in several pools, and each member keeps up to 3
-active nominations, ranked 1–3, in each pool. A pool's ballot is each member's
-highest-ranked nomination that is still eligible. When a film wins it leaves
-that pool, and its nominator's next nomination moves up onto the ballot by
-itself. Nominations roll over until withdrawn or won.
+separate: a film can sit in several pools. Since Phase 19 each member has **one**
+nomination per pool, and several members can nominate the same film. A pool's
+ballot is every eligible nominated film, listed with all its nominators. When a
+film wins it leaves that pool (its nominators can nominate something new).
+Nominations roll over until withdrawn, replaced or won.
 
 Eligible: on the main ballot, a film tagged Backlog or Watched (solo); on a
 group's ballot, any film with a post that the group hasn't picked before.
@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from .db import utcnow
 from .groups import MAIN
 
 if TYPE_CHECKING:
@@ -35,7 +34,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 ELIGIBLE = ("backlog", "watched_solo")
-MAX_NOMINATIONS = 3
+
 MAX_BALLOT = 25            # Discord select menu options: the most films a ballot holds
 NEW_FOR = timedelta(hours=48)    # 🆕 next to films that joined the ballot recently
 LABEL_LIMIT = 100
@@ -100,54 +99,27 @@ def desired_entries(pool_rows, current: list[tuple[int, int]],
                                                      list[tuple[int, int]]]:
     """Work out the ballot from the pool.
 
-    pool_rows: pool nominations (user_id, rank, tmdb_id, nominated_at, title,
-    status), any order. current: the ballot now as [(tmdb_id, user_id)] in
-    order. Returns (add, remove, owner_changes): films joining (in the order
-    their nominations were made), films leaving, and films that stay but now
-    belong to another member. Films already on the ballot keep their place;
-    new ones join while there's room (Discord's 25-option dropdown).
+    pool_rows: pool nominations (user_id, tmdb_id, nominated_at, title,
+    status), one per member, any order. current: the ballot now as
+    [(tmdb_id, user_id)] in order. Every eligible nominated film belongs on the
+    ballot; its user_id is its first nominator. Returns (add, remove,
+    owner_changes): films joining (in the order they were first nominated),
+    films leaving, and films that stay but whose first nominator changed. Films
+    already on the ballot keep their place; new ones join while there's room
+    (Discord's 25-option dropdown).
     """
-    best: dict[int, dict] = {}
-    for r in sorted(pool_rows, key=lambda r: (r["user_id"], r["rank"])):
-        if r["user_id"] not in best and ok(r):
-            best[r["user_id"]] = r
-    want = {r["tmdb_id"]: r for r in best.values()}
+    want: dict[int, dict] = {}
+    for r in sorted(pool_rows, key=lambda r: (r["nominated_at"], r["user_id"])):
+        if r["tmdb_id"] not in want and ok(r):
+            want[r["tmdb_id"]] = r
     remove = [t for t, _ in current if t not in want]
     owner_changes = [(t, want[t]["user_id"]) for t, u in current
                      if t in want and want[t]["user_id"] != u]
     kept = {t for t, _ in current if t in want}
-    new = sorted((r for t, r in want.items() if t not in kept),
-                 key=lambda r: (r["nominated_at"], r["user_id"]))
+    new = [r for t, r in want.items() if t not in kept]
     room = max(0, size - len(kept))
     add = [(r["tmdb_id"], r["user_id"]) for r in new[:room]]
     return add, remove, owner_changes
-
-
-def place(current: list[int], tmdb_id: int, rank: int | None,
-          limit: int = MAX_NOMINATIONS) -> tuple[list[int] | None, int | None, str | None]:
-    """Put a film into a member's list. Returns (new list, film it replaced, error).
-
-    No rank: added at the end, if there's room. A rank: inserted there (later
-    ones move down) while there's room; with a full list it replaces the film
-    at that rank. A film already in the list moves to the rank."""
-    if tmdb_id in current:
-        if rank is None or current.index(tmdb_id) == min(rank, len(current)) - 1:
-            return None, None, "same"
-        rest = [t for t in current if t != tmdb_id]
-        rest.insert(min(rank, len(current)) - 1, tmdb_id)
-        return rest, None, None
-    if rank is None:
-        if len(current) >= limit:
-            return None, None, "full"
-        return current + [tmdb_id], None, None
-    if len(current) < limit:
-        out = list(current)
-        out.insert(min(rank, len(current) + 1) - 1, tmdb_id)
-        return out, None, None
-    out = list(current)
-    replaced = out[rank - 1]
-    out[rank - 1] = tmdb_id
-    return out, replaced, None
 
 
 class PoolService:
@@ -218,7 +190,8 @@ class PoolService:
         task.add_done_callback(self._tasks.discard)
 
     # members -------------------------------------------------------------------
-    async def nominate(self, user_id: int, tmdb_id: int, rank: int | None = None) -> str:
+    async def nominate(self, user_id: int, tmdb_id: int) -> str:
+        """Set the member's one nomination; a new one replaces the old one."""
         db = self.bot.db
         grp = self.grp
         async with self.lock:
@@ -234,114 +207,96 @@ class PoolService:
             elif movie["status"] not in ELIGIBLE:
                 what = {"up_next": "is already Up Next", "watched": "was already watched together"}
                 return f"❌ **{display(movie)}** {what.get(movie['status'], 'can’t be nominated')}."
-            owner = await db.pool_owner(tmdb_id, grp)
-            if owner is not None and owner != user_id:
-                return (f"**{display(movie)}** is already nominated by <@{owner}>. Rank it "
-                        f"on the ballot to back it.")
-            mine = await db.pool(user_id, grp)
-            ids = [r["tmdb_id"] for r in mine]
-            new, replaced, err = place(ids, tmdb_id, rank)
-            if err == "same":
-                return f"**{display(movie)}** is already your #{ids.index(tmdb_id) + 1}."
-            if err == "full":
-                return (f"❌ You already have {MAX_NOMINATIONS} nominations{self._here()}. Add "
-                        f"`rank:` to replace one, or **/unnominate** one first. **/nominations** "
-                        f"shows them.")
-            at = {r["tmdb_id"]: r["nominated_at"] for r in mine}
-            now = utcnow()
-            await db.set_pool(user_id, [(t, at.get(t, now)) for t in new], grp)
+            old = await db.nomination(user_id, grp)
+            if old is not None and old["tmdb_id"] == tmdb_id:
+                return f"**{display(movie)}** is already your nomination{self._here()}."
+            others = [u for u in (await db.nominators(grp)).get(tmdb_id, []) if u != user_id]
+            await db.set_nomination(user_id, tmdb_id, grp)
             await self.sync()
-            log.info("%s nominated TMDB %s in %s (list now %s)", user_id, tmdb_id, grp, new)
-            gone = await db.get_movie(replaced) if replaced else None
+            log.info("%s nominated TMDB %s in %s (was %s)", user_id, tmdb_id, grp,
+                     old["tmdb_id"] if old else None)
             summary = await self._summary(user_id)
         self.refresh_soon()
-        where = f"your #{new.index(tmdb_id) + 1}"
-        was = f", replacing **{display(gone)}**" if gone else ""
-        verb = "Moved" if tmdb_id in ids else "Nominated"
-        return f"✅ {verb} **{display(movie)}** to {where}{self._here()}{was}.\n{summary}"
+        was = ""
+        if old is not None:
+            was = f", replacing **{display(old) if old['title'] else 'your old nomination'}**"
+        also = ""
+        if others:
+            n = len(others)
+            also = (f" {n} other member{'s' * (n != 1)} nominated it too, so the ballot shows "
+                    f"all of you.")
+        return f"✅ Nominated **{display(movie)}**{self._here()}{was}.{also}\n{summary}"
 
     def _here(self) -> str:
         return f" for {self.name}" if self.is_group else ""
 
-    async def unnominate(self, user_id: int, tmdb_id: int) -> str:
+    async def unnominate(self, user_id: int) -> str:
         db = self.bot.db
         async with self.lock:
-            mine = await db.pool(user_id, self.grp)
-            if tmdb_id not in [r["tmdb_id"] for r in mine]:
-                return (f"That film isn't one of your nominations{self._here()}. **/nominations** "
-                        f"shows them.")
-            await db.set_pool(user_id, [(r["tmdb_id"], r["nominated_at"]) for r in mine
-                                        if r["tmdb_id"] != tmdb_id], self.grp)
-            await self.sync()
-            movie = await db.get_movie(tmdb_id)
-            summary = await self._summary(user_id)
-        self.refresh_soon()
-        name = display(movie) if movie else f"TMDB {tmdb_id}"
-        return f"✅ Withdrew **{name}**{self._here()}.\n{summary}"
-
-    async def change(self, user_id: int, op: str, rank: int) -> str | None:
-        """Buttons on the private list: 'up' (swap with the one above) or 'del'."""
-        db = self.bot.db
-        async with self.lock:
-            mine = [(r["tmdb_id"], r["nominated_at"]) for r in await db.pool(user_id, self.grp)]
-            if not 1 <= rank <= len(mine) or (op == "up" and rank == 1):
-                return "That nomination has changed; here's your list now."
-            if op == "up":
-                mine[rank - 2], mine[rank - 1] = mine[rank - 1], mine[rank - 2]
-            else:
-                del mine[rank - 1]
-            await db.set_pool(user_id, mine, self.grp)
+            old = await db.nomination(user_id, self.grp)
+            if old is None:
+                return f"You have no nomination{self._here()}."
+            await db.set_nomination(user_id, None, self.grp)
             await self.sync()
         self.refresh_soon()
-        return None
+        name = display(old) if old["title"] else f"TMDB {old['tmdb_id']}"
+        return f"✅ Withdrew **{name}**{self._here()}. **/nominate** picks a new one."
 
     async def _summary(self, user_id: int) -> str:
         db = self.bot.db
-        rows = await db.pool(user_id, self.grp)
-        head = f"**Your {self.name} nominations**" if self.is_group else "**Your nominations**"
-        if not rows:
-            return (f"-# You have no nominations{self._here()}. **/nominate** adds one"
+        r = await db.nomination(user_id, self.grp)
+        head = f"**Your {self.name} nomination**" if self.is_group else "**Your nomination**"
+        if r is None:
+            return (f"-# You have no nomination{self._here()}. **/nominate** adds one"
                     + (" (run it in this group's channels)." if self.is_group else "."))
         on = {e["tmdb_id"] for e in await db.ballot_entries(self.grp)}
         ok = await self._ok()
-        watched = await db.group_watched(self.grp) if self.is_group else {}
-        lines = []
-        for r in rows:
-            name = display(r) if r["title"] is not None else f"*(post deleted, TMDB {r['tmdb_id']})*"
-            note = ""
-            if r["tmdb_id"] in on:
-                note = " · 🗳️ on the ballot"
-            elif not ok(r):
-                if r["title"] is None:
-                    why = "post deleted"
-                elif self.is_group:
-                    why = "already picked" if r["tmdb_id"] in watched else "not eligible"
-                else:
-                    why = {"up_next": "Up Next", "watched": "watched together"}.get(
-                        r["status"], "post deleted")
-                note = f" · not eligible now ({why})"
-            lines.append(f"`{r['rank']}.` {name}{note}")
-        tail = ""
-        if not any(r["tmdb_id"] in on for r in rows) and any(ok(r) for r in rows):
-            tail = "\n-# The ballot is full (25 films); yours joins when a spot opens."
+        name = display(r) if r["title"] is not None else f"*(post deleted, TMDB {r['tmdb_id']})*"
         what = "monthly" if self.is_group else "weekly"
-        return (head + "\n" + "\n".join(lines) +
-                f"\n-# Your highest eligible one is on the {what} ballot. If it wins, the next "
-                f"one moves up." + tail)
+        if r["tmdb_id"] in on:
+            others = len((await db.nominators(self.grp)).get(r["tmdb_id"], [])) - 1
+            note = f" · 🗳️ on the {what} ballot"
+            if others:
+                note += f" (with {others} other nominator{'s' * (others != 1)})"
+        elif not ok(r):
+            if r["title"] is None:
+                why = "post deleted"
+            elif self.is_group:
+                watched = await db.group_watched(self.grp)
+                why = "already picked" if r["tmdb_id"] in watched else "not eligible"
+            else:
+                why = {"up_next": "Up Next", "watched": "watched together"}.get(
+                    r["status"], "post deleted")
+            note = f" · not eligible now ({why}); **/nominate** another film"
+        else:
+            note = " · waiting: the ballot is full (25 films); it joins when a spot opens"
+        return (f"{head}: {name}{note}\n-# One nomination each. Nominating another film "
+                f"replaces it; if it wins, you can nominate something new.")
 
     async def my_view(self, user_id: int, notice: str | None = None):
         from .vote_ui import nominations_view
         text = await self._summary(user_id)
-        n = len(await self.bot.db.pool(user_id, self.grp))
+        has = await self.bot.db.nomination(user_id, self.grp) is not None
         if notice:
             text = f"{notice}\n{text}"
-        return text, nominations_view(n, self.grp)
+        return text, nominations_view(has, self.grp)
+
+    async def withdraw_button(self, user_id: int) -> str | None:
+        """🗑️ Withdraw on the private view."""
+        async with self.lock:
+            if await self.bot.db.nomination(user_id, self.grp) is None:
+                return "You have no nomination now."
+            await self.bot.db.set_nomination(user_id, None, self.grp)
+            await self.sync()
+        self.refresh_soon()
+        return "✅ Withdrawn."
 
 
 class RankedTrack:
     """Picker logic shared by the weekly and the group monthly votes. Subclasses set
     `pool` (their PoolService), `track`, `emoji`, `label` and `unit`, and implement
-    open_row(period, now), close_time(period), title(period) and refresh_ballot(period)."""
+    open_row(period, now), close_time(period) and title(period), plus the board
+    methods below."""
     track = ""
     emoji = "🗳️"
     label = ""          # "weekly", "OSU monthly"
@@ -357,8 +312,9 @@ class RankedTrack:
     def title(self, period: str) -> str:
         raise NotImplementedError
 
-    async def refresh_ballot(self, period: str) -> None:
-        raise NotImplementedError
+    async def refresh_ballot(self, period: str | None = None) -> None:
+        """Any ballot change: re-render the board (it always shows the open vote)."""
+        await self.refresh_board()
 
     def link(self, row, text: str | None = None) -> str:
         return post_link(self.bot.config.guild_id, row, text)
@@ -441,15 +397,130 @@ class RankedTrack:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    def ballot_lines(self, films: list, movies: dict, now: datetime | None = None) -> list[str]:
+    # the board: the one message in #watch-planning (Phase 19) -------------------
+    # Subclasses also set `accent` and implement board_channel(), voting_period()
+    # and board_header(period, voters) -> (heading, details, footer).
+    accent = 0xE5A00D
+
+    @property
+    def board_meta(self) -> str:
+        return f"board_message:{self.pool.grp}"
+
+    def board_channel(self):
+        raise NotImplementedError
+
+    async def voting_period(self) -> str | None:
+        raise NotImplementedError
+
+    def board_header(self, period: str | None, voters: int) -> tuple[str, str, str]:
+        raise NotImplementedError
+
+    async def legacy_ballot_id(self) -> int | None:
+        """The open vote's old embed ballot, which becomes the board (edited into V2)."""
+        return None
+
+    async def board_lines(self, films: list, now: datetime | None = None) -> list[tuple[str, str]]:
+        """(full, compact) text per film: the full one has nominators on a subtext line."""
+        from .names import join_names, member_names
         now = now or datetime.now(timezone.utc)
-        lines = []
+        noms = await self.bot.db.nominators(self.pool.grp)
+        ids = [u for e in films for u in noms.get(e["tmdb_id"], [e["user_id"]])]
+        names = await member_names(self.bot, ids)
+        out = []
         for i, e in enumerate(films, 1):
             try:
                 fresh = now - datetime.fromisoformat(e["joined_at"]) < NEW_FOR
             except (TypeError, ValueError):
                 fresh = False
+            by = join_names([names[u] for u in noms.get(e["tmdb_id"], [e["user_id"]])])
+            new = "🆕 " if fresh else ""
             link = self.link(e)
-            lines.append(f"`{i:>2}.` {'🆕 ' if fresh else ''}{link} · "
-                         f"nominated by <@{e['user_id']}>")
-        return lines
+            out.append((f"{new}**{link}**\n-# nominated by {by}",
+                        f"`{i:>2}.` {new}{link} · {by}"))
+        return out
+
+    async def render_board(self, now: datetime | None = None) -> tuple["discord.ui.LayoutView", str]:
+        """(view, cache key) for the board."""
+        from .vote_ui import board_buttons
+        period = await self.voting_period()
+        films = await self.ballot_films() if period else []
+        voters = await self.voter_count() if period else 0
+        heading, details, footer = self.board_header(period, voters)
+        rows = await self.board_lines(films, now)
+        body = fit_lines(rows, BOARD_TEXT - len(heading) - len(details) - len(footer) - 40)
+        if period:
+            films_text = (f"### 🎞️ On the ballot ({len(films)})\n{body}" if films else
+                          "### 🎞️ On the ballot\n*No films yet. Be the first: **/nominate** one.*")
+        else:
+            films_text = ""
+        parts: list = [discord.ui.TextDisplay(f"{heading}\n{details}".strip())]
+        if films_text:
+            parts += [discord.ui.Separator(visible=True), discord.ui.TextDisplay(films_text)]
+        parts += [discord.ui.Separator(visible=True), discord.ui.TextDisplay(footer),
+                  board_buttons(self.vote_id(period) if period else None, self.pool.grp)]
+        view = discord.ui.LayoutView(timeout=None)
+        view.add_item(discord.ui.Container(*parts, accent_color=self.accent))
+        return view, f"{period}|{heading}|{details}|{films_text}|{footer}"
+
+    async def refresh_board(self) -> None:
+        """Post or edit the board in place; it's the channel's only bot message."""
+        lock = self.__dict__.setdefault("_board_lock", asyncio.Lock())
+        async with lock:
+            await self._refresh_board()
+
+    async def _refresh_board(self) -> None:
+        ch = self.board_channel()          # a TextChannel, or None
+        if ch is None:
+            return
+        db = self.bot.db
+        view, key = await self.render_board()
+        raw = await db.get_meta(self.board_meta)
+        mid = int(raw) if raw else await self.legacy_ballot_id()
+        if mid and self._rendered.get(mid) == key:
+            return
+        none = discord.AllowedMentions.none()
+        if mid:
+            try:
+                await ch.get_partial_message(mid).edit(content="", embed=None, view=view,
+                                                       allowed_mentions=none)
+            except discord.NotFound:
+                log.warning("Board %s in #watch-planning was deleted; posting a new one", mid)
+                mid = None
+        if not mid:
+            msg = await ch.send(view=view, allowed_mentions=none)
+            mid = msg.id
+            log.info("Posted the %s board %s", self.pool.grp, mid)
+        if raw != str(mid):
+            await db.set_meta(self.board_meta, str(mid))
+        self._rendered[mid] = key
+
+    async def board_url(self) -> str:
+        raw = await self.bot.db.get_meta(self.board_meta)
+        ch = self.board_channel()
+        if not raw or ch is None:
+            return ""
+        return f"https://discord.com/channels/{self.bot.config.guild_id}/{ch.id}/{raw}"
+
+
+BOARD_TEXT = 3800          # Components V2 allow 4,000 displayable characters per message
+
+
+def fit_lines(rows: list[tuple[str, str]], budget: int) -> str:
+    """The film list within `budget` characters: full lines if they fit, else
+    compact ones, else as many compact ones as fit plus "…and N more"."""
+    full = "\n".join(f for f, _ in rows)
+    if len(full) <= budget:
+        return full
+    compact = [c for _, c in rows]
+    text = "\n".join(compact)
+    if len(text) <= budget:
+        return text
+    out: list[str] = []
+    used = 0
+    for i, line in enumerate(compact):
+        more = f"\n-# …and {len(compact) - i} more: click **Vote** to see them all."
+        if used + len(line) + 1 + len(more) > budget:
+            return "\n".join(out) + more
+        out.append(line)
+        used += len(line) + 1
+    return "\n".join(out)

@@ -10,7 +10,8 @@ Every group in server.yaml `groups:` has one GroupVoteService. For month M
               Discord, or /admin discussion); the bot never resets its time.
   end         at the end of M the month is marked done.
 
-Everything is posted in the group's #watch-planning and pings only the group's
+The board is the one message in the group's #watch-planning; picks and notices go to
+the group's #chat (Phase 19) and ping only the group's
 opt-in ping role. A group's pick never changes the film's tags or status in #pre-watch, is
 never logged in #watch-log and never announced in #announcements. The group
 can't pick the same film twice (its months with a winner are its history);
@@ -154,7 +155,9 @@ class GroupVoteService(RankedTrack):
             return None
 
     async def _post(self, text: str, what: str, mentions=None):
-        ch = self.channel("watch_planning")
+        """Group news goes to the group's #chat (Phase 19: #watch-planning is just
+        the board)."""
+        ch = self.channel("chat")
         if ch is None:
             return None
         return await self._safe(ch.send(truncate(text, 2000),
@@ -176,8 +179,7 @@ class GroupVoteService(RankedTrack):
         return row
 
     async def refresh_open(self) -> None:
-        for row in await self.bot.db.months_in_state(self.grp, "voting"):
-            await self.refresh_ballot(row["month"])
+        await self.refresh_board()
 
     # tick (called by WeeklyService.tick with the lock held) ------------------------
     async def tick_locked(self, now: datetime) -> None:
@@ -204,99 +206,49 @@ class GroupVoteService(RankedTrack):
                 return
 
     async def opened(self, month: str) -> None:
-        await self.refresh_ballot(month)
-        row = await self.bot.db.get_month(self.grp, month)
-        s = self.sched(month)
-        url = self.ballot_url(row)
-        await self._post(
-            f"🌙 **{self.group.name}'s vote for {month_name(month)} is open** until "
-            f"**{when(s.vote_close, self.tz)}**. Click **Vote** on the 🌙 ballot"
-            + (f" → {url}" if url else "."), "vote notice")
+        """The board switches to the new vote; no separate notice (Phase 19)."""
+        await self.refresh_board()
 
-    # ballot ------------------------------------------------------------------------
-    def ballot_url(self, row) -> str:
-        cid = self.group.channels.get("watch_planning")
-        return (f"https://discord.com/channels/{self.cfg.guild_id}/{cid}/"
-                f"{row['ballot_message_id']}") if row and row["ballot_message_id"] else ""
+    # board -------------------------------------------------------------------------
+    accent = 0x5865F2
+
+    def board_channel(self):
+        ch = self.channel("watch_planning")
+        return ch if isinstance(ch, discord.TextChannel) else None
+
+    async def voting_period(self) -> str | None:
+        now = datetime.now(timezone.utc)
+        open_ = [r["month"] for r in await self.bot.db.months_in_state(self.grp, "voting")
+                 if now < self.sched(r["month"]).vote_close]
+        return min(open_) if open_ else None
+
+    async def legacy_ballot_id(self) -> int | None:
+        period = await self.voting_period()
+        row = await self.bot.db.get_month(self.grp, period) if period else None
+        return row["ballot_message_id"] if row else None
 
     def where(self) -> str:
         vc = self.group.channels.get("voice")
         return f"in <#{vc}>" if vc else "in the group's voice channel"
 
-    async def render_ballot(self, month: str) -> discord.Embed:
-        db = self.bot.db
-        s = self.sched(month)
-        row = await db.get_month(self.grp, month)
-        movies = await db.movies_by_id()
-        st = row["state"]
-        name = month_name(month)
+    def board_header(self, period: str | None, voters: int) -> tuple[str, str, str]:
         g = self.group.name
-        if st == "voting":
-            films = await self.ballot_films()
-            lines = self.ballot_lines(films, movies)
-            n = await self.voter_count()
-            head = (f"🌙 **Voting is open until {when(s.vote_close, self.tz)}.** The winner is "
-                    f"**{g}'s movie for {name}**: watch it any time in {s.month:%B}, then join "
-                    f"the discussion on **{when(s.discussion, self.tz)}** {self.where()}.\n"
-                    f"This vote is completely independent from the server's weekly vote: "
-                    f"nominations and votes are completely separate.\n"
-                    f"Click **Vote** and rank as many as you like; your ranking carries over "
-                    f"to next month's vote.\n"
-                    f"**{n} member{' has' if n == 1 else 's have'} a ranking.** Results are posted "
-                    f"when voting closes.\n"
-                    f"-# **/nominate** here adds a film (up to 3 each, ranked; your highest one is "
-                    f"on the ballot). Any film {g} hasn't picked before can be nominated. "
-                    f"🔔 **Pings**: get pinged when it's picked. 🆕 = joined in the last 2 days.")
-        else:
-            films = await db.month_options(self.grp, month)
-            lines = [f"`{i:>2}.` {self.link(o)} · nominated by <@{o['nominated_by']}>"
-                     if o["thread_id"] else f"`{i:>2}.` *(post deleted)*"
-                     for i, o in enumerate(films, 1)]
-            m = movies.get(row["winner_tmdb_id"]) if row["winner_tmdb_id"] else None
-            link = self.link(m) if m else "the film"
-            if st == "skipped":
-                head = f"⏭️ No {g} movie for {name}: {row['skip_reason']}."
-            elif row["override_by"]:
-                head = f"🌙 An admin picked {link} for {name}, so voting closed early."
-            elif row["winner_votes"] is None:
-                head = f"🏁 {link} was the only film on the ballot, so it's {g}'s movie for {name}."
-            else:
-                n = row["total_votes"] or 0
-                head = (f"🏁 Voting closed. {link} {how_picked(row)} ({n} voter{'s' * (n != 1)}) "
-                        f"and is {g}'s movie for {name}.")
-        body = "\n".join(lines) or "*No films on the ballot yet. Use **/nominate** to add one.*"
-        return discord.Embed(title=f"🌙 {g} monthly ballot · {name}",
-                             description=truncate(f"{head}\n\n**Films ({len(films)})**\n{body}",
-                                                  4096),
-                             color=0x5865F2)
-
-    async def refresh_ballot(self, month: str) -> None:
-        from .vote_ui import ballot_view
-        db = self.bot.db
-        row = await db.get_month(self.grp, month)
-        ch = self.channel("watch_planning")
-        if row is None or not isinstance(ch, discord.TextChannel):
-            return
-        embed = await self.render_ballot(month)
-        voting = row["state"] == "voting"
-        view = ballot_view(self.vote_id(month), self.grp) if voting else None
-        key = f"{voting}|{embed.description}"
-        if not row["ballot_message_id"]:
-            msg = await ch.send(embed=embed, view=view,
-                                allowed_mentions=discord.AllowedMentions.none())
-            await db.update_month(self.grp, month, ballot_message_id=msg.id)
-            self._rendered[msg.id] = key
-            return
-        if self._rendered.get(row["ballot_message_id"]) == key:
-            return
-        try:
-            await ch.get_partial_message(row["ballot_message_id"]).edit(
-                embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
-        except discord.NotFound:
-            log.warning("%s monthly ballot for %s was deleted; posting a new one", self.grp, month)
-            await db.update_month(self.grp, month, ballot_message_id=None)
-            return await self.refresh_ballot(month)
-        self._rendered[row["ballot_message_id"]] = key
+        chat = self.group.channels.get("chat")
+        chat = f"<#{chat}>" if chat else "the group's chat"
+        footer = (f"-# This vote is completely independent from the server's weekly vote: "
+                  f"its own nominations and votes. "
+                  f"**/nominate** here: one film each (any film {g} hasn't picked before), and "
+                  f"nominating again swaps it. **Vote** to rank the films, best first; your "
+                  f"ranking carries over to next month. 🔔 **Pings** pings you in {chat} when "
+                  f"the movie is picked. 🆕 = joined in the last 2 days.")
+        if period is None:
+            return (f"## 🌙 {g} monthly movie", "No vote is open right now.", footer)
+        s = self.sched(period)
+        who = f"**{voters}** member{' has' if voters == 1 else 's have'} voted"
+        return (f"## 🌙 {g}'s movie for {month_name(period)}",
+                f"🗳️ Voting closes **{when(s.vote_close, self.tz)}** · {who}.\n"
+                f"🍿 Watch it any time in {s.month:%B}, then talk it over on "
+                f"**{when(s.discussion, self.tz)}** {self.where()}.", footer)
 
     # counting ----------------------------------------------------------------------
     async def _candidates(self, films) -> list[dict]:
@@ -349,7 +301,7 @@ class GroupVoteService(RankedTrack):
 
     async def _crown(self, row, w, now: datetime, *, how: str, line: str) -> None:
         """The month's film: it leaves the pool; event in #voice; announced in
-        #watch-planning. Its #pre-watch post is left alone."""
+        #chat. Its #pre-watch post is left alone."""
         month = row["month"]
         db = self.bot.db
         tmdb_id = w["tmdb_id"]
@@ -362,7 +314,7 @@ class GroupVoteService(RankedTrack):
         if msg:
             await db.update_month(self.grp, month, announcement_id=msg.id)
         log.info("%s monthly movie %s: %s, %s", self.grp, month, winner["title"], how)
-        await self._safe(self.refresh_ballot(month), "ballot refresh")
+        await self._safe(self.refresh_board(), "board refresh")
 
     async def announce(self, month: str, winner: dict, line: str, event):
         s = self.sched(month)
@@ -408,7 +360,7 @@ class GroupVoteService(RankedTrack):
         log.info("%s monthly movie %s skipped: %s", self.grp, month, reason)
         await self._post(f"⏭️ No {self.group.name} movie for {month_name(month)}: {reason}.",
                          "skip notice")
-        await self._safe(self.refresh_ballot(month), "ballot refresh")
+        await self._safe(self.refresh_board(), "board refresh")
 
     # admin -------------------------------------------------------------------------
     def which_month(self, which: str, now: datetime) -> str:
@@ -472,7 +424,7 @@ class GroupVoteService(RankedTrack):
             await db.update_month(self.grp, month, event_id=event.id if event else None)
             await self._safe(self.announce(month, winner, "Picked by an admin.", event), "announce")
             log.info("%s picked TMDB %s for %s %s", admin_id, tmdb_id, self.grp, month)
-        await self._safe(self.refresh_ballot(month), "ballot refresh")
+        await self._safe(self.refresh_board(), "board refresh")
         self.pool.refresh_soon()
         extra = f" ({'; '.join(notes)})" if notes else ""
         return f"✅ **{display(movie)}** is {g}'s movie for {name}{extra}."
@@ -502,7 +454,7 @@ class GroupVoteService(RankedTrack):
                                   event_id=None, override_by=admin_id)
             title = display(movie) if movie else f"TMDB {tmdb_id}"
             await self._post(f"⏭️ **{title}** is no longer {g}'s movie for {name}.", "clear notice")
-        await self._safe(self.refresh_ballot(month), "ballot refresh")
+        await self._safe(self.refresh_board(), "board refresh")
         self.pool.refresh_soon()
         notes.append(f"{g} can nominate it again")
         return f"✅ Cleared **{title}** for {g}, {name} ({'; '.join(notes)})."
@@ -560,7 +512,7 @@ class GroupVoteService(RankedTrack):
             else:
                 on = {e["tmdb_id"] for e in await self.ballot_films()}
                 ranked = [t for t in await db.track_ranking(self.track, user_id) if t in on]
-                url = self.ballot_url(row)
+                url = await self.board_url()
                 you = (f" You've ranked {len(ranked)} film{'s' * (len(ranked) != 1)}."
                        if ranked else " You haven't ranked anything yet.")
                 out.append(head + f"voting open until {when(self.sched(key).vote_close, self.tz)}"
