@@ -396,7 +396,7 @@ Owner (2026-11-19): `/letterboxd link` is what ties a member to a Letterboxd acc
 - **Side effect:** watchlist films still break ties in the votes, and now that covers every linked member whose watchlist has been read, not only those who synced.
 - **Checked live** (read-only, a public account): two pages parsed to 56 films.
 
-## Phase 23: `/info` ✅ (built 2026-11-19)
+## Phase 23: `/info` ✅ (deployed 2026-11-19 06:55 UTC; awaiting owner test)
 Owner (2026-11-19): `/help` is for the commands only; the how-it-works text goes in a separate command, with more about Letterboxd and other details people may be curious about. 233 unit tests pass. Bot v0.17.
 - **`/help`** lost the Nominating/Voting/Results/Groups notes (`help.voting_notes`, `GROUP_NOTE` removed); its last line points at `/info` and `#welcome`.
 - **`/info`** (`filmbuffs/info.py`, `cogs/help.py`): private embeds. 🗳️ The weekly movie (one nomination, which films can be nominated, the 25-film ballot, instant runoff and how ties break, carry-over, 🆕, Sunday close, `#watch-log`, pins, skipped weeks); 🍿 Movie posts (the two posts, what each tag means, In Theaters/Streaming, 📓 Reviews, Mark as spoiler); 📒 Letterboxd (link: what's posted where, ratings only in post-watch, lists and earlier entries not posted; sync: what it brings in, preview, must match the link; watchlist reports); 📚 More (pings, ideas, /help, #welcome). A member of a private group also gets a 🌙 section on its monthly vote, and nobody else does. About 4,900 characters, under Discord's 6,000 per message.
