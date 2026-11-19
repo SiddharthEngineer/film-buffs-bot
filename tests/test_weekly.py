@@ -78,7 +78,7 @@ def test_formatting():
     assert when(local(2026, 11, 15, 23, 59), TZ) == "Sun Nov 15, 11:59 PM CT"
     assert when(local(2026, 11, 16), TZ) == "Mon Nov 16, 12:00 AM CT"
     assert log_line(date(2026, 11, 23), "Parasite (2019)", "won 5–3") == \
-        "Wk 48 · Nov 23–29 2026 · Parasite (2019) · won 5–3"
+        "Wk 2 · Nov 23–29 2026 · Parasite (2019) · won 5–3"
     row = {"override_by": None, "winner_votes": 4, "runner_up_votes": 3,
            "vote_rounds": json.dumps([{}, {}, {}])}
     assert how_picked(row) == "won 4–3 after 3 rounds"
@@ -353,3 +353,10 @@ def test_welcome_refs_must_be_channel_keys(tmp_path):
     with pytest.raises(setup_server.ConfigError, match=r"\{#watch_planning\}"):
         setup_server.load_config(bad)
 
+
+
+def test_week_number_counts_from_wildwood_week():
+    from filmbuffs.weekly import week_number
+    assert week_number(date(2026, 11, 16)) == 1
+    assert week_number(date(2026, 11, 23)) == 2
+    assert week_number(date(2027, 1, 4)) == 8          # no reset at the new year

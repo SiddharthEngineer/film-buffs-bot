@@ -253,7 +253,7 @@ def test_backfill_log_posts_the_missing_pick_line(tmp_path):
     n, again, row, sent = asyncio.run(run())
     assert (n, again) == (1, 0) and row["log_message_id"] == 901
     text, mentions = sent[0]
-    assert text.startswith("🎬 **Wk 48 · Nov 23–29 2026: [Film 3 (2003)](https://discord.com/channels/1/103)** · won 1–0")
+    assert text.startswith("🎬 **Wk 2 · Nov 23–29 2026: [Film 3 (2003)](https://discord.com/channels/1/103)** · won 1–0")
     assert "Watch it any time from **" in text and "https://discord.com/events/1/555" in text
     assert "@" not in text and mentions.roles is False                # no ping
 

@@ -70,7 +70,7 @@ Redesigned with the owner on 2026-11-11 (replaces the original "Monday poll from
 - **Three-week pipeline**, every stage a full Mon 12:00 AM → Sun 11:59 PM week (America/Chicago). For watch week T: ballot in week T-2, poll in week T-1, watching in week T. Every week runs one of each.
 - **Ballot** (live bot message in `#watch-planning`): `/nominate` one film per member (swap by re-running, `/unnominate`), first come first served up to 10. The rest of the 10 slots are the most-wanted eligible films. Discord polls can't be edited, so the ballot is frozen at Sun 11:59 PM and becomes the poll.
 - **Poll**: native, 10 answers, ended by the bot at Sun 11:59 PM. Winner by votes, then interest, then 👍, then earliest added (`weekly.tie_break`). Winner → Up Next, external server event for its watch week, announcement. Zero votes or fewer than 2 options → skip, with a notice and a `#watch-log` line.
-- **Watch week end**: Watched tag, `#watch-log` line `Wk <ISO> · <range> · <Title (Year)> · won X–Y`.
+- **Watch week end**: Watched tag, `#watch-log` line `Wk <n> · <range> · <Title (Year)> · won X–Y`.
 - **Interest** = distinct members who 👍'd the info card or have the film on their uploaded watchlist. The bot no longer adds its own 👍 (removed from old posts).
 - **Sorting by 👍**: Discord forums can't sort by reactions, so a pinned 🏆 leaderboard message in `#watch-planning` plus `/top [genre]`.
 - **Pins** (owner, 2026-11-11): a forum allows one pinned post, so `#movies` pins the current week's movie and `#post-watch-discussion` pins its post-watch discussion, both from the start of the watch week until the next one.
@@ -127,7 +127,7 @@ Owner (2026-11-12): two weeks from nominating to watching is too long, especiall
 - **Voting UI** (native polls can't rank): a **🗳️ Vote** button on the ballot message opens an ephemeral picker. One dropdown lists the films not yet ranked; picking one adds it as the next rank and the message updates to show "Your ranking: 1. … 2. …". Buttons: **Undo last**, **Clear**. Every change is saved immediately (no Submit to forget). Clicking Vote again shows the saved ranking. Changes allowed until Sun 11:59 PM. (A message can't hold 10 dropdowns, and multi-select order isn't guaranteed to be click order, so it's one pick at a time.)
 - **Secret until close:** the ballot shows only "N members have voted" while voting is open.
 - **Counting (IRV):** each round, every ballot counts for its highest-ranked film still in the race. A film with more than half of the non-exhausted ballots wins. Otherwise films with no votes go out together, or else the one with the fewest; ties for last are broken by fewest 1st choices, then `weekly.tie_break` (lowest interest, 👍, latest added goes out first). If the last two tie, the same rule decides which goes out. Zero voters → skip. At the Thursday close, no nominations → skip; a single nomination wins without a vote (owner, 2026-11-12).
-- **Results** in `#watch-planning` at close: the winner plus a short round-by-round summary (e.g. "Round 2: *Film* out, 2 votes moved to *Other*"). `#watch-log` line: `Wk <ISO> · <range> · <Title (Year)> · won X–Y after R rounds` (final-round counts; "after R rounds" left out when round 1 decides it).
+- **Results** in `#watch-planning` at close: the winner plus a short round-by-round summary (e.g. "Round 2: *Film* out, 2 votes moved to *Other*"). `#watch-log` line: `Wk <n> · <range> · <Title (Year)> · won X–Y after R rounds` (final-round counts; "after R rounds" left out when round 1 decides it).
 - **DB** (append-only migration): `ranked_votes(week_start, user_id, rank, tmdb_id, voted_at)`, one row per rank; the round-by-round result stored on the week for stats. Old poll columns/`poll_voters` stay for history.
 - **Transition:** the open ballot (one nomination) was moved to watch week 2026-11-16 at the owner's request, and `first_watch_week` with it: nominations close Thu 11-12, voting Fri 11-13 → Sun 11-15. No poll is ever posted.
 - **Text:** `/schedule`, the ballot embed, the `#watch-planning` topic and the welcome message describe the new week.
@@ -353,6 +353,9 @@ Owner (2026-11-18), five changes:
 5. **One nomination each, duplicates allowed** (owner: "I only want them to have one nomination"). Ranked nominations go; several members can nominate the same film, and the ballot lists them all. (Voting stays ranked, instant runoff.)
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
+
+## Week numbers (built 2026-11-19; see STATUS.md)
+Owner (2026-11-19): "Wk 1" is Wildwood's week (Nov 16–22 2026); count up from there instead of using ISO week numbers.
 
 ## Phase 23: /info (built 2026-11-19; see STATUS.md)
 Owner (2026-11-19): `/help` only lists commands; a new `/info` explains weekly voting/nominating, Letterboxd link/sync and other rules people may be curious about. Admin commands stay hidden from non-admins.

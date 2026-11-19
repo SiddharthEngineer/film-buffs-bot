@@ -249,10 +249,19 @@ def how_picked(row) -> str:
     return won_text(row["winner_votes"], row["runner_up_votes"], rounds)
 
 
+# The club's own week count (owner, 2026-11-19): Wildwood's week, Nov 16–22 2026,
+# is Wk 1 and every Monday after it adds one. Fixed here, not tied to
+# weekly.first_watch_week, so moving that setting never renumbers old lines.
+WEEK_ONE = date(2026, 11, 16)
+
+
+def week_number(week: date) -> int:
+    return (week - WEEK_ONE).days // 7 + 1
+
+
 def log_line(week: date, title: str | None, how: str | None = None,
              skipped: str | None = None) -> str:
-    iso = week.isocalendar()
-    head = f"Wk {iso.week} · {date_range(week)} {week.year}"
+    head = f"Wk {week_number(week)} · {date_range(week)} {week.year}"
     if skipped:
         return f"{head} · no pick ({skipped})"
     return f"{head} · {title} · {how or 'picked by an admin'}"
@@ -261,8 +270,7 @@ def log_line(week: date, title: str | None, how: str | None = None,
 def pick_text(week: date, link: str, how: str, event_url: str | None, start: str, end: str,
               detail: str = "") -> str:
     """The #watch-log announcement of a weekly pick (Phase 19)."""
-    iso = week.isocalendar()
-    text = (f"🎬 **Wk {iso.week} · {date_range(week)} {week.year}: {link}** · {how}\n"
+    text = (f"🎬 **Wk {week_number(week)} · {date_range(week)} {week.year}: {link}** · {how}\n"
             f"Watch it any time from **{start}** to **{end}**, then talk about it in "
             f"its #post-watch post.")
     if event_url:
