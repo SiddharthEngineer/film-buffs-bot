@@ -37,7 +37,7 @@ letterboxd:
 #   first_watch_week: Monday of the first watch week. Nothing runs before it.
 #   An empty ballot skips the week; a single film wins without a vote.
 #   tie_break: for ties when a film has to go out of the runoff, after fewest 1st
-#     choices: interest (members with it on their uploaded Letterboxd watchlist),
+#     choices: interest (members with it on their Letterboxd watchlist),
 #     added (the film added last goes out first). 👍 reactions don't count.
 weekly:
   first_watch_week: 2026-11-16
@@ -261,8 +261,8 @@ messages:
         - **Note** that we use instant-runoff ranked choice voting. Your nomination and vote ranking carry over week to week.
       - |
         ## 📒 Letterboxd
-        - **/letterboxd link** with your username. Your new diary entries show up on the movie's post.
-        - Optional: run **/letterboxd sync** and upload your Letterboxd export zip to sync your watchlist and entire review history.
+        - **/letterboxd link** with your username. Your new diary entries show up on the movie's post, and the bot reads your public watchlist right away and again every day.
+        - Optional: run **/letterboxd sync** and upload your Letterboxd export zip to bring in your entire diary and review history. It's the only way to get entries from before you linked.
       - |
         ## 🤝 Be nice
         Disagree about movies, not about people.

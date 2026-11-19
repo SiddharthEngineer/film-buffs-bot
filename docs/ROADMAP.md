@@ -354,6 +354,10 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
+## Phase 24: daily watchlist refresh (built 2026-11-19; see STATUS.md)
+Owner (2026-11-19): rely on the export zip for history; don't read Letterboxd's blocked pages. The only things pulled from Letterboxd are the RSS feed and the public watchlist: read at `/letterboxd link` and on a recurring basis; `#welcome` says so. No scheduled history re-pull, and no web alternative to the zip.
+Chosen in the build: daily at 06:00 CT.
+
 ## Week numbers (built 2026-11-19; see STATUS.md)
 Owner (2026-11-19): "Wk 1" is Wildwood's week (Nov 16–22 2026); count up from there instead of using ISO week numbers.
 

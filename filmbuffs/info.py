@@ -91,8 +91,9 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
             "Letterboxd are updated or removed here. It shows a preview first and changes "
             "nothing until you press **Apply**. The export must be from the account you linked.",
             "",
-            "**Watchlists:** " + cmd("watchlist show") + " reads linked members' public "
-            "Letterboxd watchlists (at most every 6 hours; a private watchlist can't be read). "
+            "**Watchlists:** the bot reads your **public watchlist** when you link and again "
+            "every day (a private watchlist can't be read). " + cmd("watchlist show") + " "
+            "re-reads anything older than 6 hours. "
             "On its own it shows yours; name **one** person for theirs, **two** for the films "
             "on both lists, **three or more** for every film on at least two of their lists, "
             "with whose. Watchlists also break ties in the weekly vote.",

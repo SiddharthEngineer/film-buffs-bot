@@ -370,3 +370,30 @@ def test_admin_commands_are_hidden_from_members():
     for c in Help.__cog_app_commands__:
         assert c.default_permissions is None                            # /help, /info: everyone
     assert {c.name for c in Help.__cog_app_commands__} == {"help", "info"}
+
+
+def test_daily_refresh_reads_every_linked_member(tmp_path, monkeypatch):
+    from filmbuffs.watchlists import Refresh, WatchlistService
+
+    async def run():
+        db, bot = await make(tmp_path)
+        await db.set_link(10, "ann")
+        await db.set_link(11, "bob")
+        await db.set_link(12, "cat")
+        svc = WatchlistService(bot)
+        seen = []
+
+        async def refresh(uid, username, force=False):
+            seen.append((uid, username, force))
+            if username == "bob":
+                raise RuntimeError("boom")                       # one failure doesn't stop it
+            return Refresh(username == "ann", None if username == "ann" else "down")
+        svc.refresh = refresh
+        result = await svc.refresh_all(pause=0)
+        last = await db.get_meta("watchlists_last_run")
+        await db.close()
+        return result, seen, last
+    result, seen, last = asyncio.run(run())
+    assert result == (1, 2)
+    assert seen == [(10, "ann", False), (11, "bob", False), (12, "cat", False)]  # fresh lists skipped inside refresh
+    assert last is not None

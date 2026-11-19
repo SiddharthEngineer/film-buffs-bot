@@ -4,9 +4,11 @@ A member's watchlist is read from their public watchlist pages
 (`letterboxd.com/<username>/watchlist/page/N/`, allowed by Letterboxd's
 robots.txt; 28 films a page as "Title (Year)"), matched to TMDB with the same
 cached TitleResolver the export sync uses, and stored in `watchlist_items`
-(source 'letterboxd'), replacing what was there. It's re-read at most every
-FRESH_FOR, pages ~1 s apart, with the bot's honest User-Agent. Nothing is
-posted and no #pre-watch posts are created.
+(source 'letterboxd'), replacing what was there. It's read when a member runs
+/letterboxd link, by /watchlist show if older than FRESH_FOR, and for every
+linked member once a day (refresh_all, from cogs/letterboxd.py), pages ~1 s
+apart, with the bot's honest User-Agent. Nothing is posted and no #pre-watch
+posts are created.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from typing import TYPE_CHECKING
 
 import aiohttp
 
+from .db import utcnow
 from .letterboxd import LetterboxdError, UserNotFound
 
 if TYPE_CHECKING:
@@ -32,6 +35,7 @@ WATCHLIST_URL = "https://letterboxd.com/{username}/watchlist/"
 PAGE_URL = "https://letterboxd.com/{username}/watchlist/page/{page}/"
 SOURCE = "letterboxd"
 FRESH_FOR = timedelta(hours=6)
+MEMBER_PAUSE = 5.0          # seconds between members in the daily refresh
 MAX_PAGES = 60              # 1,680 films
 PAGE_DELAY = 1.0            # seconds between pages
 
@@ -132,3 +136,19 @@ class WatchlistService:
                      username, user_id, len(names), len(items), resolver.lookups)
             return Refresh(True, None, len(names), unmatched)
 
+    async def refresh_all(self, pause: float = MEMBER_PAUSE) -> tuple[int, int]:
+        """Re-read every linked member's watchlist (the daily refresh). Lists read in
+        the last FRESH_FOR are left alone. Returns (read or fresh, failed)."""
+        ok = failed = 0
+        for i, link in enumerate(await self.bot.db.all_links()):
+            if i:
+                await asyncio.sleep(pause)
+            try:
+                res = await self.refresh(link["discord_user_id"], link["username"])
+            except Exception:
+                log.exception("Daily watchlist read for %s failed", link["username"])
+                res = Refresh(False, "error")
+            ok, failed = (ok + 1, failed) if res.ok else (ok, failed + 1)
+        await self.bot.db.set_meta("watchlists_last_run", utcnow())
+        log.info("Daily watchlist refresh: %d current, %d failed", ok, failed)
+        return ok, failed

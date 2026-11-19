@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, time as dtime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import discord
@@ -27,6 +27,7 @@ MAX_UPLOAD = 25 * 1024 * 1024
 PREVIEW_TIMEOUT = 600          # seconds the Apply button stays usable
 TOKEN_LIFETIME = 14 * 60       # interaction tokens last 15 minutes; stop editing before that
 PROGRESS_EVERY = 5.0           # seconds between progress edits
+WATCHLISTS_AT = dtime(6, 0)    # local (config.tz): daily watchlist re-read, after the 05:00 check
 
 
 class Letterboxd(commands.Cog):
@@ -37,9 +38,14 @@ class Letterboxd(commands.Cog):
     async def cog_load(self) -> None:
         self.poll.change_interval(minutes=self.bot.config.lb_poll_minutes)
         self.poll.start()
+        self.watchlists_daily.change_interval(time=WATCHLISTS_AT.replace(tzinfo=self.bot.config.tz))
+        self.watchlists_daily.start()
+        self._wl_catch_up = asyncio.create_task(self._watchlists_catch_up())
 
     async def cog_unload(self) -> None:
         self.poll.cancel()
+        self.watchlists_daily.cancel()
+        self._wl_catch_up.cancel()
 
     @property
     def svc(self):
@@ -56,6 +62,26 @@ class Letterboxd(commands.Cog):
     @poll.before_loop
     async def before_poll(self) -> None:
         await self.bot.wait_until_ready()
+
+    # daily watchlist re-read -------------------------------------------------
+    @tasks.loop(time=WATCHLISTS_AT)
+    async def watchlists_daily(self) -> None:
+        try:
+            await self.bot.watchlists.refresh_all()
+        except Exception:
+            log.exception("Daily watchlist refresh failed")
+
+    async def _watchlists_catch_up(self) -> None:
+        """Run it now if the bot was down at 06:00 (or it has never run)."""
+        await self.bot.wait_until_ready()
+        await asyncio.sleep(120)   # after startup work and the first poll round
+        last = await self.bot.db.get_meta("watchlists_last_run")
+        if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(hours=24):
+            return
+        try:
+            await self.bot.watchlists.refresh_all()
+        except Exception:
+            log.exception("Catch-up watchlist refresh failed")
 
     # commands ----------------------------------------------------------------
     letterboxd = app_commands.Group(name="letterboxd", guild_only=True,
@@ -100,7 +126,8 @@ class Letterboxd(commands.Cog):
         await interaction.followup.send(
             f"✅ Linked to **{name}**. From now on, new diary entries show up in "
             f"{self._feed_mention()} and the movie's post (ratings and reviews go in its "
-            "post-watch discussion). Entries you logged before now aren't posted; "
+            "post-watch discussion), and your public watchlist is read now and every day. "
+            "Entries you logged before now aren't posted; "
             "**/letterboxd sync** with your export brings in your history.\n"
             f"-# Checked about every {self.bot.config.lb_poll_minutes:g} minutes. "
             "**/letterboxd unlink** to stop.", ephemeral=True)

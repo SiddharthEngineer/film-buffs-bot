@@ -25,7 +25,7 @@ def test_welcome_is_one_pinned_page():
     for ref in ("{#movies}", "{#movie_spoilers}", "{#watch_planning}"):
         assert ref in text
     assert "/help" in text and "Groups" not in text and "pitch" not in text
-    assert "Recap" not in text and "watchlist and entire review history" in text
+    assert "Recap" not in text and "public watchlist right away and again every day" in text and "entire diary and review history" in text
     assert cfg["retire_messages"] == [{"key": "how_to", "title": "📖 How to", "channel": "welcome"}]
     ch = next(c for cat in cfg["categories"] for c in cat["channels"] if c["key"] == "welcome")
     assert ch["name"] == "welcome" and ch["preset"] == "read_only"
