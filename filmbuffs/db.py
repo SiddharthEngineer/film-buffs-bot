@@ -493,6 +493,16 @@ MIGRATIONS = [
     DROP TABLE pool_nominations;
     ALTER TABLE pool_nominations_new RENAME TO pool_nominations;
     """,
+    # 17 — Phase 22: /watchlist show reads linked members' watchlists from
+    #   Letterboxd (watchlist_imports.source 'letterboxd'). watchlist_accounts:
+    #   the account each stored watchlist came from (a side table, so replaying
+    #   migrations in tests stays safe).
+    """
+    CREATE TABLE IF NOT EXISTS watchlist_accounts (
+        user_id   INTEGER PRIMARY KEY,
+        username  TEXT NOT NULL COLLATE NOCASE
+    );
+    """,
 ]
 
 
@@ -789,7 +799,8 @@ class Database:
 
     # watchlists ------------------------------------------------------------
     async def replace_watchlist(self, user_id: int, items: list[tuple[int, str, int | None]],
-                                rows: int, unmatched: list[str], source: str = "sync") -> None:
+                                rows: int, unmatched: list[str], source: str = "sync",
+                                username: str | None = None) -> None:
         now = utcnow()
         await self.conn.execute("DELETE FROM watchlist_items WHERE user_id=?", (user_id,))
         await self.conn.executemany(
@@ -801,6 +812,11 @@ class Database:
             "imported_at=excluded.imported_at, source=excluded.source, rows=excluded.rows, "
             "matched=excluded.matched, unmatched=excluded.unmatched",
             (user_id, now, source, rows, len({i[0] for i in items}), json.dumps(unmatched)))
+        await self.conn.execute("DELETE FROM watchlist_accounts WHERE user_id=?", (user_id,))
+        if username:
+            await self.conn.execute(
+                "INSERT INTO watchlist_accounts(user_id, username) VALUES (?,?)",
+                (user_id, username.lower()))
         await self.conn.commit()
 
     async def watchlist_without_posts(self, user_id: int) -> list[int]:
@@ -809,9 +825,17 @@ class Database:
             "WHERE w.user_id=? AND m.tmdb_id IS NULL ORDER BY w.rowid", (user_id,))
         return [r[0] for r in await cur.fetchall()]
 
+    async def watchlist_account(self, user_id: int) -> str | None:
+        """The Letterboxd account the member's stored watchlist was read from."""
+        cur = await self.conn.execute(
+            "SELECT username FROM watchlist_accounts WHERE user_id=?", (user_id,))
+        row = await cur.fetchone()
+        return row[0] if row else None
+
     async def clear_watchlist(self, user_id: int) -> int:
         cur = await self.conn.execute("DELETE FROM watchlist_items WHERE user_id=?", (user_id,))
         await self.conn.execute("DELETE FROM watchlist_imports WHERE user_id=?", (user_id,))
+        await self.conn.execute("DELETE FROM watchlist_accounts WHERE user_id=?", (user_id,))
         await self.conn.commit()
         return cur.rowcount
 

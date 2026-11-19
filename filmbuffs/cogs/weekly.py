@@ -48,15 +48,15 @@ def fit_list(head: str, lines: list[str], budget: int) -> str:
 
 
 def missing_text(missing: list, caller_id: int, named: bool) -> str:
-    """/watchlist show when someone has no synced watchlist."""
+    """/watchlist show when someone has no linked Letterboxd account."""
     if not named:
-        return ("❌ You haven't synced your Letterboxd watchlist yet. Run **/letterboxd sync** "
-                "with your Letterboxd export zip (Letterboxd → Settings → Data → Export your data).")
+        return ("❌ You haven't linked your Letterboxd account yet. Run **/letterboxd link** "
+                "with your Letterboxd username, then try again.")
     who = discord.utils.escape_markdown(join_names(
         ["You" if m.id == caller_id else m.display_name for m in missing]))
     verb = "hasn't" if len(missing) == 1 and missing[0].id != caller_id else "haven't"
-    return (f"❌ {who} {verb} synced a Letterboxd watchlist yet (**/letterboxd sync**), so "
-            "there's nothing to show.")
+    return (f"❌ {who} {verb} linked a Letterboxd account yet (**/letterboxd link**), so "
+            "there's no watchlist to read.")
 
 
 class Weekly(commands.Cog):
@@ -270,7 +270,7 @@ class Weekly(commands.Cog):
                                    description="Your uploaded Letterboxd watchlist")
 
     @watchlist.command(name="show",
-                       description="Watchlist report: yours, or the films several members want to see")
+                       description="Letterboxd watchlist report: yours, or the films several members want to see")
     @app_commands.describe(
         user1="Whose watchlist (default: yours). Two people: films on both",
         user2="Two people: the films on both watchlists",
@@ -286,19 +286,33 @@ class Weekly(commands.Cog):
         picked = [m for m in (user1, user2, user3, user4, user5, user6) if m is not None]
         # No one named: your own. Anyone named: just them (you're not added).
         people = list({m.id: m for m in picked or [interaction.user]}.values())
-        missing = []
-        for m in people:
-            _, n, _ = await self.bot.db.watchlist_summary(m.id)
-            if n == 0:
-                missing.append(m)
+        links = {m.id: await self.bot.db.get_link(m.id) for m in people}
+        missing = [m for m in people if links[m.id] is None]
         if missing:
             await interaction.response.send_message(
                 missing_text(missing, interaction.user.id, bool(picked)), ephemeral=True,
                 allowed_mentions=discord.AllowedMentions.none())
             return
-        await interaction.response.send_message(
-            embed=await self.watchlist_report(people, interaction.user.id), ephemeral=True,
-            allowed_mentions=discord.AllowedMentions.none())
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        notes, failed = [], []
+        for m in people:
+            username = links[m.id]["username"]
+            res = await self.bot.watchlists.refresh(m.id, username)
+            if res.ok:
+                continue
+            # Couldn't read it now: use what's stored from this account, if anything.
+            if await self.bot.db.watchlist_account(m.id) == username.lower():
+                notes.append(f"⚠️ {res.error}, so {m.display_name}'s list may be out of date.")
+            else:
+                failed.append(f"{res.error} ({m.display_name})")
+        if failed:
+            await interaction.followup.send(
+                "❌ Couldn't read " + "; ".join(failed) + ". Try again in a few minutes.",
+                ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+            return
+        embed = await self.watchlist_report(people, interaction.user.id)
+        await interaction.followup.send("\n".join(notes) or None, embed=embed, ephemeral=True,
+                                        allowed_mentions=discord.AllowedMentions.none())
 
     async def watchlist_report(self, people: list, caller_id: int) -> discord.Embed:
         """One person: their watchlist. Two: the films on both. Three or more: every
@@ -340,7 +354,7 @@ class Weekly(commands.Cog):
                 lines.append(f"• {film(f)} · **{f['n']}/{k}** · {who}")
         embed = discord.Embed(title=title[:256], description=fit_list(head, lines, 4000),
                               color=EMBED_COLOR)
-        embed.set_footer(text="From Letterboxd watchlists synced with /letterboxd sync")
+        embed.set_footer(text="From linked Letterboxd watchlists, re-read at most every 6 hours")
         return embed
 
     @watchlist.command(name="clear", description="Remove your uploaded watchlist")

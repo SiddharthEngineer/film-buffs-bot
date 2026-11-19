@@ -209,41 +209,32 @@ def test_watchlist_reports(tmp_path):
 def test_watchlist_missing_text():
     from filmbuffs.cogs.weekly import missing_text
     me = person(10, "Ann")
-    assert "You haven't synced your Letterboxd watchlist yet" in missing_text([me], 10, False)
-    assert missing_text([person(11, "Bo")], 10, True).startswith("❌ Bo hasn't synced")
+    assert "You haven't linked your Letterboxd account yet" in missing_text([me], 10, False)
+    assert missing_text([person(11, "Bo")], 10, True).startswith("❌ Bo hasn't linked")
     assert missing_text([me, person(11, "Bo")], 10, True).startswith("❌ You and Bo haven't")
 
 
-def test_sync_links_the_export_account(tmp_path):
-    from filmbuffs.cogs.letterboxd import Letterboxd, preview_text
-    from filmbuffs.letterboxd import AlreadyLinked
+def test_sync_needs_the_linked_account(tmp_path):
+    from filmbuffs.cogs.letterboxd import Letterboxd
 
     async def run():
         db, bot = await make(tmp_path)
-        linked = []
-
-        async def link(uid, name):
-            if name == "taken":
-                raise AlreadyLinked(name)
-            linked.append((uid, name))
-            await db.set_link(uid, name)
-        bot.config.channels = {}
         cog = Letterboxd.__new__(Letterboxd)
-        bot.letterboxd = SimpleNamespace(link=link)
         cog.bot = bot
-        first = await cog._link_from_sync(10, "annie")
-        same = await cog._link_from_sync(10, "Annie")
-        moved = await cog._link_from_sync(10, "annie2")
-        taken = await cog._link_from_sync(10, "taken")
-        row = await db.get_link(10)
+        export = SimpleNamespace(username="annie")
+        out = [await cog._check_owner(10, export)]                  # not linked
+        await db.set_link(10, "Annie")
+        out.append(await cog._check_owner(10, export))              # same, any case
+        await db.set_link(10, "other")
+        out.append(await cog._check_owner(10, export))              # different account
+        out.append(await cog._check_owner(10, SimpleNamespace(username=None)))
         await db.close()
-        return first, same, moved, taken, linked, row
-    first, same, moved, taken, linked, row = asyncio.run(run())
-    assert first.startswith("🔗 Linked to **annie**:")
-    assert same is None
-    assert moved.startswith("🔗 Linked to **annie2** (was **annie**)")
-    assert "linked to another member" in taken
-    assert linked == [(10, "annie"), (10, "annie2")] and row["username"] == "annie2"
+        return out
+    unlinked, ok, other, nofile = asyncio.run(run())
+    assert unlinked.startswith("❌ Link your Letterboxd account first: **/letterboxd link** annie")
+    assert ok is None
+    assert other.startswith("❌ You're linked to **other**, but that export is from **annie**")
+    assert "profile.csv" in nofile
 
 
 def test_backfill_log_posts_the_missing_pick_line(tmp_path):
@@ -265,3 +256,86 @@ def test_backfill_log_posts_the_missing_pick_line(tmp_path):
     assert text.startswith("🎬 **Wk 48 · Nov 23–29 2026: [Film 3 (2003)](https://discord.com/channels/1/103)** · won 1–0")
     assert "Watch it any time from **" in text and "https://discord.com/events/1/555" in text
     assert "@" not in text and mentions.roles is False                # no ping
+
+
+# ------------------------------------------------------------------ Phase 22: linked watchlists
+
+PAGE = """<div class="poster" data-item-name="Black Bag (2025)" data-item-slug="black-bag-2025"
+ data-item-full-display-name="Black Bag (2025)"></div>
+<div data-item-name="Am&eacute;lie (2001)"></div><div data-item-name="Untitled"></div>
+<div data-item-name="Black Bag (2025)"></div>
+<a href="/ann/watchlist/page/2/">2</a><a href="/ann/watchlist/page/3/">3</a>"""
+
+
+def test_parse_watchlist_page():
+    from filmbuffs.watchlists import parse_name, parse_page
+    films, last = parse_page(PAGE)
+    assert films == [("Black Bag", 2025), ("Amélie", 2001), ("Untitled", None)]
+    assert last == 3
+    assert parse_name("Mission: Impossible (Part One) (2023)") == ("Mission: Impossible (Part One)", 2023)
+    assert parse_page("<html></html>") == ([], 1)
+
+
+class FakeResp:
+    def __init__(self, status, body=""):
+        self.status, self.body = status, body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def text(self):
+        return self.body
+
+
+class FakeSession:
+    def __init__(self, pages, status=200):
+        self.pages, self.status, self.urls = pages, status, []
+
+    def get(self, url, **kw):
+        self.urls.append(url)
+        n = int(url.rstrip("/").rsplit("/", 1)[1]) if "/page/" in url else 1
+        return FakeResp(self.status, self.pages.get(n, ""))
+
+
+def test_refresh_reads_every_page_and_caches(tmp_path, monkeypatch):
+    import filmbuffs.watchlists as wl
+    from filmbuffs.watchlists import WatchlistService
+    monkeypatch.setattr(wl, "PAGE_DELAY", 0)
+
+    class Resolver:
+        lookups = 0
+
+        def __init__(self, *a, **kw):
+            pass
+
+        async def resolve(self, title, year):
+            return ({"Zodiac": 900, "Alien": 901}.get(title), "exact", "")
+    monkeypatch.setattr("filmbuffs.backfill.TitleResolver", Resolver)
+
+    async def run():
+        db, bot = await make(tmp_path)
+        bot.session = FakeSession({
+            1: '<i data-item-name="Zodiac (2007)"></i><a href="/ann/watchlist/page/2/">2</a>',
+            2: '<i data-item-name="Alien (1979)"></i><i data-item-name="Nope Film (2030)"></i>'})
+        bot.tmdb = None
+        svc = WatchlistService(bot)
+        first = await svc.refresh(10, "Ann")
+        again = await svc.refresh(10, "ann")                     # fresh: no fetch
+        urls = list(bot.session.urls)
+        other = await svc.refresh(10, "bob")                     # another account: re-read
+        items = await db.watchlist_overlap([10], 1)
+        bot.session = FakeSession({}, status=404)
+        gone = await svc.refresh(11, "nobody")
+        await db.close()
+        return first, again, urls, other, items, gone
+    first, again, urls, other, items, gone = asyncio.run(run())
+    assert first.ok and first.films == 3 and first.unmatched == ["Nope Film (2030)"]
+    assert again.ok and again.films == 0
+    assert urls == ["https://letterboxd.com/Ann/watchlist/",
+                    "https://letterboxd.com/Ann/watchlist/page/2/"]
+    assert other.films == 3
+    assert [r["tmdb_id"] for r in items] == [901, 900]          # by title
+    assert not gone.ok and "no user **nobody**" in gone.error

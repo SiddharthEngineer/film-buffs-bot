@@ -354,6 +354,11 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
+## Phase 22: watchlists from linked accounts (built 2026-11-19; see STATUS.md)
+Owner (2026-11-19, correcting Phase 21): `/watchlist show` uses the account from `/letterboxd link`, not the sync upload. `/letterboxd link` is the one way to connect a member and an account; `/letterboxd sync` refuses an export from any other account.
+Chosen in the build: watchlists are read from the public watchlist pages and cached 6 hours.
+Open: the 🔎 Nominate modal can't autocomplete (Discord modals have no autocomplete); the owner may prefer a clickable `/nominate` command link instead.
+
 ## Phase 21: watchlist reports, sync links, buttons first (built 2026-11-19; see STATUS.md)
 Owner (2026-11-19): 🎬 Nominate this film in `#post-watch` posts too. `/watchlist show`: no users → the caller's own (error if not synced); users named → only them; two → intersection; more than two → films on two or more lists, with count and whose ("a report that can assist in picking new movies"). `/letterboxd sync` always links the account, overriding an old one. Backfill Wildwood into `#watch-log` with dates. Boards and `#welcome` point at the buttons, not `/nominate`.
 Chosen in the build: one named user shows their whole watchlist; up to 6 users; reports stay private; the `#watch-log` backfill doesn't ping.

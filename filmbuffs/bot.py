@@ -23,11 +23,12 @@ from .movies import MovieService
 from .pool import PoolService
 from .spoilers import SpoilerService
 from .tmdb import TMDB
+from .watchlists import WatchlistService
 from .weekly import WeeklyService
 
 log = logging.getLogger("filmbuffs")
 
-VERSION = "0.15"
+VERSION = "0.16"
 USER_AGENT = f"FilmBuffsBot/{VERSION} (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd",
               "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly",
@@ -64,6 +65,7 @@ class FilmBuffsBot(commands.Bot):
         self.pool = PoolService(self)
         self.weekly = WeeklyService(self)
         self.ideas = IdeasService(self)          # #ideas list (Phase 14)
+        self.watchlists = WatchlistService(self)  # linked members' watchlists (Phase 22)
         # Private groups (Phase 12): one monthly vote (with its own pool) per group.
         self.group_votes = {k: GroupVoteService(self, g) for k, g in config.groups.items()}
         self.botlogs = DiscordLogHandler(self)
