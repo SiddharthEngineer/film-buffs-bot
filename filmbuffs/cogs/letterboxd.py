@@ -250,9 +250,8 @@ class Letterboxd(commands.Cog):
             plan = await self._plan(interaction, uid, export)
             if plan is None:
                 return
-            await show(f"About {fmt_duration(plan.est_seconds())}. You can dismiss this; "
-                       "I'll post a new note here when it's done (or DM you if it takes "
-                       "over 15 minutes).", force=True)
+            await show(f"About {fmt_duration(plan.est_seconds())}. I'll post a note here when "
+                       "it's done (or DM you if it takes over 15 minutes).", force=True)
             res = await apply_sync(self.bot, plan, via="command", progress=show,
                                    lock=self.svc._locks[uid])
         except Exception:
