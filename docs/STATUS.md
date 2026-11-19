@@ -373,7 +373,7 @@ Owner request (2026-11-19), seven changes. 224 unit tests pass (new `tests/test_
 - **Checked in the docs (DISCORD_NOTES):** a modal can answer a button click, and its submit can update the message the button was on.
 - **Owner by hand:** nothing. After the deploy, try `/nominate` (no title, then 🔎 search and pick), `/nominate` inside a `#pre-watch` post (🎬 button), `/vote`, `/watchlist show user1:<someone>`, `/admin idea add`, and check `/spoiler`, `/nominations` and `/unnominate` are gone (Discord may cache the command list for a minute; restart the app if they linger).
 
-## Phase 21: watchlist reports, sync links, buttons first ✅ (built 2026-11-19)
+## Phase 21: watchlist reports, sync links, buttons first ✅ (deployed 2026-11-19 06:24 UTC; applied; awaiting owner test)
 Owner request (2026-11-19). 229 unit tests pass (more in `tests/test_phase20.py`). Bot v0.15.
 - **🎬 Nominate <film>** on the private nomination view also shows inside the film's `#post-watch` post (`here_film` checks `spoiler_thread_id` too).
 - **`/watchlist show [user1…user6]`**, from synced watchlists (`Database.watchlist_overlap`), private: no users → your own watchlist (error if you haven't synced one); one user → theirs; **two → the films on both** (intersection); **three or more → every film on 2+ of the lists**, most shared first, "**n/k** · whose". Once users are named, the caller isn't added. Anyone without a synced watchlist is named in an error.
@@ -382,3 +382,4 @@ Owner request (2026-11-19). 229 unit tests pass (more in `tests/test_phase20.py`
 - **`#watch-log` backfill** (`WeeklyService.backfill_log`, at every start): a week in state `picked` with no `log_message_id` (picked before Phase 19, announced in the since-cleaned `#watch-planning`) gets its pick line in `#watch-log` now, with watch dates and the event link, **no ping**, and it becomes the week's log entry (so `end_watch` posts nothing more). Live: week of Nov 16, **Wildwood**.
 - **Dismissed private replies coming back on mobile:** Discord keeps "Dismiss message" per device; it isn't synced, and bots can't change that. Ephemeral replies vanish on their own when the app reloads.
 
+- **Deploy log (2026-11-19):** restarted 06:24 UTC; the backfill posted Wildwood's line in `#watch-log` (week 2026-11-16, message 1572860182214479884). `setup_server.py --apply`: 4 changes (both `#watch-planning` topics, `#pre-watch` topic, the welcome page, including the owner's earlier welcome edit); a fresh `--plan` shows none left.
