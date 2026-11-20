@@ -1,5 +1,7 @@
 # Status (as of 2026-11-20)
 
+> **Welcome buttons (2026-11-20):** `#welcome` has 🔗 **Link Letterboxd** and 📦 **Sync History** (modals, no typing commands), 🔔 **Weekly Ping** and 🔔 **Group Ping**, and a 🔔 Notifications section. See "Welcome buttons" at the end.
+
 > **Button tweaks (2026-11-20):** the results button is now **🗳️ See Voting Results**; 📋 **Nominate** is blurple like Vote. See "Button tweaks" at the end.
 
 > **Vote results button (2026-11-20):** each #watch-log pick shows a one-line vote summary ("🗳️ 5 voters · won 3–2 over Alien (2024) in round 2") and a **🗳️ Rounds** button that privately shows the round-by-round count. Existing lines and the running event were rewritten once at startup. See "Vote results button" at the end.
@@ -477,3 +479,15 @@ Owner request. Bot v0.24, 248 tests pass.
 - The #watch-log results button reads **🗳️ See Voting Results** (was 🗳️ Rounds; custom ID `results:…` unchanged, so nothing old breaks). `LOG_VERSION` 3 relabels the existing Wildwood line once at startup. `/info` says the new name.
 - 📋 **Nominate** is `primary` (blurple), like 🗳️ Vote, on every board (main and groups); 🔔 Pings stays grey. Boards redraw on the first refresh after a restart.
 - Discord button colors are only blurple (primary), grey (secondary), green (success) and red (danger); link buttons are grey.
+
+## Welcome buttons (2026-11-20)
+Owner: nobody should have to run commands; put Letterboxd link/sync and the ping toggles on `#welcome`, plus a Notifications section. Bot v0.25, 258 tests pass (new `tests/test_welcome_buttons.py`).
+- **`setup_server.py`:** a page section can be `{text, buttons}`; its buttons (`action`, `label`, `emoji`, `style`) go in an action row under the text, custom ID `welcome:<action>`. Actions are checked against `filmbuffs.welcome_ui.WELCOME_ACTIONS`; ≤ 5 per row; the page's component count (container, texts, dividers, rows, buttons) must stay ≤ 40. Buttons are part of the message digest, so a change shows in `--plan`.
+- **`filmbuffs/welcome_ui.py`** (`WelcomeButton`, a DynamicItem registered by the Letterboxd cog):
+  - 🔗 **Link Letterboxd**: modal with the username (prefilled with the linked one), then the same code as `/letterboxd link` (`Letterboxd.link_account`).
+  - 📦 **Sync History**: refuses if not linked yet or a sync is running; otherwise a modal with a **File Upload** (one file, in a Label), then the same code as `/letterboxd sync` (`Letterboxd.sync_export`): preview, Apply / Cancel.
+  - 🔔 **Weekly Ping** toggles @Weekly Pings. 🔔 **Group Ping** toggles the clicker's group Pings role; not in a group → says so; several groups → a private row of buttons, one per group.
+- **`#welcome` text** (`server.yaml`): the Letterboxd section names the buttons; new **🔔 Notifications** section recommends **Only @mentions** (computer: right-click the server icon → Notification Settings; phone: tap the server name → Notifications), says to leave Suppress All Role @mentions off, and lists what notifies: Thursday morning (nominate reminder), Sunday morning (vote reminder), early Monday morning (the pick), plus @mentions and followed movie posts. 2,168 characters, 18 components.
+- `/info` mentions the buttons next to `/letterboxd link`, `/letterboxd sync` and 🔔 Pings. The slash commands stay.
+- **Not verified:** that followed forum posts still notify under "Only @mentions" (Discord's help center blocks automated readers), and the File Upload modal on phones (the docs don't mention client support). Owner to try both buttons on desktop and phone.
+

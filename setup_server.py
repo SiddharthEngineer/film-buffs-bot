@@ -17,7 +17,10 @@ Messages are embeds by default. `sections:` instead makes a Components V2
 "page" (Phase 15): one accent-colored container, a text block per section
 (normal markdown, headings included) and a divider between them. Discord caps a
 V2 message's displayable text at 4000 characters (live-tested 2026-11-15).
-`pin: true` keeps a message pinned.
+`pin: true` keeps a message pinned. A section can instead be `{text: ..., buttons: [...]}`:
+its buttons (each `{action, label, emoji?, style?}`, action from
+filmbuffs.welcome_ui.WELCOME_ACTIONS) go in a row under its text, with the custom ID
+`welcome:<action>`; the running bot handles the clicks.
 
 Private groups (`groups:`, Phase 12) are expanded into a role, a category and
 three hidden channels each; see filmbuffs/groups.py.
@@ -41,6 +44,7 @@ import yaml
 from dotenv import load_dotenv
 
 from filmbuffs import groups as grp
+from filmbuffs.welcome_ui import WELCOME_ACTIONS
 from filmbuffs.state import ROOT, State
 
 REASON = "Film Buffs setup_server.py"
@@ -52,6 +56,9 @@ SORT_ORDERS = {
 TTY = sys.stdout.isatty()
 PAGE_TEXT_LIMIT = 4000       # Components V2 displayable text (live-tested 2026-11-15)
 PAGE_MAX_SECTIONS = 19       # 40 components: container + sections + dividers
+PAGE_MAX_COMPONENTS = 40     # every component counts, nested ones included (assumed)
+BUTTON_STYLES = {"primary": discord.ButtonStyle.primary, "secondary": discord.ButtonStyle.secondary,
+                 "success": discord.ButtonStyle.success, "danger": discord.ButtonStyle.danger}
 MENTION_LEN = 22             # "<#" + a 19-digit snowflake + ">"
 CHANNEL_REF = re.compile(r"\{#([^{}]*)\}")
 
@@ -127,6 +134,9 @@ def load_config(path) -> dict:
         if m["channel"] not in channel_keys:
             raise ConfigError(f"message {m['key']}: unknown channel {m['channel']!r}")
         sections = m.get("sections")
+        if sections is not None:
+            split_page_buttons(m)
+            sections = m["sections"]
         texts = [m.get("description", "")] + list(sections or [])
         for ref in (r for t in texts for r in CHANNEL_REF.findall(t)):
             if ref not in channel_keys:
@@ -142,6 +152,20 @@ def load_config(path) -> dict:
                 raise ConfigError(f"message {m['key']}: sections must be non-empty strings")
             if len(sections) > PAGE_MAX_SECTIONS:
                 raise ConfigError(f"message {m['key']}: at most {PAGE_MAX_SECTIONS} sections")
+            for row in m["_page_buttons"].values():
+                if len(row) > 5:
+                    raise ConfigError(f"message {m['key']}: at most 5 buttons per section")
+                for b in row:
+                    if b.get("action") not in WELCOME_ACTIONS:
+                        raise ConfigError(f"message {m['key']}: unknown button action "
+                                          f"{b.get('action')!r} (one of {', '.join(WELCOME_ACTIONS)})")
+                    if not b.get("label") or len(b["label"]) > 80:
+                        raise ConfigError(f"message {m['key']}: button labels are 1-80 characters")
+                    if b.get("style", "secondary") not in BUTTON_STYLES:
+                        raise ConfigError(f"message {m['key']}: button style must be one of "
+                                          f"{', '.join(BUTTON_STYLES)}")
+            if page_components(sections, m["_page_buttons"]) > PAGE_MAX_COMPONENTS:
+                raise ConfigError(f"message {m['key']}: over {PAGE_MAX_COMPONENTS} components")
             size = page_text_size(sections)
             if size > PAGE_TEXT_LIMIT:
                 raise ConfigError(f"message {m['key']}: {size} characters with channel links; "
@@ -224,14 +248,45 @@ def page_text_size(sections: list[str]) -> int:
     return sum(len(CHANNEL_REF.sub("x" * MENTION_LEN, t.strip())) for t in sections)
 
 
-def build_page(sections: list[str], accent: int | None) -> discord.ui.LayoutView:
-    """A Components V2 page: one container, text blocks split by dividers."""
+def split_page_buttons(m: dict) -> None:
+    """Turn `{text, buttons}` sections into plain strings, keeping the buttons in
+    m["_page_buttons"] (section index -> list), so everything else sees strings."""
+    texts, buttons = [], {}
+    for i, sec in enumerate(m["sections"] or []):
+        if isinstance(sec, dict):
+            if set(sec) - {"text", "buttons"}:
+                raise ConfigError(f"message {m['key']}: a section has text and buttons only")
+            if sec.get("buttons"):
+                buttons[i] = list(sec["buttons"])
+            sec = sec.get("text")
+        texts.append(sec)
+    m["sections"], m["_page_buttons"] = texts, buttons
+
+
+def page_components(sections: list[str], buttons: dict | None = None) -> int:
+    """Container + text blocks + dividers + a row and its buttons per button section."""
+    rows = (buttons or {}).values()
+    return 1 + 2 * len(sections) - 1 + sum(1 + len(r) for r in rows)
+
+
+def build_page(sections: list[str], accent: int | None,
+               buttons: dict | None = None) -> discord.ui.LayoutView:
+    """A Components V2 page: one container, text blocks split by dividers, and a row
+    of buttons under any section that has them."""
     children: list[discord.ui.Item] = []
     for i, text in enumerate(sections):
         if i:
             children.append(discord.ui.Separator(visible=True,
                                                  spacing=discord.SeparatorSpacing.large))
         children.append(discord.ui.TextDisplay(text))
+        if (buttons or {}).get(i):
+            row = discord.ui.ActionRow()
+            for b in buttons[i]:
+                row.add_item(discord.ui.Button(
+                    label=b["label"], emoji=b.get("emoji"),
+                    style=BUTTON_STYLES[b.get("style", "secondary")],
+                    custom_id=f"welcome:{b['action']}"))
+            children.append(row)
     view = discord.ui.LayoutView(timeout=None)
     view.add_item(discord.ui.Container(*children, accent_color=accent))
     return view
@@ -685,6 +740,8 @@ class Reconciler:
             if live and sum(map(len, sections)) > PAGE_TEXT_LIMIT:
                 raise RuntimeError(f"message {m['key']}: over {PAGE_TEXT_LIMIT} characters")
             payload = {"page": sections, "color": m.get("color"), "pin": bool(m.get("pin"))}
+            if m.get("_page_buttons"):
+                payload["buttons"] = {str(k): v for k, v in m["_page_buttons"].items()}
             embed = None
         else:
             sections = None
@@ -747,7 +804,7 @@ class Reconciler:
             if sections is not None:
                 # Editing an embed message into V2 is allowed (the flag can only be
                 # set, never cleared), so the message keeps its ID and place.
-                view = build_page(sections, m.get("color"))
+                view = build_page(sections, m.get("color"), m.get("_page_buttons"))
                 if msg:
                     msg = await msg.edit(content="", embed=None, view=view, allowed_mentions=none)
                 else:

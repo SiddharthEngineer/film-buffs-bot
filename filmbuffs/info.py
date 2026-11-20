@@ -75,7 +75,8 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
             "name.",
         ])),
         ("📒 Letterboxd", "\n".join([
-            "**Link** your account with " + cmd("letterboxd link") + " and your username; "
+            "**Link** your account with **🔗 Link Letterboxd** in " + ch("welcome") + " (or "
+            + cmd("letterboxd link") + ") and your username; "
             "it's what connects you to Letterboxd. The bot reads your **public diary** about "
             f"every {poll_minutes:g} minutes. Each new diary entry shows up in three places: "
             "a line in " + ch("letterboxd_feed") + ", a spoiler-free \"logged this\" note "
@@ -85,7 +86,8 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
             "entry later updates the same message. Lists aren't posted, and entries from "
             "before you linked aren't either. " + cmd("letterboxd unlink") + " stops it.",
             "",
-            "**Sync** (optional): " + cmd("letterboxd sync") + " takes your Letterboxd export "
+            "**Sync** (optional): **📦 Sync History** in " + ch("welcome") + " (or "
+            + cmd("letterboxd sync") + ") takes your Letterboxd export "
             "zip (Letterboxd → Settings → Data → Export your data) and brings in your whole "
             "history: older entries are stored, reviews are posted in post-watch posts, films "
             "you logged or want to watch get posts, and entries you edited or deleted on "
@@ -105,7 +107,8 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
             "them: to **nominate** three days before a vote closes (Thursday for the weekly "
             "vote) and to **vote** on its last day if you haven't ranked your top 3 (all the "
             "films, if there are fewer). Weekly ones are in " + ch("general") + ", a group's "
-            "in its #chat. **🔔 Pings** on the board in " + ch("watch_planning") + " turns "
+            "in its #chat. **🔔 Pings** on the board in " + ch("watch_planning") + " (or "
+            "**Weekly Ping** / **Group Ping** in " + ch("welcome") + ") turns "
             "all of it off or on. Posts you follow notify you as your own Discord settings say.",
             "• **Ideas** for the server or the bot? Post them in " + ch("ideas") + "; the "
             "pinned list there tracks the ones being considered.",

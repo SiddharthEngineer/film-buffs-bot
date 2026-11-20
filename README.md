@@ -120,8 +120,8 @@ Dependencies live in `pyproject.toml` (locked in `uv.lock`); add one with `uv ad
 | `/help` | any channel | Privately lists every command you can use, grouped, with clickable links (admins also see `/admin`). Just the commands. |
 | `/info` | any channel | Privately explains how everything works: nominating, voting and ties, results, post tags, Letterboxd link / sync / watchlists, pings, ideas. Members of a private group also get a section on its monthly vote (`filmbuffs/info.py`). |
 | Apps → **Mark as spoiler** | any message in a `#pre-watch` post | Moves the message into the movie's post-watch discussion as its author, then deletes the original. |
-| `/letterboxd link [username]` · `unlink` | any channel | Links your Letterboxd account (no username: shows which one is linked and your last sync). `unlink` stops posting. |
-| `/letterboxd sync file:` | any channel | Upload your Letterboxd export zip. Shows a preview (new / changed / removed entries, posts to create), then **Apply** or **Cancel**. Stores your history, edits the bot's embeds for entries you edited, deletes the bot's messages for entries you deleted, replaces your watchlist (watchlist films only break ties in the votes). The export must be from the account you linked with `/letterboxd link`; anything else is refused. |
+| `/letterboxd link [username]` · `unlink` | any channel | Same as 🔗 **Link Letterboxd** on `#welcome`. Links your Letterboxd account (no username: shows which one is linked and your last sync). `unlink` stops posting. |
+| `/letterboxd sync file:` | any channel | Same as 📦 **Sync History** on `#welcome`. Upload your Letterboxd export zip. Shows a preview (new / changed / removed entries, posts to create), then **Apply** or **Cancel**. Stores your history, edits the bot's embeds for entries you edited, deletes the bot's messages for entries you deleted, replaces your watchlist (watchlist films only break ties in the votes). The export must be from the account you linked with `/letterboxd link`; anything else is refused. |
 
 ## Admin cheat sheet
 

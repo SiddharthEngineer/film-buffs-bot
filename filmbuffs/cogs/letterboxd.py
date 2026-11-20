@@ -17,6 +17,7 @@ from ..letterboxd import (PROFILE_URL, AlreadyLinked, LetterboxdError, UserNotFo
 from ..sync import (SyncPlan, apply_sync, build_sync_plan, change_lines, fmt_duration,
                     preview_lines)
 from ..tmdb import TMDBError
+from ..welcome_ui import WelcomeButton
 
 if TYPE_CHECKING:
     from ..bot import FilmBuffsBot
@@ -36,6 +37,7 @@ class Letterboxd(commands.Cog):
         self._syncing: set[int] = set()
 
     async def cog_load(self) -> None:
+        self.bot.add_dynamic_items(WelcomeButton)     # the #welcome page's buttons
         self.poll.change_interval(minutes=self.bot.config.lb_poll_minutes)
         self.poll.start()
         self.watchlists_daily.change_interval(time=WATCHLISTS_AT.replace(tzinfo=self.bot.config.tz))
@@ -43,6 +45,7 @@ class Letterboxd(commands.Cog):
         self._wl_catch_up = asyncio.create_task(self._watchlists_catch_up())
 
     async def cog_unload(self) -> None:
+        self.bot.remove_dynamic_items(WelcomeButton)
         self.poll.cancel()
         self.watchlists_daily.cancel()
         self._wl_catch_up.cancel()
@@ -96,7 +99,12 @@ class Letterboxd(commands.Cog):
         if username is None:
             await interaction.response.send_message(await self._status(uid), ephemeral=True)
             return
+        await self.link_account(interaction, username)
 
+    async def link_account(self, interaction: discord.Interaction, username: str) -> None:
+        """Link (or re-link) the clicking member. Shared by /letterboxd link and the
+        #welcome page's 🔗 button (its modal submit)."""
+        uid = interaction.user.id
         name = normalize_username(username)
         if name is None:
             await interaction.response.send_message(
@@ -174,6 +182,11 @@ class Letterboxd(commands.Cog):
                                     "edits and watchlist")
     @app_commands.describe(file="Letterboxd → Settings → Data → Export your data; upload the zip")
     async def sync(self, interaction: discord.Interaction, file: discord.Attachment) -> None:
+        await self.sync_export(interaction, file)
+
+    async def sync_export(self, interaction: discord.Interaction, file: discord.Attachment) -> None:
+        """Read an uploaded export and show the preview. Shared by /letterboxd sync and
+        the #welcome page's 📦 button (its modal's file upload)."""
         uid = interaction.user.id
         if uid in self._syncing:
             await interaction.response.send_message(

@@ -259,10 +259,29 @@ messages:
         - **Vote** there with the **Vote** button. Each ballot closes on **Sunday night** at 11:59 PM CST.
         - **Watch** the active movie, which gets a server event and is listed in {#watch_log}.
         - **Note** that we use instant-runoff ranked choice voting. Your nomination and vote ranking carry over week to week.
-      - |
-        ## 📒 Letterboxd
-        - **/letterboxd link** with your username. Your new diary entries show up on the movie's post, and the bot reads your public watchlist right away and again every day.
-        - Optional: run **/letterboxd sync** and upload your Letterboxd export zip to bring in your entire diary and review history. It's the only way to get entries from before you linked.
+      - text: |
+          ## 📒 Letterboxd
+          - **Link Letterboxd** with your username. Your new diary entries show up on the movie's post, and the bot reads your public watchlist right away and again every day.
+          - Optional: **Sync History** and upload your Letterboxd export zip (Letterboxd → Settings → Data → Export your data) to bring in your entire diary and review history. It's the only way to get entries from before you linked.
+        buttons:
+          - {action: letterboxd_link, label: "Link Letterboxd", emoji: "🔗", style: primary}
+          - {action: letterboxd_sync, label: "Sync History", emoji: "📦"}
+      - text: |
+          ## 🔔 Notifications
+          We recommend setting this server to **Only @mentions**, so you hear about what matters and nothing else:
+          - **Computer:** right-click the server icon → **Notification Settings** → **Only @mentions**.
+          - **Phone:** tap the server name at the top → **Notifications** → **Only @mentions**.
+          Leave **Suppress All Role @mentions** off, or you'll miss the weekly movie.
+
+          You'll then be notified:
+          - **Thursday morning:** a reminder to nominate, if you haven't yet.
+          - **Sunday morning:** a reminder to vote, if you haven't yet.
+          - **Early Monday morning:** the week's movie is picked.
+          - Any time someone @mentions you, or posts in a movie post you follow.
+          -# **Weekly Ping** turns the weekly pings on or off; **Group Ping** does the same for your private group.
+        buttons:
+          - {action: weekly_pings, label: "Weekly Ping", emoji: "🔔"}
+          - {action: group_pings, label: "Group Ping", emoji: "🔔"}
       - |
         ## 🤝 Be nice
         Disagree about movies, not about people.
