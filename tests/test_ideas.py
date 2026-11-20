@@ -276,7 +276,7 @@ def test_recap_category_layout():
                for k in cats if k.startswith("group_"))
     recap = next(c for c in cfg["categories"] if c["key"] == "recap")
     assert recap["name"] == "📚 More"
-    assert [c["key"] for c in recap["channels"]] == ["letterboxd_feed", "watch_log", "ideas"]
+    assert [c["key"] for c in recap["channels"]] == ["letterboxd_feed", "ideas"]   # #watch-log moved (Phase 26)
     ideas = recap["channels"][-1]
     assert ideas["name"] == "ideas"
     assert "@everyone" not in ideas["_overwrites"]            # members can post
@@ -306,4 +306,4 @@ def test_positions_put_recap_above_admin(tmp_path):
     payload, desc = r.desired_positions(channels)
     order = [p["id"] for p in sorted(payload, key=lambda p: p["position"])]
     assert order == [ids[k] for k in keys]
-    assert desc[0].endswith("🍿 Movies | 📚 More | 🎓 OSU | 🔧 Admin")
+    assert desc[0].endswith("🍿 Movies | 📚 More | 🏈 OSU/Canton | 🔧 Admin")

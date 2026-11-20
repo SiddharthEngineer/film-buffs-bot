@@ -11,9 +11,9 @@ Every group in server.yaml `groups:` has one GroupVoteService. For month M
   end         at the end of M the month is marked done.
 
 The board is the one message in the group's #watch-planning; picks and notices go to
-the group's #chat (Phase 19) and ping only the group's
-opt-in ping role. A group's pick never changes the film's tags or status in #pre-watch, is
-never logged in #watch-log and never announced in #announcements. The group
+the group's own #watch-log (Phase 26; its #chat before that) and ping only the group's
+opt-in ping role. A group's pick never changes the film's tags or status in #pre-watch and
+is never logged in the server's #watch-log. The group
 can't pick the same film twice (its months with a winner are its history);
 other groups and the weekly vote don't matter.
 """
@@ -155,9 +155,8 @@ class GroupVoteService(RankedTrack):
             return None
 
     async def _post(self, text: str, what: str, mentions=None):
-        """Group news goes to the group's #chat (Phase 19: #watch-planning is just
-        the board)."""
-        ch = self.channel("chat")
+        """Group news goes to the group's #watch-log (Phase 26; #chat if it has none yet)."""
+        ch = self.channel("watch_log") or self.channel("chat")
         if ch is None:
             return None
         return await self._safe(ch.send(truncate(text, 2000),

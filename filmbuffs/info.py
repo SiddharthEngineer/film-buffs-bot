@@ -118,7 +118,7 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
             "separate from the weekly one, with its own nominations. In the group's channels, "
             "**My nomination**, **Vote**, " + cmd("nominate") + ", " + cmd("vote") + " and "
             + cmd("schedule") + " act on the group's vote. It closes on the **last day of the "
-            "month**; the pick is announced in the group's #chat (pinging its Pings role), "
+            "month**; the pick is announced in the group's #watch-log (pinging its Pings role), "
             "watched during that month and discussed in the group's voice channel on the 1st. "
             "A group can pick any film it hasn't picked before.",
         ])))

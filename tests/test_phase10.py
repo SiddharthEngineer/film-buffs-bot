@@ -225,12 +225,19 @@ def test_weekly_close_ignores_groups(tmp_path):
 
 
 class FakeChannel:
-    def __init__(self):
+    def __init__(self, id=0):
+        self.id = id
         self.sent = []
+        self.deleted = []
 
     async def send(self, content=None, **kw):
         self.sent.append((content, kw.get("allowed_mentions")))
-        return SimpleNamespace(id=900 + len(self.sent))
+        return SimpleNamespace(id=900 + len(self.sent), channel=self)
+
+    def get_partial_message(self, mid):
+        async def delete():
+            self.deleted.append(mid)
+        return SimpleNamespace(id=mid, delete=delete)
 
 
 def test_weekly_pick_is_announced_in_watch_log(tmp_path):
@@ -532,7 +539,8 @@ def test_server_yaml_roles_groups_and_buttons(tmp_path):
     import setup_server
     cfg = setup_server.load_config("server.yaml")
     assert {(r["key"], r["name"]) for r in cfg["roles"]} == {
-        ("weekly_ping", "Weekly Pings"), ("group_osu", "OSU"), ("group_osu_ping", "OSU Pings")}
+        ("weekly_ping", "Weekly Pings"), ("group_osu", "OSU/Canton"),
+        ("group_osu_ping", "OSU/Canton Pings")}
     assert [r["key"] for r in cfg["retire_roles"]] == ["monthly_ping"]
     assert all(not m.get("buttons") for m in cfg["messages"])   # 🔔 Pings lives on the ballots
     text = " ".join(m.get("description", "") + " ".join(m.get("sections") or [])
@@ -542,8 +550,11 @@ def test_server_yaml_roles_groups_and_buttons(tmp_path):
     assert cats.index("group_osu") == cats.index("admin") - 1
     osu = next(c for c in cfg["categories"] if c["key"] == "group_osu")
     assert [(c["key"], c["name"], c.get("type", "text")) for c in osu["channels"]] == [
-        ("osu_watch_planning", "watch-planning", "text"), ("osu_chat", "chat", "text"),
-        ("osu_voice", "voice", "voice")]
+        ("osu_watch_planning", "watch-planning", "text"), ("osu_watch_log", "watch-log", "text"),
+        ("osu_chat", "chat", "text"), ("osu_voice", "voice", "voice")]
+    wlog = next(c for c in osu["channels"] if c["key"] == "osu_watch_log")
+    assert "send_messages" in wlog["_overwrites"]["role:group_osu"]["deny"]     # read-only
+    assert "OSU/Canton Pings" in wlog["topic"]
     for c in osu["channels"]:
         ows = c["_overwrites"]
         assert ows["@everyone"] == {"deny": ["view_channel"]}

@@ -1,5 +1,7 @@
 # Status (as of 2026-11-20)
 
+> **Phase 26 (2026-11-20):** reminders are deleted when their vote closes; `#watch-log` sits under `#watch-planning` in 🎬 Film Buffs; each group has its own read-only `#watch-log` for its picks; OSU is now **OSU/Canton** (🏈). See "Phase 26" at the end.
+
 > **Phase 25 (2026-11-20):** 9 AM CT nominate (Thursday / 3 days before a group's close) and vote (last day) reminders, @mentioning only Pings members who still need to act. See "Phase 25" at the end.
 
 > **Phase 24 (2026-11-19):** linked members' watchlists are re-read every day; `#welcome`, `/info` and the link reply say so. History comes only from the export. See "Phase 24" at the end.
@@ -428,3 +430,12 @@ Owner request (2026-11-20); decisions in ROADMAP "Phase 25". 242 unit tests pass
 - **Checked in the docs (DISCORD_NOTES):** Create DM warning against DMing a whole server; `allowed_mentions.users` max 100.
 
 - **Live (2026-11-20):** deployed 20:00 UTC, no errors in the log. Nothing was sent at deploy (Thursday's weekly nominate time is past the catch-up window). First reminders: weekly vote **Sun Nov 22, 9 AM CT** in `#general`; OSU nominate **Fri Nov 27** and vote **Mon Nov 30**, 9 AM CT, in OSU's `#chat`; weekly nominate **Thu Nov 26**.
+
+## Phase 26: reminder cleanup, #watch-log placement, group #watch-log, OSU/Canton (built 2026-11-20)
+Owner request (2026-11-20). 244 unit tests pass. Bot v0.20.
+- **Reminders are deleted at the close:** each sent reminder's channel and message ID wait in `bot_meta` `reminder_messages:<grp>`; the first tick after that vote's close deletes them (a failed delete is retried next tick; an already-deleted one is fine).
+- **`#watch-log` moved** (`server.yaml`, key unchanged) from 📚 More into 🎬 Film Buffs, right after `#watch-planning`.
+- **Group `#watch-log`** (`groups.expand`, key `<group>_watch_log`): visible to the group role only, read-only for it (like the group's `#watch-planning`), topic says its Pings role is pinged there. Group picks, skips and clears go there now (`GroupVoteService._post`; falls back to `#chat` if the channel isn't set up). No group has a pick yet (OSU's first closes Nov 30), so nothing to move.
+- **OSU → OSU/Canton**, category 🎓 → 🏈 (key `osu` unchanged, so IDs, pool, rankings and months stay). The roles follow the name: `OSU` → `OSU/Canton`, `OSU Pings` → `OSU/Canton Pings` (same role IDs, members keep them).
+- **Text:** `/info` and README say group picks are announced in the group's `#watch-log`.
+

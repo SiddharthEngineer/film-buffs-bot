@@ -17,10 +17,12 @@ whole server). Nominations and rankings carry over from earlier votes and count.
 
 Each reminder is sent once (bot_meta `reminder:<grp>:<period>:<kind>`). If the
 bot was down at 9:00, it catches up within CATCH_UP, and never after the vote
-closes.
+closes. Once the vote closes the reminders are deleted (Phase 26, owner): their
+message IDs wait in bot_meta `reminder_messages:<grp>` until then.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -41,6 +43,7 @@ CATCH_UP = timedelta(hours=12)      # send late after downtime, but not a day la
 TOP = 3                             # "voted" = ranked your top 3 (or every film if fewer)
 PER_MESSAGE = 50                    # mentions per message (Discord allows 100 user IDs)
 META = "reminder:{grp}:{period}:{kind}"
+SENT_META = "reminder_messages:{grp}"      # [{"period", "channel", "id"}] to delete at the close
 KINDS = ("nominate", "vote")
 
 
@@ -126,8 +129,50 @@ class Reminders:
         ranks = await db.all_track_rankings(self.svc.track)
         return [u for u in users if not has_voted(ranks.get(u, []), ballot)]
 
+    @property
+    def sent_key(self) -> str:
+        return SENT_META.format(grp=self.svc.pool.grp)
+
+    async def _sent(self) -> list[dict]:
+        raw = await self.bot.db.get_meta(self.sent_key)
+        try:
+            return json.loads(raw) if raw else []
+        except ValueError:
+            return []
+
+    async def _remember(self, period: str, messages: list) -> None:
+        sent = await self._sent()
+        sent += [{"period": period, "channel": m.channel.id, "id": m.id} for m in messages]
+        await self.bot.db.set_meta(self.sent_key, json.dumps(sent))
+
+    async def cleanup(self, now: datetime) -> None:
+        """Delete the reminders of votes that have closed."""
+        sent = await self._sent()
+        keep = []
+        for m in sent:
+            if now < self.svc.close_time(m["period"]):
+                keep.append(m)
+                continue
+            ch = self.bot.get_channel(m["channel"])
+            if ch is None:
+                log.warning("Reminder %s: channel %s is gone", m["id"], m["channel"])
+                continue
+            try:
+                await ch.get_partial_message(m["id"]).delete()
+            except discord.NotFound:
+                pass
+            except discord.HTTPException:
+                log.exception("Deleting reminder %s failed; will retry", m["id"])
+                keep.append(m)
+                continue
+            log.info("%s: deleted reminder %s (vote %s closed)", self.svc.pool.grp, m["id"],
+                     m["period"])
+        if len(keep) != len(sent):
+            await self.bot.db.set_meta(self.sent_key, json.dumps(keep) if keep else None)
+
     async def tick(self, now: datetime | None = None) -> None:
         now = now or datetime.now(timezone.utc)
+        await self.cleanup(now)
         period = await self.svc.voting_period()
         if period is None:
             return
@@ -152,14 +197,18 @@ class Reminders:
             log.warning("%s %s reminder: no channel to post in", grp, kind)
             return 0
         board = await self.svc.board_url()
+        posted = []
         for part in chunks(who):
             text = reminder_text(kind, self.svc, " ".join(f"<@{u}>" for u in part),
                                  when(close, self.svc.tz), board)
             try:
-                await ch.send(text, allowed_mentions=discord.AllowedMentions(
-                    everyone=False, roles=False, users=[discord.Object(u) for u in part]))
+                posted.append(await ch.send(text, allowed_mentions=discord.AllowedMentions(
+                    everyone=False, roles=False, users=[discord.Object(u) for u in part])))
             except discord.HTTPException:
                 log.exception("%s %s reminder failed", grp, kind)
-                return 0
+                break
+        await self._remember(period, posted)
+        if len(posted) < len(chunks(who)):
+            return 0
         log.info("%s %s reminder for %s: mentioned %d member(s)", grp, kind, period, len(who))
         return len(who)

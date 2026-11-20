@@ -131,3 +131,48 @@ def test_vote_reminder_skips_an_empty_ballot(tmp_path):
         await db.close()
         return general.sent
     assert asyncio.run(run()) == []
+
+
+def test_reminders_are_deleted_when_the_vote_closes(tmp_path):
+    async def run():
+        db, bot = await make(tmp_path)
+        general = FakeChannel(id=5)
+        bot.get_channel = {5: general}.get
+        bot.config.roles = {"weekly_ping": 77}
+        bot.get_guild = lambda gid: guild({77: [member(13, 77)]})
+        bot.weekly.channel = lambda key: general
+        bot.weekly.voting_period = lambda: asyncio.sleep(0, WK)
+        bot.weekly.board_url = lambda: asyncio.sleep(0, "")
+        await open_week(db, bot)
+        r = Reminders(bot.weekly)
+        await r.tick(local(2026, 11, 19, 9))
+        await r.tick(local(2026, 11, 22, 9))
+        await r.tick(local(2026, 11, 22, 23, 58))           # still open: kept
+        kept = list(general.deleted)
+        bot.weekly.voting_period = lambda: asyncio.sleep(0, None)
+        await r.tick(local(2026, 11, 22, 23, 59))           # closed
+        left = await db.get_meta("reminder_messages:main")
+        await r.tick(local(2026, 11, 23, 0, 1))             # nothing twice
+        await db.close()
+        return kept, general.deleted, left
+    kept, deleted, left = asyncio.run(run())
+    assert kept == [] and deleted == [901, 902] and left is None
+
+
+def test_group_pick_goes_to_its_watch_log(tmp_path):
+    """Phase 26: a group's picks go to its own #watch-log, not its #chat."""
+    async def run():
+        db, bot = await make(tmp_path)
+        planning, wlog, chat = FakeChannel(), FakeChannel(), FakeChannel()
+        bot.osu.group.channels = {"watch_planning": 1, "watch_log": 2, "chat": 3}
+        bot.osu.group.ping_role_id = 88
+        bot.get_channel = {1: planning, 2: wlog, 3: chat}.get
+        bot.osu.refresh_board = lambda: asyncio.sleep(0)
+        await bot.osu.pool.nominate(10, 1)
+        await db.create_month("osu", MO)
+        await bot.osu.close_vote(await db.get_month("osu", MO), local(2026, 11, 30, 23, 59))
+        await db.close()
+        return planning.sent, wlog.sent, chat.sent
+    planning, wlog, chat = asyncio.run(run())
+    assert planning == [] and chat == []
+    assert wlog[0][0].startswith("<@&88> 🌙 **OSU's movie for December 2026")

@@ -3,9 +3,10 @@
 A group is one entry under `groups:` in server.yaml. `expand()` turns each
 entry into the layout setup_server.py manages: a membership role, an opt-in
 ping role (`<role> Pings`, given with the group role since Phase 19 and toggled
-with the 🔔 Pings button on the group's board; group announcements in #chat ping
-it), a category, and #watch-planning (commands only), #chat and #voice channels that
-only the role and the bot can see. Discord always shows them to the server
+with the 🔔 Pings button on the group's board; group announcements in its
+#watch-log ping it), a category, and #watch-planning (commands only), #watch-log
+(read-only, Phase 26), #chat and #voice channels that only the role and the bot
+can see. Discord always shows them to the server
 owner and to Administrator roles; that can't be turned off.
 
 Everything a group does stays in its category: its own nomination pool, ballot,
@@ -23,7 +24,7 @@ from datetime import date, time
 MAIN = "main"                  # the main server's weekly vote
 KEY_RE = re.compile(r"^[a-z][a-z0-9]{0,19}$")
 RESERVED = {MAIN, "up", "del", "show", "weekly"}     # would clash with button IDs
-PARTS = ("watch_planning", "chat", "voice")
+PARTS = ("watch_planning", "watch_log", "chat", "voice")
 
 BOT_TEXT = ["view_channel", "send_messages", "embed_links", "read_message_history"]
 BOT_VOICE = ["view_channel", "connect"]
@@ -75,7 +76,8 @@ def expand(cfg: dict) -> None:
         role_name = g.get("role") or g["name"]
         roles.append({"key": role_key(key), "name": role_name, "mentionable": True,
                       "_group": key})
-        roles.append({"key": ping_role_key(key), "name": g.get("ping_role") or f"{role_name} Pings",
+        ping_name = g.get("ping_role") or f"{role_name} Pings"
+        roles.append({"key": ping_role_key(key), "name": ping_name,
                       "mentionable": True, "_group": key})
         who = f"role:{role_key(key)}"
         hidden = {"@everyone": {"deny": ["view_channel"]}}
@@ -91,6 +93,15 @@ def expand(cfg: dict) -> None:
                            f"the discussion is in the voice channel on the 1st. Commands only "
                            f"here: chat in #chat. Only {role_name} members can see this category."),
                  # Phase 19: commands only (the text box stays; members just can't post).
+                 "overwrites": {**hidden, who: {"allow": ["view_channel"],
+                                                "deny": ["send_messages", "send_messages_in_threads",
+                                                         "create_public_threads",
+                                                         "create_private_threads"]},
+                                "@bot": {"allow": BOT_TEXT}}},
+                # Phase 26: the group's picks, skips and clears, like the main #watch-log.
+                {"key": channel_key(key, "watch_log"), "name": "watch-log",
+                 "topic": (f"Every {g['name']} monthly pick, announced when the vote closes. "
+                           f"@{ping_name} is pinged here."),
                  "overwrites": {**hidden, who: {"allow": ["view_channel"],
                                                 "deny": ["send_messages", "send_messages_in_threads",
                                                          "create_public_threads",

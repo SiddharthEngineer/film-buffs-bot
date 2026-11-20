@@ -354,6 +354,10 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
+## Phase 26: reminder cleanup, #watch-log placement, group #watch-log, OSU/Canton (built 2026-11-20; see STATUS.md)
+Owner (2026-11-20): delete the Phase 25 reminders from `#general` / `#chat` once each ballot closes; put `#watch-log` next to `#watch-planning`; give each group its own `#watch-log`; rename OSU to OSU/Canton with a 🏈 instead of 🎓.
+Chosen in the build: group picks, skips and clears move from the group's `#chat` to its new `#watch-log` (as the main `#watch-log` works); the group's roles are renamed with it (OSU/Canton, OSU/Canton Pings).
+
 ## Phase 25: nominate and vote reminders (built 2026-11-20; see STATUS.md)
 Owner (2026-11-20): members with @Weekly Pings / a group's Pings role get two reminders, only if they still need to act: **nominate** at 9 AM CT three days before the vote's last day (weekly: Thursday; monthly: 11/27, 12/28, 1/28, 2/25…), and **vote** at 9 AM on the last day (Sunday; the month's last day). "Voted" = ranked every film if fewer than three are on the ballot, else at least your top three.
 Decided (owner, 2026-11-20): a role ping can't be narrowed to some of its members, and Discord's docs say bots shouldn't DM a whole server, so each reminder is **one message @mentioning just those people**, in `#general` (weekly) or the group's `#chat`. Nominations and rankings carried over from earlier votes **count**.

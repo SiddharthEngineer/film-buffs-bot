@@ -132,10 +132,10 @@ def test_layout():
     cfg = setup_server.load_config("server.yaml")
     layout = [(c["name"], [ch["name"] for ch in c["channels"]]) for c in cfg["categories"]]
     assert layout == [
-        ("🎬 Film Buffs", ["welcome", "general", "watch-planning", "Voice"]),
+        ("🎬 Film Buffs", ["welcome", "general", "watch-planning", "watch-log", "Voice"]),
         ("🍿 Movies", ["pre-watch", "post-watch"]),
-        ("📚 More", ["letterboxd-feed", "watch-log", "ideas"]),
-        ("🎓 OSU", ["watch-planning", "chat", "voice"]),
+        ("📚 More", ["letterboxd-feed", "ideas"]),
+        ("🏈 OSU/Canton", ["watch-planning", "watch-log", "chat", "voice"]),
         ("🔧 Admin", ["bot-logs"]),
     ]
     keys = {ch["key"] for c in cfg["categories"] for ch in c["channels"]}

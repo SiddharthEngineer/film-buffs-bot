@@ -46,7 +46,7 @@ weekly:
 # Private groups (Phase 12). Each entry gets a membership role (assign it in
 # Discord), an opt-in "<role> Pings" role (members toggle it with 🔔 Pings on
 # the group's ballot; its announcements ping it), a category, and
-# #watch-planning, #chat and #voice that only the role and the bot can see (the server owner and Administrator roles
+# #watch-planning, #watch-log, #chat and #voice that only the role and the bot can see (the server owner and Administrator roles
 # always see everything). Each group has its own /nominate pool and its own
 # monthly movie: month M is voted on during M-1 (1st 12:00 AM → last day
 # 11:59 PM), watched during M, and discussed in the group's #voice on the 1st of
@@ -59,15 +59,15 @@ weekly:
 #   first_month: YYYY-MM of its first movie (default: the next month)
 groups:
   - key: osu
-    name: OSU
-    category: "🎓 OSU"
+    name: OSU/Canton            # was OSU (Phase 26); the key stays osu
+    category: "🏈 OSU/Canton"
     first_month: "2026-12"
     discussion_time: "20:00"
     discussion_minutes: 120
 
 # Roles the setup script creates and keeps in sync (by key). Members opt in
-# with 🔔 Pings on the weekly ballot; pick announcements in #watch-planning
-# ping them. The bot's own
+# with 🔔 Pings on the weekly ballot; pick announcements in #watch-log ping
+# them, and the 9 AM reminders (Phase 25) mention those who still need to act. The bot's own
 # role must stay above them (new roles are created at the bottom).
 roles:
   - key: weekly_ping
@@ -117,6 +117,10 @@ categories:
         name: watch-planning
         topic: "The 🎬 weekly ballot, always open. Click My nomination to nominate a film (one each), then Vote and rank them. Chat in #general."
         preset: read_only       # Phase 19: commands still work (the text box stays)
+      - key: watch_log           # next to #watch-planning (Phase 26; was in 📚 More)
+        name: watch-log
+        topic: "Every weekly pick, announced when the vote closes. @Weekly Pings is pinged here."
+        preset: read_only
       - key: watch_party
         name: Voice
         type: voice
@@ -211,10 +215,6 @@ categories:
       - key: letterboxd_feed
         name: letterboxd-feed
         topic: "New Letterboxd diary entries from linked members. Ratings and reviews are in each movie's #post-watch post."
-        preset: read_only
-      - key: watch_log
-        name: watch-log
-        topic: "Every weekly pick, announced when the vote closes. @Weekly Pings is pinged here."
         preset: read_only
       - key: ideas
         name: ideas
