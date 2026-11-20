@@ -610,7 +610,12 @@ class Reconciler:
 
     def plan_positions(self) -> None:
         async def run():
-            channels = await self.guild.fetch_channels()
+            try:
+                channels = await self.guild.fetch_channels()
+            except discord.InvalidData:
+                # A channel type discord.py doesn't know (live 2026-11-20: type 20,
+                # "server-hub") breaks fetch_channels; the gateway cache skips it.
+                channels = list(self.guild.channels)
             payload, _ = self.desired_positions(channels)
             if payload:
                 await self.guild._state.http.bulk_channel_update(
