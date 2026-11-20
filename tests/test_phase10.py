@@ -263,7 +263,8 @@ def test_weekly_pick_is_announced_in_watch_log(tmp_path):
     planning, wlog, w, done = asyncio.run(run())
     assert planning == []
     assert len(wlog) == 1 and wlog[0][0].startswith("<@&77> 🎬 **Wk 2 · Nov 23–29 2026: ")
-    assert "won 1–0" in wlog[0][0] and "-# **Round 1:**" in wlog[0][0]
+    assert "** · nominated by " in wlog[0][0] and "-# **Round 1:**" in wlog[0][0]
+    assert "won 1–0" not in wlog[0][0] and "#post-watch" not in wlog[0][0]
     assert [r.id for r in wlog[0][1].roles] == [77]
     assert w["announcement_id"] == w["log_message_id"] == 901
     assert done["state"] == "done" and done["log_message_id"] == 901

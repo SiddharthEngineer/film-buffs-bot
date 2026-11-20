@@ -360,3 +360,19 @@ def test_week_number_counts_from_wildwood_week():
     assert week_number(date(2026, 11, 16)) == 1
     assert week_number(date(2026, 11, 23)) == 2
     assert week_number(date(2027, 1, 4)) == 8          # no reset at the new year
+
+
+def test_pick_text_credits_the_nominator():
+    from filmbuffs.weekly import pick_text
+    text = pick_text(date(2026, 11, 23), "[Parasite (2019)](u)", "nominated by Ann", None,
+                     "Mon", "Sun", "The only nomination, so no vote.")
+    assert text == ("🎬 **Wk 2 · Nov 23–29 2026: [Parasite (2019)](u)** · nominated by Ann\n"
+                    "Watch it any time from **Mon** to **Sun**.\n"
+                    "-# The only nomination, so no vote.")
+
+
+def test_event_text_links_both_posts():
+    from filmbuffs.weekly import event_text
+    assert event_text("<#1>", "[W (2026)](a)", "<#2>", "[W (2026)](b)") == \
+        "<#1>: [W (2026)](a)\n<#2>: [W (2026)](b)"
+    assert event_text("<#1>", "[W (2026)](a)", "<#2>", None) == "<#1>: [W (2026)](a)"

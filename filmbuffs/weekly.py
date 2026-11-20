@@ -36,6 +36,7 @@ import discord
 
 from .db import utcnow
 from .movies import truncate
+from .names import member_name
 from .pool import (ELIGIBLE, LABEL_LIMIT, MAX_BALLOT, RankedTrack, display, option_label,  # noqa: F401
                    ordinal, shared_lock)
 
@@ -216,6 +217,14 @@ def _neg_added(added_at: str | None) -> float:
         return 0.0
 
 
+def event_text(pre_ref: str, pre_link: str, post_ref: str, post_link: str | None) -> str:
+    """The week's scheduled-event description: each forum, then the movie's post in it."""
+    lines = [f"{pre_ref}: {pre_link}"]
+    if post_link:
+        lines.append(f"{post_ref}: {post_link}")
+    return "\n".join(lines)
+
+
 def runoff_text(result: dict, names: dict[int, str]) -> str:
     """Round-by-round summary for the pick announcement."""
     lines = []
@@ -267,12 +276,12 @@ def log_line(week: date, title: str | None, how: str | None = None,
     return f"{head} · {title} · {how or 'picked by an admin'}"
 
 
-def pick_text(week: date, link: str, how: str, event_url: str | None, start: str, end: str,
+def pick_text(week: date, link: str, credit: str, event_url: str | None, start: str, end: str,
               detail: str = "") -> str:
-    """The #watch-log announcement of a weekly pick (Phase 19)."""
-    text = (f"🎬 **Wk {week_number(week)} · {date_range(week)} {week.year}: {link}** · {how}\n"
-            f"Watch it any time from **{start}** to **{end}**, then talk about it in "
-            f"its #post-watch post.")
+    """The #watch-log announcement of a weekly pick (Phase 19). `credit` is
+    "nominated by <name>" or "picked by an admin"; vote results go in `detail`."""
+    text = (f"🎬 **Wk {week_number(week)} · {date_range(week)} {week.year}: {link}** · {credit}\n"
+            f"Watch it any time from **{start}** to **{end}**.")
     if event_url:
         text += f"\n📅 [Event]({event_url})"
     lines = [ln.removeprefix("-# ").strip() for ln in detail.splitlines()]
@@ -444,7 +453,7 @@ class WeeklyService(RankedTrack):
             w = by_id[candidates[0]["tmdb_id"]]
             await self._crown(
                 row, w, now, how=SOLE_NOMINATION,
-                line="",
+                line="The only nomination, so no vote.",
                 poll_closed_at=utcnow(), total_votes=len(ballots))
             return
         result = instant_runoff(list(ballots.values()), candidates, self.bot.config.tie_break)
@@ -481,19 +490,26 @@ class WeeklyService(RankedTrack):
         await self.pool.picked(winner["tmdb_id"])
         await self._safe(self.bot.movies.retag(winner["tmdb_id"]), "retag winner")
         event = await self._safe(self.create_event(week, winner, now), "create event")
-        ann_msg = await self.announce(week, winner, how, event, line)
+        credit = await self.credit(w["nominated_by"], how)
+        ann_msg = await self.announce(week, winner, credit, event, line)
         await db.update_week(week, state="picked", event_id=event.id if event else None,
                              announcement_id=ann_msg.id if ann_msg else None,
                              log_message_id=ann_msg.id if ann_msg else None)
         log.info("Watch week %s: %s, %s", week, winner["title"], how)
         await self._safe(self.refresh_board(), "board refresh")
 
-    async def announce(self, week: str, winner: dict, how: str, event, detail: str = ""):
+    async def credit(self, user_id: int | None, fallback: str) -> str:
+        """Who to credit in the #watch-log line: the film's nominator, as text."""
+        if not user_id:
+            return fallback
+        return f"nominated by {await member_name(self.bot, user_id)}"
+
+    async def announce(self, week: str, winner: dict, credit: str, event, detail: str = ""):
         """The pick, in #watch-log, pinging @Weekly Pings (Phase 19: #watch-planning
         is just the board). This line is also the week's log entry."""
         s = self.sched(week)
         ping, mentions = role_ping(self.bot, "weekly_ping")
-        text = pick_text(date.fromisoformat(week), self.link(winner, esc(winner["title"])), how,
+        text = pick_text(date.fromisoformat(week), self.link(winner, esc(winner["title"])), credit,
                          event.url if event else None, when(s.watch_start, self.tz),
                          when(s.watch_end, self.tz), detail)
         ch = self.channel("watch_log")
@@ -517,8 +533,13 @@ class WeeklyService(RankedTrack):
             s = self.sched(week)
             event_url = (f"https://discord.com/events/{self.bot.config.guild_id}/{row['event_id']}"
                          if row["event_id"] else None)
+            credit = how_picked(row)
+            if not row["override_by"]:
+                opt = next((o for o in await self.bot.db.options(week)
+                            if o["tmdb_id"] == row["winner_tmdb_id"]), None)
+                credit = await self.credit(opt["nominated_by"] if opt else None, credit)
             text = pick_text(date.fromisoformat(week), self.link(movie, esc(display(movie))),
-                             how_picked(row), event_url, when(s.watch_start, self.tz),
+                             credit, event_url, when(s.watch_start, self.tz),
                              when(s.watch_end, self.tz))
             msg = await self._log(truncate(text, 2000))
             if msg is None:
@@ -539,6 +560,16 @@ class WeeklyService(RankedTrack):
             content=f"~~Weekly movie · {rng}~~ ({why})",
             allowed_mentions=discord.AllowedMentions.none()), "strike log line")
 
+    async def event_description(self, winner: dict) -> str:
+        """#pre-watch: <post> / #post-watch: <post>, each title a masked link."""
+        movie = await self.bot.db.get_movie(winner["tmdb_id"])
+        gid = self.bot.config.guild_id
+        title = esc(winner["title"])
+        post = (f"[{title}](https://discord.com/channels/{gid}/{movie['spoiler_thread_id']})"
+                if movie and movie["spoiler_thread_id"] else None)
+        return event_text(self.ref("movies"), self.link(winner, title),
+                          self.ref("movie_spoilers"), post)
+
     async def create_event(self, week: str, winner: dict, now: datetime):
         s = self.sched(week)
         guild = self.bot.get_guild(self.bot.config.guild_id)
@@ -551,8 +582,7 @@ class WeeklyService(RankedTrack):
             start_time=start, end_time=s.watch_end,
             entity_type=discord.EntityType.external, location=url,
             privacy_level=discord.PrivacyLevel.guild_only,
-            description=truncate(f"This week's movie: {winner['title']}. Watch it any time this "
-                                 f"week, then join the post-watch discussion. Post: {url}", 1000),
+            description=truncate(await self.event_description(winner), 1000),
             reason="Weekly pick")
 
     # watch week ------------------------------------------------------------
@@ -743,8 +773,7 @@ class WeeklyService(RankedTrack):
         return await event.edit(
             name=truncate(f"🎬 Watch week: {winner['title']}", 100), location=url,
             end_time=self.sched(week).watch_end,
-            description=truncate(f"This week's movie: {winner['title']}. Watch it any time this "
-                                 f"week, then join the post-watch discussion. Post: {url}", 1000),
+            description=truncate(await self.event_description(winner), 1000),
             reason="Weekly pick changed by an admin")
 
     # members ---------------------------------------------------------------

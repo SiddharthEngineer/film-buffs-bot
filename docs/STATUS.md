@@ -1,5 +1,7 @@
 # Status (as of 2026-11-20)
 
+> **Pick wording (2026-11-20):** the `#watch-log` pick line credits the nominator ("· nominated by Ann") instead of "won 1–0" and drops the "talk about it in its #post-watch post" clause; the event description is two lines, `#pre-watch: Title` and `#post-watch: Title`, each title linking to that forum's post. See "Pick wording" at the end.
+
 > **Board buttons (2026-11-20):** 📋 My nomination is now **📋 Nominate** and comes first: Nominate, Vote, Pings. See "Board buttons" at the end.
 
 > **Phase 26 (2026-11-20):** reminders are deleted when their vote closes; `#watch-log` sits under `#watch-planning` in 🎬 Film Buffs; each group has its own read-only `#watch-log` for its picks; OSU is now **OSU/Canton** (🏈). See "Phase 26" at the end.
@@ -449,3 +451,10 @@ Owner: rename "My nomination" to "Nominate" and put it left of "Vote", so the bu
 - `vote_ui.board_buttons`: 📋 **Nominate**, 🗳️ Vote (while a vote is open), 🔔 Pings. Same custom IDs (`noms:[grp:]show`), so nothing old breaks; the boards re-render on the next tick because their footer text changed.
 - Every member-facing mention says **Nominate**: board footers and empty-ballot lines, the ranking picker, the nominate reminder, `/info`, both `#watch-planning` topics (main in `server.yaml`, groups in `groups.py`), the welcome page, README.
 
+
+## Pick wording (2026-11-20)
+Owner request. Bot v0.22, 247 tests pass.
+- **`#watch-log` pick line** (`weekly.pick_text`): `🎬 **Wk N · dates: [Title](pre-watch post)** · nominated by <name>` (name as text, `names.member_name`), then `Watch it any time from **…** to **…**.` The round-by-round results stay as `-#` lines below; a sole nomination says "The only nomination, so no vote." there. `/admin pick` still says "picked by an admin". `backfill_log` looks the nominator up in `week_options`.
+- **Event description** (`weekly.event_text`, create and admin edit): `<#pre-watch>: [Title](pre-watch post)` / `<#post-watch>: [Title](post-watch post)`. The location is still the pre-watch post link.
+- Unchanged: the end-of-week fallback log line and `/schedule` still say "won X–Y"; group picks (monthly) are unchanged.
+- **Not checked yet:** how Discord renders a channel mention and a masked link in an event description (owner checks desktop and phone on the next event). The current Wildwood event keeps its old text until it's edited.
