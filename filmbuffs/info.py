@@ -49,6 +49,7 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
             "its highest-ranked film still in the race, and the film with the fewest votes is "
             "knocked out until one has a majority. Ties go out by fewest 1st choices, then "
             "fewest members with it on their Letterboxd watchlist, then most recently added. "
+            "**🗳️ Rounds** under each result in #watch-log shows the count, round by round. "
             "Your ranking carries over to the next week; 🆕 marks films that joined the "
             "ballot in the last 2 days.",
             "",

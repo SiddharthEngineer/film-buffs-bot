@@ -228,16 +228,23 @@ class FakeChannel:
     def __init__(self, id=0):
         self.id = id
         self.sent = []
+        self.views = []
         self.deleted = []
+        self.edited = []
 
     async def send(self, content=None, **kw):
         self.sent.append((content, kw.get("allowed_mentions")))
+        self.views.append(kw.get("view"))
         return SimpleNamespace(id=900 + len(self.sent), channel=self)
 
     def get_partial_message(self, mid):
         async def delete():
             self.deleted.append(mid)
-        return SimpleNamespace(id=mid, delete=delete)
+
+        async def edit(**kw):
+            self.edited.append((mid, kw))
+            return SimpleNamespace(id=mid)        # discord.py returns the Message
+        return SimpleNamespace(id=mid, delete=delete, edit=edit)
 
 
 def test_weekly_pick_is_announced_in_watch_log(tmp_path):
@@ -259,12 +266,14 @@ def test_weekly_pick_is_announced_in_watch_log(tmp_path):
         done = dict(await db.get_week(WK))
         await settle()
         await db.close()
-        return planning.sent, wlog.sent, w, done
-    planning, wlog, w, done = asyncio.run(run())
+        return planning.sent, wlog.sent, w, done, wlog.views
+    planning, wlog, w, done, views = asyncio.run(run())
+    assert [i.custom_id for i in views[0].children] == [f"results:{WK}"]
     assert planning == []
     assert len(wlog) == 1 and wlog[0][0].startswith("<@&77> 🎬 **Wk 2 · Nov 23–29 2026: ")
-    assert "** · nominated by " in wlog[0][0] and "-# **Round 1:**" in wlog[0][0]
-    assert "won 1–0" not in wlog[0][0] and "#post-watch" not in wlog[0][0]
+    assert "** · nominated by " in wlog[0][0] and "#post-watch" not in wlog[0][0]
+    assert wlog[0][0].endswith("\n-# 🗳️ 1 voter · won outright with 1 of 1 first choice")
+    assert "Round 1" not in wlog[0][0]
     assert [r.id for r in wlog[0][1].roles] == [77]
     assert w["announcement_id"] == w["log_message_id"] == 901
     assert done["state"] == "done" and done["log_message_id"] == 901
@@ -565,3 +574,34 @@ def test_server_yaml_roles_groups_and_buttons(tmp_path):
     bad.write_text(Path("server.yaml").read_text().replace("- key: osu", "- key: main", 1))
     with pytest.raises(setup_server.ConfigError, match="group key 'main'"):
         setup_server.load_config(bad)
+
+
+def test_rounds_reply_and_one_time_log_rewrite(tmp_path):
+    async def run():
+        db, bot = await make(tmp_path)
+        wlog = FakeChannel()
+        bot.config.channels = {"watch_log": 2}
+        bot.weekly.channel = lambda key: wlog if key == "watch_log" else None
+        bot.weekly.refresh_board = lambda: asyncio.sleep(0)
+        await open_week(db, bot)                           # ballot: 1, 3, 4
+        for uid, ranks in ((20, [1]), (21, [1]), (22, [3, 4]), (23, [3, 4]), (24, [4, 3])):
+            await db.set_track_ranking("weekly", uid, ranks)
+        await bot.weekly.close_vote(await db.get_week(WK), local(2026, 11, 22, 23, 59))
+        reply = await bot.weekly.results_text(WK)
+        n = await bot.weekly.refresh_log()
+        again = await bot.weekly.refresh_log()             # once per LOG_VERSION
+        await db.close()
+        return wlog, reply, n, again
+    wlog, reply, n, again = asyncio.run(run())
+    summary = "🗳️ 5 voters · won 3–2 over Film 1 (2001) in round 2"
+    assert wlog.sent[0][0].endswith("\n-# " + summary)
+    assert reply.splitlines()[1:] == [
+        summary,
+        "-# Instant runoff: each round, every ballot counts for its highest-ranked film "
+        "still in the race.",
+        "**Round 1:** Film 1 (2001) 2 · Film 3 (2003) 2 · Film 4 (2004) 1 → Film 4 (2004) out",
+        "**Round 2:** Film 3 (2003) 3 · Film 1 (2001) 2"]
+    assert (n, again) == (1, 0)
+    mid, kw = wlog.edited[0]
+    assert mid == 901 and kw["content"] == wlog.sent[0][0]
+    assert [i.custom_id for i in kw["view"].children] == [f"results:{WK}"]

@@ -32,8 +32,8 @@ import discord
 from .db import utcnow
 from .movies import truncate
 from .pool import PoolService, RankedTrack, display, shared_lock
-from .weekly import (SOLE_NOMINATION, how_picked, instant_runoff, local_midnight, runoff_text,
-                     when, won_text)
+from .weekly import (SOLE_NOMINATION, how_picked, instant_runoff, local_midnight,
+                     results_summary, rounds_text, when, won_text)
 
 if TYPE_CHECKING:
     from .bot import FilmBuffsBot
@@ -154,14 +154,15 @@ class GroupVoteService(RankedTrack):
             log.exception("%s monthly movie: %s failed", self.grp, what)
             return None
 
-    async def _post(self, text: str, what: str, mentions=None):
+    async def _post(self, text: str, what: str, mentions=None, view=None):
         """Group news goes to the group's #watch-log (Phase 26; #chat if it has none yet)."""
         ch = self.channel("watch_log") or self.channel("chat")
         if ch is None:
             return None
+        kwargs = {"view": view} if view else {}
         return await self._safe(ch.send(truncate(text, 2000),
-                                        allowed_mentions=mentions or discord.AllowedMentions.none()),
-                                what)
+                                        allowed_mentions=mentions or discord.AllowedMentions.none(),
+                                        **kwargs), what)
 
     # RankedTrack -----------------------------------------------------------------
     def close_time(self, period: str) -> datetime:
@@ -283,16 +284,16 @@ class GroupVoteService(RankedTrack):
         won, ru, n_rounds = result["winner_votes"], result["runner_up_votes"], len(result["rounds"])
         voters = result["voters"]
         how = won_text(won, ru, n_rounds)
-        names = {t: display(f) for t, f in by_id.items()}
+        names = {t: esc(display(f)) for t, f in by_id.items()}
         await db.update_month(self.grp, month, vote_rounds=json.dumps(result["rounds"]),
                               winner_votes=won, runner_up_votes=ru, total_votes=voters)
         await self._crown(
             row, w, now, how=how,
-            line=(f"Winner of the vote ({how}, {voters} voter{'s' * (voters != 1)}).\n-# Instant "
-                  f"runoff: each round, every ballot counts for its highest-ranked film still in "
-                  f"the race.\n" + runoff_text(result, names)))
+            line="-# " + results_summary(result["rounds"], voters, result["winner"], names),
+            results=True)
 
-    async def _crown(self, row, w, now: datetime, *, how: str, line: str) -> None:
+    async def _crown(self, row, w, now: datetime, *, how: str, line: str,
+                     results: bool = False) -> None:
         """The month's film: it leaves the pool; event in #voice; announced in
         #chat. Its #pre-watch post is left alone."""
         month = row["month"]
@@ -303,13 +304,13 @@ class GroupVoteService(RankedTrack):
         winner = {"tmdb_id": tmdb_id, "title": display(w), "thread_id": w["thread_id"]}
         event = await self._safe(self.create_event(month, winner, now), "create event")
         await db.update_month(self.grp, month, state="picked", event_id=event.id if event else None)
-        msg = await self._safe(self.announce(month, winner, line, event), "announce")
+        msg = await self._safe(self.announce(month, winner, line, event, results), "announce")
         if msg:
             await db.update_month(self.grp, month, announcement_id=msg.id)
         log.info("%s monthly movie %s: %s, %s", self.grp, month, winner["title"], how)
         await self._safe(self.refresh_board(), "board refresh")
 
-    async def announce(self, month: str, winner: dict, line: str, event):
+    async def announce(self, month: str, winner: dict, line: str, event, results: bool = False):
         s = self.sched(month)
         ping, mentions = self.ping()
         start = event.start_time if event else s.discussion
@@ -321,7 +322,24 @@ class GroupVoteService(RankedTrack):
                 f"**{when(start, self.tz)}** {self.where()}."
                 + (f"\n📅 Event: {event.url}" if event else "")
                 + f"\n{line}\n-# The vote for {month_name(nxt)} is open now.")
-        return await self._post(text, "announcement", mentions)
+        from .vote_ui import results_view
+        view = results_view(f"{self.grp}:{month}") if results else None
+        return await self._post(text, "announcement", mentions, view)
+
+    async def results_text(self, month: str) -> str:
+        """The 🗳️ Rounds reply under a group pick: summary and every round's count."""
+        row = await self.bot.db.get_month(self.grp, month)
+        if row is None or not row["vote_rounds"] or not row["winner_tmdb_id"] \
+                or row["winner_votes"] is None:
+            return "There's no vote count for that month."
+        names = {o["tmdb_id"]: esc(display(o))
+                 for o in await self.bot.db.month_options(self.grp, month)}
+        rounds = json.loads(row["vote_rounds"])
+        win = row["winner_tmdb_id"]
+        return (f"🗳️ **{self.group.name} · {month_name(month)}: {names.get(win, win)}**\n"
+                + results_summary(rounds, row["total_votes"] or 0, win, names) + "\n"
+                + "-# Instant runoff: each round, every ballot counts for its highest-ranked "
+                  "film still in the race.\n" + rounds_text(rounds, names))
 
     async def create_event(self, month: str, winner: dict, now: datetime,
                            start: datetime | None = None):

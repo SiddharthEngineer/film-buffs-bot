@@ -28,7 +28,7 @@ from .weekly import WeeklyService
 
 log = logging.getLogger("filmbuffs")
 
-VERSION = "0.22"
+VERSION = "0.23"
 USER_AGENT = f"FilmBuffsBot/{VERSION} (private Discord bot)"
 EXTENSIONS = ["filmbuffs.cogs.movies", "filmbuffs.cogs.spoilers", "filmbuffs.cogs.letterboxd",
               "filmbuffs.cogs.ops", "filmbuffs.cogs.admin", "filmbuffs.cogs.weekly",

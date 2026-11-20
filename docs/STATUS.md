@@ -1,5 +1,7 @@
 # Status (as of 2026-11-20)
 
+> **Vote results button (2026-11-20):** each #watch-log pick shows a one-line vote summary ("🗳️ 5 voters · won 3–2 over Alien (2024) in round 2") and a **🗳️ Rounds** button that privately shows the round-by-round count. Existing lines and the running event were rewritten once at startup. See "Vote results button" at the end.
+
 > **Pick wording (2026-11-20):** the `#watch-log` pick line credits the nominator ("· nominated by Ann") instead of "won 1–0" and drops the "talk about it in its #post-watch post" clause; the event description is two lines, `#pre-watch: Title` and `#post-watch: Title`, each title linking to that forum's post. See "Pick wording" at the end.
 
 > **Board buttons (2026-11-20):** 📋 My nomination is now **📋 Nominate** and comes first: Nominate, Vote, Pings. See "Board buttons" at the end.
@@ -458,3 +460,12 @@ Owner request. Bot v0.22, 247 tests pass.
 - **Event description** (`weekly.event_text`, create and admin edit): `<#pre-watch>: [Title](pre-watch post)` / `<#post-watch>: [Title](post-watch post)`. The location is still the pre-watch post link.
 - Unchanged: the end-of-week fallback log line and `/schedule` still say "won X–Y"; group picks (monthly) are unchanged.
 - **Not checked yet:** how Discord renders a channel mention and a masked link in an event description (owner checks desktop and phone on the next event). The current Wildwood event keeps its old text until it's edited.
+
+## Vote results button (2026-11-20)
+Owner request: the round-by-round count should be one click away, not in the post. Discord has no collapsible text, so a button it is. Bot v0.23, 248 tests pass.
+- **Summary line** (`weekly.results_summary`): `🗳️ N voters · won outright with X of N first choices` (one round, nobody knocked out) or `🗳️ N voters · won X–Y over <runner-up> in round R`, with ` (tie-break)` when the final count was tied.
+- **🗳️ Rounds button** (`vote_ui.ResultsButton`, custom ID `results:<week>` or `results:<group>:<month>`): private reply with the summary, the instant-runoff explainer and `**Round 1:** A 2 · B 2 · C 1 → C out` lines (`weekly.rounds_text`), read from `weeks.vote_rounds` / `months.vote_rounds`. Only picks decided by a vote get it (not a sole nomination or an admin pick). Group buttons check the group role.
+- **The #watch-log line is built from the DB row** (`WeeklyService.log_text`), the same way for the announcement, `backfill_log` and the rewrite.
+- **One-time rewrite** (`WeeklyService.refresh_log`, `bot_meta` `watch_log_version` = 2): at startup, every picked or done week's #watch-log line is edited to the current wording with its button (no new ping), and a still-scheduled or running event gets the new description. Bump `LOG_VERSION` to do it again.
+- **Groups:** group picks in each group's #watch-log use the same summary line and button (none picked yet). Their header line is unchanged.
+- `/info` mentions the button. `runoff_text` is gone.

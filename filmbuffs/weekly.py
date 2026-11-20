@@ -225,17 +225,43 @@ def event_text(pre_ref: str, pre_link: str, post_ref: str, post_link: str | None
     return "\n".join(lines)
 
 
-def runoff_text(result: dict, names: dict[int, str]) -> str:
-    """Round-by-round summary for the pick announcement."""
+# Bump to rewrite every #watch-log pick line (and the running event's text) once.
+LOG_VERSION_KEY = "watch_log_version"
+LOG_VERSION = "2"
+
+
+def _counts(rnd: dict) -> dict[int, int]:
+    """A round's counts with int keys (they come back as strings from JSON)."""
+    return {int(t): n for t, n in rnd["counts"].items()}
+
+
+def results_summary(rounds: list[dict], voters: int, winner: int, names: dict) -> str:
+    """One line: turnout and how the film won."""
+    v = f"🗳️ {voters} voter{'s' * (voters != 1)}"
+    last = _counts(rounds[-1])
+    won = last.get(winner, 0)
+    if len(rounds) == 1 and not rounds[0].get("out"):
+        return f"{v} · won outright with {won} of {voters} first choice{'s' * (voters != 1)}"
+    others = {t: n for t, n in last.items() if t != winner}
+    if not others:
+        return f"{v} · won {won}–0"
+    ru = max(others, key=lambda t: (others[t], t in rounds[-1].get("out", [])))
+    text = f"{v} · won {won}–{others[ru]} over {names.get(ru, ru)}"
+    if len(rounds) > 1:
+        text += f" in round {len(rounds)}"
+    return text + (" (tie-break)" if won == others[ru] else "")
+
+
+def rounds_text(rounds: list[dict], names: dict) -> str:
+    """Every round on one line: `**Round 1:** A 2 · B 2 · C 1 → C out`."""
     lines = []
-    for i, r in enumerate(result["rounds"], 1):
-        counts = sorted(r["counts"].items(), key=lambda kv: (-kv[1], names.get(kv[0], "")))
-        shown = " · ".join(f"{names.get(t, t)} **{n}**" for t, n in counts if n)
-        line = f"**Round {i}:** {shown}"
-        if r["exhausted"]:
+    for i, r in enumerate(rounds, 1):
+        counts = sorted(_counts(r).items(), key=lambda kv: (-kv[1], str(names.get(kv[0], ""))))
+        line = f"**Round {i}:** " + " · ".join(f"{names.get(t, t)} {n}" for t, n in counts if n)
+        if r.get("out"):
+            line += " → " + ", ".join(str(names.get(int(t), t)) for t in r["out"]) + " out"
+        if r.get("exhausted"):
             line += f" ({r['exhausted']} ballot{'s' * (r['exhausted'] != 1)} used up)"
-        if r["out"]:
-            line += "\n-# Out: " + ", ".join(names.get(t, str(t)) for t in r["out"])
         lines.append(line)
     return "\n".join(lines)
 
@@ -451,10 +477,8 @@ class WeeklyService(RankedTrack):
         by_id = {o["tmdb_id"]: o for o in await db.options(week)}
         if len(candidates) == 1:
             w = by_id[candidates[0]["tmdb_id"]]
-            await self._crown(
-                row, w, now, how=SOLE_NOMINATION,
-                line="The only nomination, so no vote.",
-                poll_closed_at=utcnow(), total_votes=len(ballots))
+            await self._crown(row, w, now, how=SOLE_NOMINATION,
+                              poll_closed_at=utcnow(), total_votes=len(ballots))
             return
         result = instant_runoff(list(ballots.values()), candidates, self.bot.config.tie_break)
         if result is None:
@@ -466,17 +490,10 @@ class WeeklyService(RankedTrack):
                              vote_rounds=json.dumps(result["rounds"]))
         w = by_id[result["winner"]]
         won, ru, n_rounds = result["winner_votes"], result["runner_up_votes"], len(result["rounds"])
-        voters = result["voters"]
-        names = {tid: display(o) for tid, o in by_id.items()}
-        how = won_text(won, ru, n_rounds)
-        await self._crown(
-            row, w, now, how=how,
-            line=(f"{voters} voter{'s' * (voters != 1)}. Instant runoff: each round, every "
-                  f"ballot counts for its highest-ranked film still in the race.\n"
-                  + runoff_text(result, names)),
-            winner_votes=won, runner_up_votes=ru)
+        await self._crown(row, w, now, how=won_text(won, ru, n_rounds),
+                          winner_votes=won, runner_up_votes=ru)
 
-    async def _crown(self, row, w, now: datetime, *, how: str, line: str, **fields) -> None:
+    async def _crown(self, row, w, now: datetime, *, how: str, **fields) -> None:
         """Make option row `w` the week's movie: Up Next, event, an announcement in
         #watch-log pinging @Weekly Pings (Phase 19; was #watch-planning),
         state picked. It leaves the pool."""
@@ -490,8 +507,7 @@ class WeeklyService(RankedTrack):
         await self.pool.picked(winner["tmdb_id"])
         await self._safe(self.bot.movies.retag(winner["tmdb_id"]), "retag winner")
         event = await self._safe(self.create_event(week, winner, now), "create event")
-        credit = await self.credit(w["nominated_by"], how)
-        ann_msg = await self.announce(week, winner, credit, event, line)
+        ann_msg = await self.announce(week, event)
         await db.update_week(week, state="picked", event_id=event.id if event else None,
                              announcement_id=ann_msg.id if ann_msg else None,
                              log_message_id=ann_msg.id if ann_msg else None)
@@ -504,19 +520,73 @@ class WeeklyService(RankedTrack):
             return fallback
         return f"nominated by {await member_name(self.bot, user_id)}"
 
-    async def announce(self, week: str, winner: dict, credit: str, event, detail: str = ""):
+    @staticmethod
+    def has_results(row) -> bool:
+        """A vote decided this week's movie (not a sole nomination or an admin pick)."""
+        return bool(row["vote_rounds"]) and not row["override_by"] \
+            and row["winner_votes"] is not None
+
+    async def log_text(self, row, event_url: str | None) -> tuple[str, discord.ui.View | None]:
+        """The #watch-log line for a picked week, from its `weeks` row: who nominated
+        it, the watch window, the event, and a one-line vote summary with a 🗳️ Rounds
+        button for the round-by-round count."""
+        db = self.bot.db
+        week = row["week_start"]
+        s = self.sched(week)
+        movie = await db.get_movie(row["winner_tmdb_id"])
+        title = display(movie) if movie else f"TMDB {row['winner_tmdb_id']}"
+        options = await db.options(week)
+        detail, view = "", None
+        if row["override_by"]:
+            credit = "picked by an admin"
+        else:
+            opt = next((o for o in options if o["tmdb_id"] == row["winner_tmdb_id"]), None)
+            credit = await self.credit(opt["nominated_by"] if opt else None, how_picked(row))
+            if self.has_results(row):
+                names = {o["tmdb_id"]: esc(display(o)) for o in options}
+                detail = results_summary(json.loads(row["vote_rounds"]),
+                                         row["total_votes"] or 0, row["winner_tmdb_id"], names)
+                from .vote_ui import results_view
+                view = results_view(week)
+            elif row["winner_votes"] is None:
+                detail = "The only nomination, so no vote."
+        text = pick_text(date.fromisoformat(week),
+                         self.link(movie, esc(title)) if movie else esc(title), credit,
+                         event_url, when(s.watch_start, self.tz), when(s.watch_end, self.tz),
+                         detail)
+        return text, view
+
+    async def results_text(self, period: str) -> str:
+        """The 🗳️ Rounds reply: the vote summary and every round's count."""
+        row = await self.bot.db.get_week(period)
+        if row is None or not row["winner_tmdb_id"] or not self.has_results(row):
+            return "There's no vote count for that week."
+        names = {o["tmdb_id"]: esc(display(o)) for o in await self.bot.db.options(period)}
+        rounds = json.loads(row["vote_rounds"])
+        week = date.fromisoformat(period)
+        win = row["winner_tmdb_id"]
+        return (f"🗳️ **Wk {week_number(week)} · {date_range(week)} {week.year}: "
+                f"{names.get(win, win)}**\n"
+                + results_summary(rounds, row["total_votes"] or 0, win, names) + "\n"
+                + "-# Instant runoff: each round, every ballot counts for its highest-ranked "
+                  "film still in the race.\n" + rounds_text(rounds, names))
+
+    async def announce(self, week: str, event):
         """The pick, in #watch-log, pinging @Weekly Pings (Phase 19: #watch-planning
         is just the board). This line is also the week's log entry."""
-        s = self.sched(week)
         ping, mentions = role_ping(self.bot, "weekly_ping")
-        text = pick_text(date.fromisoformat(week), self.link(winner, esc(winner["title"])), credit,
-                         event.url if event else None, when(s.watch_start, self.tz),
-                         when(s.watch_end, self.tz), detail)
+        text, view = await self.log_text(await self.bot.db.get_week(week),
+                                         event.url if event else None)
         ch = self.channel("watch_log")
         if ch is None:
             return None
-        return await self._safe(ch.send(truncate(ping + text, 2000), allowed_mentions=mentions),
-                                "announce")
+        kwargs = {"view": view} if view else {}
+        return await self._safe(ch.send(truncate(ping + text, 2000), allowed_mentions=mentions,
+                                        **kwargs), "announce")
+
+    def event_url(self, row) -> str | None:
+        return (f"https://discord.com/events/{self.bot.config.guild_id}/{row['event_id']}"
+                if row["event_id"] else None)
 
     async def backfill_log(self) -> int:
         """Weeks picked before Phase 19 were announced in #watch-planning (since
@@ -526,28 +596,62 @@ class WeeklyService(RankedTrack):
         for row in await self.bot.db.weeks_in_state("picked"):
             if row["log_message_id"] or not row["winner_tmdb_id"]:
                 continue
-            movie = await self.bot.db.get_movie(row["winner_tmdb_id"])
-            if movie is None:
-                continue
-            week = row["week_start"]
-            s = self.sched(week)
-            event_url = (f"https://discord.com/events/{self.bot.config.guild_id}/{row['event_id']}"
-                         if row["event_id"] else None)
-            credit = how_picked(row)
-            if not row["override_by"]:
-                opt = next((o for o in await self.bot.db.options(week)
-                            if o["tmdb_id"] == row["winner_tmdb_id"]), None)
-                credit = await self.credit(opt["nominated_by"] if opt else None, credit)
-            text = pick_text(date.fromisoformat(week), self.link(movie, esc(display(movie))),
-                             credit, event_url, when(s.watch_start, self.tz),
-                             when(s.watch_end, self.tz))
-            msg = await self._log(truncate(text, 2000))
+            text, view = await self.log_text(row, self.event_url(row))
+            ch = self.channel("watch_log")
+            if ch is None:
+                return n
+            kwargs = {"view": view} if view else {}
+            msg = await self._safe(ch.send(truncate(text, 2000),
+                                           allowed_mentions=discord.AllowedMentions.none(),
+                                           **kwargs), "watch-log")
             if msg is None:
                 continue
-            await self.bot.db.update_week(week, log_message_id=msg.id)
-            log.info("Posted the missing #watch-log line for week %s (%s)", week, display(movie))
+            await self.bot.db.update_week(row["week_start"], log_message_id=msg.id)
+            log.info("Posted the missing #watch-log line for week %s", row["week_start"])
             n += 1
         return n
+
+    async def refresh_log(self) -> int:
+        """Once per LOG_VERSION: rewrite every picked or finished week's #watch-log
+        line in the current wording (with its 🗳️ Rounds button) and bring a still
+        upcoming or running event's description up to date. The ping isn't repeated."""
+        db = self.bot.db
+        if await db.get_meta(LOG_VERSION_KEY) == LOG_VERSION:
+            return 0
+        ch = self.channel("watch_log")
+        if ch is None:
+            return 0
+        n = 0
+        for row in await db.weeks_in_state("picked", "done"):
+            if not row["winner_tmdb_id"]:
+                continue
+            if row["log_message_id"]:
+                text, view = await self.log_text(row, self.event_url(row))
+                done = await self._safe(ch.get_partial_message(row["log_message_id"]).edit(
+                    content=truncate(text, 2000), view=view,
+                    allowed_mentions=discord.AllowedMentions.none()), "rewrite log line")
+                n += done is not None
+            if row["state"] == "picked" and row["event_id"]:
+                await self._safe(self.refresh_event(row), "refresh event text")
+        await db.set_meta(LOG_VERSION_KEY, LOG_VERSION)
+        log.info("Rewrote %d #watch-log line(s) in the current wording", n)
+        return n
+
+    async def refresh_event(self, row) -> None:
+        guild = self.bot.get_guild(self.bot.config.guild_id)
+        movie = await self.bot.db.get_movie(row["winner_tmdb_id"])
+        if guild is None or movie is None:
+            return
+        try:
+            event = await guild.fetch_scheduled_event(row["event_id"])
+        except discord.NotFound:
+            return
+        if event.status not in (discord.EventStatus.scheduled, discord.EventStatus.active):
+            return
+        winner = {"tmdb_id": movie["tmdb_id"], "title": display(movie),
+                  "thread_id": movie["thread_id"]}
+        await event.edit(description=truncate(await self.event_description(winner), 1000),
+                         reason="Event text update")
 
     async def strike_log(self, row, why: str) -> None:
         """A pick was replaced or cleared: cross out its #watch-log line."""
@@ -698,7 +802,7 @@ class WeeklyService(RankedTrack):
             if event is None:
                 event = await self._safe(self.create_event(ws, winner, now), "create event")
             await self.strike_log(row, "replaced by an admin pick")
-            ann = await self.announce(ws, winner, "picked by an admin", event)
+            ann = await self.announce(ws, event)
             await db.update_week(ws, event_id=event.id if event else None,
                                  announcement_id=ann.id if ann else None,
                                  log_message_id=ann.id if ann else None)

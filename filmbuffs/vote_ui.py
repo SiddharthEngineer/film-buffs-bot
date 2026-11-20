@@ -427,9 +427,39 @@ class RoleButton(discord.ui.DynamicItem[discord.ui.Button], template=r"role:(?P<
                           "Ping role button")
 
 
+class ResultsButton(discord.ui.DynamicItem[discord.ui.Button], template=rf"results:{PERIOD}"):
+    """🗳️ Rounds under a #watch-log pick: the round-by-round count, privately."""
+    def __init__(self, vid: str):
+        super().__init__(discord.ui.Button(label="Rounds", emoji="🗳️",
+                                           style=discord.ButtonStyle.secondary,
+                                           custom_id=f"results:{vid}"))
+        self.vid = vid
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match: re.Match[str], /):
+        return cls(vote_id(match))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        grp, period = split_vote(self.vid)
+        svc = service(interaction.client, self.vid)
+        if svc is None or not hasattr(svc, "results_text"):
+            await interaction.response.send_message("There's no vote count for that.",
+                                                    ephemeral=True)
+            return
+        if not await check(interaction, grp, svc):
+            return
+        await send_private(interaction, await svc.results_text(period), None)
+
+
+def results_view(vid: str) -> discord.ui.View:
+    view = discord.ui.View(timeout=None)
+    view.add_item(ResultsButton(vid))
+    return view
+
+
 DYNAMIC_ITEMS = (VoteButton, RankSelect, UndoButton, ClearButton, MyNominationsButton,
                  NominationButton, NominateFindButton, NominatePickSelect, NominateHereButton,
-                 PingButton, RoleButton)
+                 PingButton, RoleButton, ResultsButton)
 
 
 def board_buttons(vid: str | None, grp: str | None = None) -> discord.ui.ActionRow:

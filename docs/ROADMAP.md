@@ -354,8 +354,11 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
+## Vote results button (built 2026-11-20; see STATUS.md)
+Owner (2026-11-20): vote results as a one-line summary with a 🗳️ Rounds button for the details, on every pick post; rewrite Wildwood's #watch-log line and event. **Open:** the 📋 Nominate button's color (owner choosing).
+
 ## Pick wording (built 2026-11-20; see STATUS.md)
-Owner (2026-11-20): `#watch-log` pick line says who nominated it, not "won 1–0", and drops the #post-watch clause; event description is `#pre-watch: Title` / `#post-watch: Title` with links. **Open:** how to report ranked-choice results (proposal sent to the owner).
+Owner (2026-11-20): `#watch-log` pick line says who nominated it, not "won 1–0", and drops the #post-watch clause; event description is `#pre-watch: Title` / `#post-watch: Title` with links. Results format settled in "Vote results button".
 
 ## Board buttons (built 2026-11-20; see STATUS.md)
 Owner (2026-11-20): "My nomination" → "Nominate", to the left of "Vote", so they're in order and consistent.

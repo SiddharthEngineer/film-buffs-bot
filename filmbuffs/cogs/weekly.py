@@ -161,6 +161,10 @@ class Weekly(commands.Cog):
             await self.bot.weekly.backfill_log()
         except Exception:
             log.exception("Backfilling #watch-log failed")
+        try:
+            await self.bot.weekly.refresh_log()
+        except Exception:
+            log.exception("Rewriting #watch-log lines failed")
 
     def _context(self, interaction: discord.Interaction):
         """(pool, group vote or None, error) for the channel the command was used in."""

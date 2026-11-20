@@ -9,7 +9,8 @@ from zoneinfo import ZoneInfo
 from filmbuffs.db import Database
 from filmbuffs.pool import PoolService
 from filmbuffs.weekly import (Schedule, WeeklyService, date_range, instant_runoff,
-                              how_picked, log_line, next_action, option_label, ordinal, runoff_text,
+                              how_picked, log_line, next_action, option_label, ordinal, results_summary,
+                              rounds_text,
                               weeks_to_create, when)
 
 TZ = ZoneInfo("America/Chicago")
@@ -163,12 +164,24 @@ def test_irv_single_voter_and_duplicates_ignored():
     assert r["winner"] == 2 and r["voters"] == 1 and r["winner_votes"] == 1
 
 
-def test_runoff_text():
+def test_results_summary_and_rounds_text():
+    names = {1: "A", 2: "B", 3: "C"}
     ballots = [[1]] * 4 + [[2, 3]] * 3 + [[3, 2]] * 2
     r = instant_runoff(ballots, [cand(1), cand(2), cand(3)], ORDER)
-    text = runoff_text(r, {1: "A", 2: "B", 3: "C"})
-    assert text.splitlines() == ["**Round 1:** A **4** · B **3** · C **2**", "-# Out: C",
-                                 "**Round 2:** B **5** · A **4**"]
+    assert results_summary(r["rounds"], r["voters"], r["winner"], names) == \
+        "🗳️ 9 voters · won 5–4 over A in round 2"
+    assert rounds_text(r["rounds"], names).splitlines() == [
+        "**Round 1:** A 4 · B 3 · C 2 → C out", "**Round 2:** B 5 · A 4"]
+    outright = instant_runoff([[1]] * 3 + [[2]], [cand(1), cand(2)], ORDER)
+    assert results_summary(outright["rounds"], 4, 1, names) == \
+        "🗳️ 4 voters · won outright with 3 of 4 first choices"
+    tie = instant_runoff([[1], [2]], [cand(1), cand(2)], ORDER)
+    loser = 2 if tie["winner"] == 1 else 1
+    assert results_summary(tie["rounds"], 2, tie["winner"], names) == \
+        f"🗳️ 2 voters · won 1–1 over {names[loser]} (tie-break)"
+    # Stored rounds come back from JSON with string keys.
+    stored = json.loads(json.dumps(r["rounds"]))
+    assert results_summary(stored, 9, 2, names) == "🗳️ 9 voters · won 5–4 over A in round 2"
 
 
 # ------------------------------------------------------------------ database
