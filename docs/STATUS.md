@@ -1,5 +1,7 @@
 # Status (as of 2026-11-20)
 
+> **Button tweaks (2026-11-20):** the results button is now **🗳️ See Voting Results**; 📋 **Nominate** is blurple like Vote. See "Button tweaks" at the end.
+
 > **Vote results button (2026-11-20):** each #watch-log pick shows a one-line vote summary ("🗳️ 5 voters · won 3–2 over Alien (2024) in round 2") and a **🗳️ Rounds** button that privately shows the round-by-round count. Existing lines and the running event were rewritten once at startup. See "Vote results button" at the end.
 
 > **Pick wording (2026-11-20):** the `#watch-log` pick line credits the nominator ("· nominated by Ann") instead of "won 1–0" and drops the "talk about it in its #post-watch post" clause; the event description is two lines, `#pre-watch: Title` and `#post-watch: Title`, each title linking to that forum's post. See "Pick wording" at the end.
@@ -469,3 +471,9 @@ Owner request: the round-by-round count should be one click away, not in the pos
 - **One-time rewrite** (`WeeklyService.refresh_log`, `bot_meta` `watch_log_version` = 2): at startup, every picked or done week's #watch-log line is edited to the current wording with its button (no new ping), and a still-scheduled or running event gets the new description. Bump `LOG_VERSION` to do it again.
 - **Groups:** group picks in each group's #watch-log use the same summary line and button (none picked yet). Their header line is unchanged.
 - `/info` mentions the button. `runoff_text` is gone.
+
+## Button tweaks (2026-11-20)
+Owner request. Bot v0.24, 248 tests pass.
+- The #watch-log results button reads **🗳️ See Voting Results** (was 🗳️ Rounds; custom ID `results:…` unchanged, so nothing old breaks). `LOG_VERSION` 3 relabels the existing Wildwood line once at startup. `/info` says the new name.
+- 📋 **Nominate** is `primary` (blurple), like 🗳️ Vote, on every board (main and groups); 🔔 Pings stays grey. Boards redraw on the first refresh after a restart.
+- Discord button colors are only blurple (primary), grey (secondary), green (success) and red (danger); link buttons are grey.

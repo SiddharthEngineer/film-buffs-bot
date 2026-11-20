@@ -227,7 +227,7 @@ def event_text(pre_ref: str, pre_link: str, post_ref: str, post_link: str | None
 
 # Bump to rewrite every #watch-log pick line (and the running event's text) once.
 LOG_VERSION_KEY = "watch_log_version"
-LOG_VERSION = "2"
+LOG_VERSION = "3"
 
 
 def _counts(rnd: dict) -> dict[int, int]:
@@ -528,7 +528,7 @@ class WeeklyService(RankedTrack):
 
     async def log_text(self, row, event_url: str | None) -> tuple[str, discord.ui.View | None]:
         """The #watch-log line for a picked week, from its `weeks` row: who nominated
-        it, the watch window, the event, and a one-line vote summary with a 🗳️ Rounds
+        it, the watch window, the event, and a one-line vote summary with a 🗳️ See Voting Results
         button for the round-by-round count."""
         db = self.bot.db
         week = row["week_start"]
@@ -557,7 +557,7 @@ class WeeklyService(RankedTrack):
         return text, view
 
     async def results_text(self, period: str) -> str:
-        """The 🗳️ Rounds reply: the vote summary and every round's count."""
+        """The 🗳️ See Voting Results reply: the vote summary and every round's count."""
         row = await self.bot.db.get_week(period)
         if row is None or not row["winner_tmdb_id"] or not self.has_results(row):
             return "There's no vote count for that week."
@@ -613,7 +613,7 @@ class WeeklyService(RankedTrack):
 
     async def refresh_log(self) -> int:
         """Once per LOG_VERSION: rewrite every picked or finished week's #watch-log
-        line in the current wording (with its 🗳️ Rounds button) and bring a still
+        line in the current wording (with its 🗳️ See Voting Results button) and bring a still
         upcoming or running event's description up to date. The ping isn't repeated."""
         db = self.bot.db
         if await db.get_meta(LOG_VERSION_KEY) == LOG_VERSION:

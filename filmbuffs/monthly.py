@@ -327,7 +327,7 @@ class GroupVoteService(RankedTrack):
         return await self._post(text, "announcement", mentions, view)
 
     async def results_text(self, month: str) -> str:
-        """The 🗳️ Rounds reply under a group pick: summary and every round's count."""
+        """The 🗳️ See Voting Results reply under a group pick: summary and every round's count."""
         row = await self.bot.db.get_month(self.grp, month)
         if row is None or not row["vote_rounds"] or not row["winner_tmdb_id"] \
                 or row["winner_votes"] is None:

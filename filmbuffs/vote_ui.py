@@ -191,7 +191,7 @@ class MyNominationsButton(discord.ui.DynamicItem[discord.ui.Button],
                           template=r"noms:" + GRP + r"show"):
     def __init__(self, grp: str | None = None):
         super().__init__(discord.ui.Button(label="Nominate", emoji="📋",
-                                           style=discord.ButtonStyle.secondary,
+                                           style=discord.ButtonStyle.primary,
                                            custom_id=f"{_noms(grp)}show"))
         self.grp = grp
 
@@ -428,9 +428,9 @@ class RoleButton(discord.ui.DynamicItem[discord.ui.Button], template=r"role:(?P<
 
 
 class ResultsButton(discord.ui.DynamicItem[discord.ui.Button], template=rf"results:{PERIOD}"):
-    """🗳️ Rounds under a #watch-log pick: the round-by-round count, privately."""
+    """🗳️ See Voting Results under a #watch-log pick: the round-by-round count, privately."""
     def __init__(self, vid: str):
-        super().__init__(discord.ui.Button(label="Rounds", emoji="🗳️",
+        super().__init__(discord.ui.Button(label="See Voting Results", emoji="🗳️",
                                            style=discord.ButtonStyle.secondary,
                                            custom_id=f"results:{vid}"))
         self.vid = vid
