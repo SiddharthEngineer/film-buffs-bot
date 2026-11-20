@@ -1,6 +1,6 @@
 """Weekly and group monthly picks: /nominate, /vote, /schedule, /watchlist show|clear,
 the ranked-vote buttons and the 30 s tick. /nominate and /vote open the same private
-views as the board's 📋 My nomination and 🗳️ Vote buttons (Phase 20).
+views as the board's 📋 Nominate and 🗳️ Vote buttons (Phase 20).
 
 The vote commands act on the channel's context: in a private group's category
 (Phase 12) they use that group's pool and monthly vote; anywhere else, the
@@ -210,7 +210,7 @@ class Weekly(commands.Cog):
             return
         here = await here_film(interaction)
         if not title:
-            # Same private view as the board's 📋 My nomination button.
+            # Same private view as the board's 📋 Nominate button.
             text, view = await pool.my_view(interaction.user.id, here=here)
             await send_private(interaction, text, view)
             return

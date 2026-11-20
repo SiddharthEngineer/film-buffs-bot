@@ -453,7 +453,7 @@ def test_vote_ids_carry_the_group():
     from filmbuffs.vote_ui import PingButton, board_buttons
     assert PingButton().item.custom_id == "pings:main"
     assert [c.custom_id for c in board_buttons("osu:2026-12", "osu").children] == [
-        "vote:osu:2026-12", "noms:osu:show", "pings:osu"]
+        "noms:osu:show", "vote:osu:2026-12", "pings:osu"]
     assert [c.custom_id for c in board_buttons(None).children] == ["noms:show", "pings:main"]
     for cls, cid, want in ((VoteButton, "vote:osu:2026-12", "osu"),
                            (VoteButton, "vote:2026-11-23", None),

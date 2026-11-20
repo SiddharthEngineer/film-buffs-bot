@@ -354,6 +354,9 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
+## Board buttons (built 2026-11-20; see STATUS.md)
+Owner (2026-11-20): "My nomination" → "Nominate", to the left of "Vote", so they're in order and consistent.
+
 ## Phase 26: reminder cleanup, #watch-log placement, group #watch-log, OSU/Canton (built 2026-11-20; see STATUS.md)
 Owner (2026-11-20): delete the Phase 25 reminders from `#general` / `#chat` once each ballot closes; put `#watch-log` next to `#watch-planning`; give each group its own `#watch-log`; rename OSU to OSU/Canton with a 🏈 instead of 🎓.
 Chosen in the build: group picks, skips and clears move from the group's `#chat` to its new `#watch-log` (as the main `#watch-log` works); the group's roles are renamed with it (OSU/Canton, OSU/Canton Pings).

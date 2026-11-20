@@ -274,7 +274,7 @@ class PoolService:
 
     async def my_view(self, user_id: int, notice: str | None = None, here=None,
                       results: list[tuple[str, str]] | None = None):
-        """(text, view) for the private nomination view: /nominate and 📋 My nomination.
+        """(text, view) for the private nomination view: /nominate and the board's 📋 Nominate.
         `here`: the movie row of the post it's opened in (offers "Nominate <it>");
         `results`: TMDB (label, value) matches to pick from after a search."""
         text = await self._summary(user_id)
@@ -349,7 +349,7 @@ class RankedTrack:
         left = [e for e in films if e["tmdb_id"] not in mine]
         new = {e["tmdb_id"] for e in left if last and e["joined_at"] > last}
         if not films:
-            status = "*No films on the ballot yet. **My nomination** on the board adds one.*"
+            status = "*No films on the ballot yet. **Nominate** on the board adds one.*"
         elif not mine:
             status = "*Nothing ranked yet. Pick your 1st choice below.*"
         elif left:
@@ -459,7 +459,7 @@ class RankedTrack:
         body = fit_lines(rows, BOARD_TEXT - len(heading) - len(details) - len(footer) - 40)
         if period:
             films_text = (f"### 🎞️ On the ballot ({len(films)})\n{body}" if films else
-                          "### 🎞️ On the ballot\n*No films yet. Be the first: click **My nomination**.*")
+                          "### 🎞️ On the ballot\n*No films yet. Be the first: click **Nominate**.*")
         else:
             films_text = ""
         parts: list = [discord.ui.TextDisplay(f"{heading}\n{details}".strip())]

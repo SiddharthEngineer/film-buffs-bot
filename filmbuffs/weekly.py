@@ -407,7 +407,7 @@ class WeeklyService(RankedTrack):
         return row["ballot_message_id"] if row else None
 
     def board_header(self, period: str | None, voters: int) -> tuple[str, str, str]:
-        footer = ("-# **My nomination** to nominate a film, then **Vote** to rank. "
+        footer = ("-# **Nominate** a film, then **Vote** to rank. "
                   "**/help** explains how it works.")
         if period is None:
             return ("## 🎬 Weekly vote", "No vote is open right now.", footer)

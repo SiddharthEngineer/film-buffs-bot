@@ -1,5 +1,7 @@
 # Status (as of 2026-11-20)
 
+> **Board buttons (2026-11-20):** 📋 My nomination is now **📋 Nominate** and comes first: Nominate, Vote, Pings. See "Board buttons" at the end.
+
 > **Phase 26 (2026-11-20):** reminders are deleted when their vote closes; `#watch-log` sits under `#watch-planning` in 🎬 Film Buffs; each group has its own read-only `#watch-log` for its picks; OSU is now **OSU/Canton** (🏈). See "Phase 26" at the end.
 
 > **Phase 25 (2026-11-20):** 9 AM CT nominate (Thursday / 3 days before a group's close) and vote (last day) reminders, @mentioning only Pings members who still need to act. See "Phase 25" at the end.
@@ -441,3 +443,9 @@ Owner request (2026-11-20). 244 unit tests pass. Bot v0.20.
 
 - **setup_server.py channel order fix:** positions are one sequence per type group across the server; numbering each category from 0 collided with other categories (live: `#watch-log` landed before `#watch-planning`). Now any out-of-order managed category renumbers the whole group. Regression test in `tests/test_reminders.py`.
 - **Live (2026-11-20):** deployed (v0.20). `setup_server.py --apply`: OSU roles renamed to OSU/Canton and OSU/Canton Pings, category → 🏈 OSU/Canton, topics, the main `#watch-log` moved under `#watch-planning`, OSU/Canton's `#watch-log` created. The channel order only took after the two `setup_server.py` fixes above (it had been failing silently on the unknown `server-hub` channel). A fresh `--plan` shows no changes left. Bot restarted after the apply, no errors in the log.
+
+## Board buttons (2026-11-20)
+Owner: rename "My nomination" to "Nominate" and put it left of "Vote", so the buttons follow the order you use them. Bot v0.21, 245 tests pass.
+- `vote_ui.board_buttons`: 📋 **Nominate**, 🗳️ Vote (while a vote is open), 🔔 Pings. Same custom IDs (`noms:[grp:]show`), so nothing old breaks; the boards re-render on the next tick because their footer text changed.
+- Every member-facing mention says **Nominate**: board footers and empty-ballot lines, the ranking picker, the nominate reminder, `/info`, both `#watch-planning` topics (main in `server.yaml`, groups in `groups.py`), the welcome page, README.
+

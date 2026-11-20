@@ -1,7 +1,7 @@
 """Buttons and private pickers for the ranked votes and nominations (Phases 5R, 10).
 
 Each board (the one message in #watch-planning: 🎬 weekly, or 🌙 monthly in each
-private group's #watch-planning) has a 🗳️ Vote button, a 📋 My nomination button and
+private group's #watch-planning) has a 📋 Nominate button, a 🗳️ Vote button and
 a 🔔 Pings button (toggles @Weekly Pings, or the group's opt-in ping role). Vote sends the member a private
 (ephemeral) picker: one dropdown with the films they haven't ranked yet, so
 each pick becomes their next rank, plus Undo last / Clear. Discord can't fit
@@ -190,7 +190,7 @@ def _noms(grp: str | None) -> str:
 class MyNominationsButton(discord.ui.DynamicItem[discord.ui.Button],
                           template=r"noms:" + GRP + r"show"):
     def __init__(self, grp: str | None = None):
-        super().__init__(discord.ui.Button(label="My nomination", emoji="📋",
+        super().__init__(discord.ui.Button(label="Nominate", emoji="📋",
                                            style=discord.ButtonStyle.secondary,
                                            custom_id=f"{_noms(grp)}show"))
         self.grp = grp
@@ -433,11 +433,12 @@ DYNAMIC_ITEMS = (VoteButton, RankSelect, UndoButton, ClearButton, MyNominationsB
 
 
 def board_buttons(vid: str | None, grp: str | None = None) -> discord.ui.ActionRow:
-    """The board's buttons: 🗳️ Vote (only while a vote is open), 📋 My nomination, 🔔 Pings."""
+    """The board's buttons, in the order you use them: 📋 Nominate, 🗳️ Vote (only while
+    a vote is open), 🔔 Pings."""
     row = discord.ui.ActionRow()
+    row.add_item(MyNominationsButton(grp))
     if vid:
         row.add_item(VoteButton(vid))
-    row.add_item(MyNominationsButton(grp))
     row.add_item(PingButton(grp))
     return row
 
@@ -457,7 +458,7 @@ def picker_view(vid: str, choices: list[tuple], next_rank: int,
 
 def nominations_view(has: bool, grp: str | None = None, here=None,
                      results: list[tuple[str, str]] | None = None) -> discord.ui.View:
-    """The private nomination view (/nominate, 📋 My nomination): search results to
+    """The private nomination view (/nominate, 📋 Nominate): search results to
     pick from (after a search), 🔎 Nominate a film / Change nomination, 🎬 Nominate
     <this film> (inside a movie post, `here` = its row), 🗑️ Withdraw."""
     view = discord.ui.View(timeout=600)

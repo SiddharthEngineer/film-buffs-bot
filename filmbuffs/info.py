@@ -36,7 +36,7 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
     """(title, text) per section. `groups`: names of the member's private groups."""
     sections = [
         ("🗳️ The weekly movie", "\n".join([
-            "**Nominating.** In " + ch("watch_planning") + ", click **My nomination** (or use "
+            "**Nominating.** In " + ch("watch_planning") + ", click **Nominate** (or use "
             + cmd("nominate") + ") to see your nomination and pick a film. Everyone gets "
             "**one**; picking another swaps it. Several people can nominate the same film, and "
             "the board lists them all. Any film tagged Backlog or Watched (solo) can be "
@@ -116,7 +116,7 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
         sections.insert(1, (f"🌙 {name}'s monthly movie", "\n".join([
             f"{name} has its own private category with its own **monthly** vote, completely "
             "separate from the weekly one, with its own nominations. In the group's channels, "
-            "**My nomination**, **Vote**, " + cmd("nominate") + ", " + cmd("vote") + " and "
+            "**Nominate**, **Vote**, " + cmd("nominate") + ", " + cmd("vote") + " and "
             + cmd("schedule") + " act on the group's vote. It closes on the **last day of the "
             "month**; the pick is announced in the group's #watch-log (pinging its Pings role), "
             "watched during that month and discussed in the group's voice channel on the 1st. "

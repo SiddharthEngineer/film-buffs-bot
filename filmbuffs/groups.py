@@ -88,7 +88,7 @@ def expand(cfg: dict) -> None:
             "channels": [
                 {"key": channel_key(key, "watch_planning"), "name": "watch-planning",
                  "topic": (f"{g['name']}'s monthly movie. Voting here is completely independent "
-                           f"from the server's weekly vote. Click My nomination on the 🌙 board to "
+                           f"from the server's weekly vote. Click Nominate on the 🌙 board to "
                            f"nominate a film (one each), then Vote and rank them. The vote closes on the last day of the month; "
                            f"the discussion is in the voice channel on the 1st. Commands only "
                            f"here: chat in #chat. Only {role_name} members can see this category."),

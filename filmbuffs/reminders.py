@@ -77,7 +77,7 @@ def reminder_text(kind: str, svc: "RankedTrack", mentions: str, closes: str, boa
     where = f"[the board]({board})" if board else "the board in #watch-planning"
     if kind == "nominate":
         return (f"📋 {mentions}\nYou haven't nominated a film for {what} yet. Voting closes "
-                f"**{closes}**: click **My nomination** on {where} to add one.\n"
+                f"**{closes}**: click **Nominate** on {where} to add one.\n"
                 f"-# You're getting this because you have 🔔 Pings on; turn them off on the board.")
     return (f"🗳️ {mentions}\nLast day to vote in {what}: it closes **{closes}** and you "
             f"haven't ranked your top {TOP} yet. Click **Vote** on {where}.\n"

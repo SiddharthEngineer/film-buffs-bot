@@ -133,7 +133,7 @@ def test_board_lists_every_nominator_and_has_the_buttons(tmp_path, monkeypatch):
     assert "**[Film 2 (2002)](https://discord.com/channels/1/102)**\n-# nominated by Siddharth and Nikhil" in text
     assert "nominated by Logan\\_Mart" in text       # markdown escaped
     assert "<@" not in text                           # no raw mentions
-    assert buttons(view) == [f"vote:{WK}", "noms:show", "pings:main"]
+    assert buttons(view) == ["noms:show", f"vote:{WK}", "pings:main"]   # Nominate, then Vote
     assert "No vote is open right now." in texts(closed)
     assert buttons(closed) == ["noms:show", "pings:main"]
     assert isinstance(view.children[0], discord.ui.Container)
