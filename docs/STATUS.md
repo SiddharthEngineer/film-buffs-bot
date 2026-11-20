@@ -419,7 +419,7 @@ Owner (2026-11-19): history comes only from the export (`/letterboxd sync`); the
 - **Text:** `#welcome` (server.yaml), `/info`'s 📒 Letterboxd section and the `/letterboxd link` reply say the watchlist is read at link time and daily, and that sync is how you bring in history from before you linked.
 - **Live (2026-11-19):** deployed 18:01 UTC; `setup_server.py --apply` edited the `#welcome` page (1 change; a fresh plan shows none left). The startup catch-up ran at 18:04: all 5 linked watchlists read (161 films, 159 matched), 0 failed. Next run 06:00 CT.
 
-## Phase 25: nominate and vote reminders ✅ (built 2026-11-20)
+## Phase 25: nominate and vote reminders ✅ (deployed 2026-11-20 20:00 UTC; awaiting the first reminders)
 Owner request (2026-11-20); decisions in ROADMAP "Phase 25". 242 unit tests pass (new `tests/test_reminders.py`). Bot v0.19.
 - **`filmbuffs/reminders.py`**, run from the 30 s weekly tick for the weekly vote and each group's: two reminders per open vote at **9:00 AM CT** (`config.tz`). 📋 **Nominate**: three days before the vote's last day (weekly: Thursday; monthly: the 27th/28th, the 25th in a 28-day February) to members with **no eligible nomination** in that pool. 🗳️ **Vote**: on the last day (Sunday; the month's last day) to members whose ranking doesn't cover their **top 3** on today's ballot, or every film if there are fewer than 3. Films that left the ballot don't count; carried-over nominations and rankings do.
 - **Who:** members with the ping role (`@Weekly Pings`, or the group's Pings role plus the group role), no bots. **Where:** one message (≤ 50 mentions each) in `#general` for the weekly vote, the group's `#chat` for a group, @mentioning only those members (`allowed_mentions` users only, no role or @everyone), linking the board. Nothing is posted if nobody needs it, and no vote reminder for an empty ballot.
@@ -427,3 +427,4 @@ Owner request (2026-11-20); decisions in ROADMAP "Phase 25". 242 unit tests pass
 - **Text:** `/info` 📚 More → Pings explains the reminders; README.
 - **Checked in the docs (DISCORD_NOTES):** Create DM warning against DMing a whole server; `allowed_mentions.users` max 100.
 
+- **Live (2026-11-20):** deployed 20:00 UTC, no errors in the log. Nothing was sent at deploy (Thursday's weekly nominate time is past the catch-up window). First reminders: weekly vote **Sun Nov 22, 9 AM CT** in `#general`; OSU nominate **Fri Nov 27** and vote **Mon Nov 30**, 9 AM CT, in OSU's `#chat`; weekly nominate **Thu Nov 26**.
