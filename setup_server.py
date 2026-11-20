@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import traceback
 import copy
 import hashlib
 import json
@@ -1028,6 +1029,10 @@ async def main() -> int:
         except ConfigError as e:
             print(f"server.yaml error: {e}")
             result["code"] = 2
+        except Exception:
+            # discord.py would log this to an unconfigured logger, i.e. nowhere.
+            traceback.print_exc()
+            result["code"] = 1
         finally:
             await client.close()
 
