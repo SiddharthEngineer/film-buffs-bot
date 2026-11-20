@@ -567,27 +567,44 @@ class Reconciler:
         managed_cats = [by_id[i] for i in
                         (self.state.get(f"category:{c['key']}") for c in self.cfg["categories"])
                         if i in by_id]
+        cat_seq = cats
         if self.cfg.get("managed_categories_first", True):
             want = managed_cats + [c for c in cats if c not in managed_cats]
+            cat_seq = want
             if [c.id for c in want] != [c.id for c in cats]:
                 payload += [{"id": c.id, "position": i} for i, c in enumerate(want)]
                 desc.append("categories: " + " | ".join(c.name for c in want))
 
-        for cat in self.cfg["categories"]:
-            cat_id = self.state.get(f"category:{cat['key']}")
-            if cat_id not in by_id:
-                continue
-            # Discord sorts text-like and voice channels as separate groups.
-            for group in (TEXTLIKE, (discord.ChannelType.voice, discord.ChannelType.stage_voice)):
-                inside = sorted((c for c in channels if getattr(c, "category_id", None) == cat_id
-                                 and c.type in group), key=key_of)
-                managed = [by_id[i] for i in
-                           (self.state.get(f"channel:{c['key']}") for c in cat["channels"])
-                           if i in by_id and by_id[i] in inside]
-                want = managed + [c for c in inside if c not in managed]
-                if [c.id for c in want] != [c.id for c in inside]:
-                    payload += [{"id": c.id, "position": i} for i, c in enumerate(want)]
-                    desc.append(f"{cat['name']}: " + ", ".join(c.name for c in want))
+        # Channel positions are one sequence per type group across the whole server
+        # (not per category): numbering each category from 0 collides with other
+        # categories and Discord reshuffles ties by ID (seen live 2026-11-20). So when
+        # any managed category is out of order, renumber that whole type group.
+        cat_order = {c.id: i for i, c in enumerate(cat_seq)}
+        spec = {self.state.get(f"category:{c['key']}"): c for c in self.cfg["categories"]}
+        # Discord sorts text-like and voice channels as separate groups.
+        for group in (TEXTLIKE, (discord.ChannelType.voice, discord.ChannelType.stage_voice)):
+            members = [c for c in channels
+                       if not isinstance(c, discord.CategoryChannel) and c.type in group]
+            wrong = False
+            ordered: dict[int | None, list] = {}
+            for cid in [None, *sorted(cat_order, key=cat_order.get)]:
+                inside = sorted((c for c in members if getattr(c, "category_id", None) == cid),
+                                key=key_of)
+                cat = spec.get(cid) if cid is not None else None
+                if cat is not None:
+                    managed = [by_id[i] for i in
+                               (self.state.get(f"channel:{c['key']}") for c in cat["channels"])
+                               if i in by_id and by_id[i] in inside]
+                    want_in = managed + [c for c in inside if c not in managed]
+                    if [c.id for c in want_in] != [c.id for c in inside]:
+                        wrong = True
+                        desc.append(f"{cat['name']}: " + ", ".join(c.name for c in want_in))
+                    inside = want_in
+                ordered[cid] = inside
+            if wrong:
+                flat = [c for cs in ordered.values() for c in cs]
+                flat += [c for c in members if c not in flat]      # categories not listed
+                payload += [{"id": c.id, "position": i} for i, c in enumerate(flat)]
         return payload, desc
 
     def plan_positions(self) -> None:

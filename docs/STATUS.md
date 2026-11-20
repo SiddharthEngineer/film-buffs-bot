@@ -439,3 +439,4 @@ Owner request (2026-11-20). 244 unit tests pass. Bot v0.20.
 - **OSU → OSU/Canton**, category 🎓 → 🏈 (key `osu` unchanged, so IDs, pool, rankings and months stay). The roles follow the name: `OSU` → `OSU/Canton`, `OSU Pings` → `OSU/Canton Pings` (same role IDs, members keep them).
 - **Text:** `/info` and README say group picks are announced in the group's `#watch-log`.
 
+- **setup_server.py channel order fix:** positions are one sequence per type group across the server; numbering each category from 0 collided with other categories (live: `#watch-log` landed before `#watch-planning`). Now any out-of-order managed category renumbers the whole group. Regression test in `tests/test_reminders.py`.

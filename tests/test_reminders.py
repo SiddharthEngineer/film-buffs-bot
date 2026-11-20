@@ -176,3 +176,54 @@ def test_group_pick_goes_to_its_watch_log(tmp_path):
     planning, wlog, chat = asyncio.run(run())
     assert planning == [] and chat == []
     assert wlog[0][0].startswith("<@&88> 🌙 **OSU's movie for December 2026")
+
+
+def test_channel_positions_are_one_sequence_across_categories():
+    """Phase 26: the live positions that per-category numbering couldn't fix."""
+    import discord
+    import setup_server
+
+    def cat(cid, pos, name):
+        c = object.__new__(discord.CategoryChannel)
+        c.id, c.position, c.name = cid, pos, name
+        return c
+
+    T, V = discord.ChannelType.text, discord.ChannelType.voice
+    ch = lambda cid, cat_id, pos, name, t=T: SimpleNamespace(id=cid, category_id=cat_id,
+                                                            position=pos, name=name, type=t)
+    cats = [cat(1, 0, "🎬 Film Buffs"), cat(2, 1, "📚 More"), cat(3, 2, "🏈 OSU/Canton")]
+    chans = cats + [
+        ch(10, 1, 0, "welcome"), ch(11, 1, 1, "general"), ch(14, 1, 1, "watch-log"),
+        ch(12, 1, 2, "watch-planning"), ch(13, 1, 0, "Voice", V),
+        ch(20, 2, 0, "letterboxd-feed"), ch(21, 2, 2, "ideas"),
+        ch(30, 3, 11, "watch-planning"), ch(31, 3, 12, "chat"), ch(33, 3, 14, "watch-log"),
+        ch(32, 3, 2, "voice", V), ch(99, None, 0, "server-hub")]
+    cfg = {"managed_categories_first": True, "categories": [
+        {"key": "info", "name": "🎬 Film Buffs", "channels": [
+            {"key": "welcome"}, {"key": "general"}, {"key": "watch_planning"},
+            {"key": "watch_log"}, {"key": "watch_party"}]},
+        {"key": "recap", "name": "📚 More", "channels": [{"key": "letterboxd_feed"},
+                                                         {"key": "ideas"}]},
+        {"key": "group_osu", "name": "🏈 OSU/Canton", "channels": [
+            {"key": "osu_watch_planning"}, {"key": "osu_watch_log"}, {"key": "osu_chat"},
+            {"key": "osu_voice"}]}]}
+    ids = {"category:info": 1, "category:recap": 2, "category:group_osu": 3,
+           "channel:welcome": 10, "channel:general": 11, "channel:watch_planning": 12,
+           "channel:watch_log": 14, "channel:watch_party": 13, "channel:letterboxd_feed": 20,
+           "channel:ideas": 21, "channel:osu_watch_planning": 30, "channel:osu_watch_log": 33,
+           "channel:osu_chat": 31, "channel:osu_voice": 32}
+    r = object.__new__(setup_server.Reconciler)
+    r.cfg, r.state = cfg, SimpleNamespace(get=ids.get)
+    payload, _ = r.desired_positions(chans)
+    pos = {p["id"]: p["position"] for p in payload}
+    for c in chans:
+        if c.id in pos:
+            c.position = pos[c.id]
+    order = lambda cid: [c.name for c in sorted(
+        (c for c in chans if getattr(c, "category_id", "x") == cid and c.type == T),
+        key=lambda c: (c.position, c.id))]
+    assert order(1) == ["welcome", "general", "watch-planning", "watch-log"]
+    assert order(3) == ["watch-planning", "watch-log", "chat"]
+    texts = sorted(pos[c.id] for c in chans if c.id in pos and getattr(c, "type", None) == T)
+    assert texts == list(range(len(texts)))                     # one server-wide sequence
+    assert r.desired_positions(chans)[0] == []                  # converged
