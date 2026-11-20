@@ -491,3 +491,4 @@ Owner: nobody should have to run commands; put Letterboxd link/sync and the ping
 - `/info` mentions the buttons next to `/letterboxd link`, `/letterboxd sync` and 🔔 Pings. The slash commands stay.
 - **Not verified:** that followed forum posts still notify under "Only @mentions" (Discord's help center blocks automated readers), and the File Upload modal on phones (the docs don't mention client support). Owner to try both buttons on desktop and phone.
 
+- **Live (2026-11-20):** deployed v0.25 (21:58 UTC, clean start); `setup_server.py --apply` edited the `#welcome` page in place (1 change); a fresh plan shows none left. Clicks not yet tried by the owner.
