@@ -50,6 +50,8 @@ Things checked against current docs or live tests while building. Re-check anyth
 - **Default notifications** (checked 2026-11-18, guild resource): `default_message_notifications` 0 = ALL_MESSAGES, 1 = ONLY_MENTIONS ("members will receive notifications only for messages that @mention them by default"); Modify Guild needs MANAGE_GUILD. The docs don't say how it applies to members who already changed their own settings. The owner sets it by hand.
 - **Per-member notification settings** (including how followed forum posts notify) aren't in the bot API. support.discord.com returns 403 to automated readers, so the help-center defaults weren't checked.
 - **Server Members intent** (checked 2026-11-18, gateway): GUILD_MEMBERS is privileged and covers GUILD_MEMBER_ADD/UPDATE/REMOVE (updates to the bot itself arrive without it). It must be on in the Developer Portal or the bot can't connect when it asks for it.
+- **Bulk DMs** (checked 2026-11-20, user resource Create DM): "You should not use this endpoint to DM everyone in a server about something. DMs should generally be initiated by a user action. If you open a significant amount of DMs too quickly, your bot may be rate limited or blocked from opening new ones." Errors: 40003 opening DMs too fast, 50007 can't send to this user. So Phase 25 reminders @mention members in a channel instead.
+- **Allowed mentions** (checked 2026-11-20, message resource): `users` "Array of user ids to mention, max 100"; `parse` is mutually exclusive with the other fields; an ID listed but not in the content is ignored.
 - **AutoMod** (checked 2026-11-18, not used): rules can only *exempt* channels (≤ 50), not target them; ≤ 10 regex patterns of ≤ 260 chars; 6 keyword rules per guild; MANAGE_GUILD needed.
 
 ## TMDB

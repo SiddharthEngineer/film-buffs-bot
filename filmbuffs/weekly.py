@@ -362,6 +362,12 @@ class WeeklyService(RankedTrack):
         await self.refresh_open()
         for g in groups:
             await g.refresh_open()
+        from .reminders import Reminders      # Phase 25: nominate / vote reminders
+        for svc in [self, *groups]:
+            try:
+                await Reminders(svc).tick(now)
+            except Exception:
+                log.exception("Reminders for %s failed", svc.pool.grp)
 
     async def _all_weeks(self):
         cur = await self.bot.db.conn.execute("SELECT week_start FROM weeks")

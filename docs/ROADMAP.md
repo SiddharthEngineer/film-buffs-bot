@@ -354,6 +354,11 @@ Owner (2026-11-18), five changes:
 
 Not asked, chosen in the build: group picks go to the group's `#chat` (its `#watch-planning` is just the board too); `/admin clear` crosses out the `#watch-log` line instead of posting a notice.
 
+## Phase 25: nominate and vote reminders (built 2026-11-20; see STATUS.md)
+Owner (2026-11-20): members with @Weekly Pings / a group's Pings role get two reminders, only if they still need to act: **nominate** at 9 AM CT three days before the vote's last day (weekly: Thursday; monthly: 11/27, 12/28, 1/28, 2/25…), and **vote** at 9 AM on the last day (Sunday; the month's last day). "Voted" = ranked every film if fewer than three are on the ballot, else at least your top three.
+Decided (owner, 2026-11-20): a role ping can't be narrowed to some of its members, and Discord's docs say bots shouldn't DM a whole server, so each reminder is **one message @mentioning just those people**, in `#general` (weekly) or the group's `#chat`. Nominations and rankings carried over from earlier votes **count**.
+Chosen in the build: if the bot was down at 9 AM it catches up within 12 hours (never after the close); nothing is sent when nobody needs it, and no vote reminder when the ballot is empty.
+
 ## Phase 24: daily watchlist refresh (built 2026-11-19; see STATUS.md)
 Owner (2026-11-19): rely on the export zip for history; don't read Letterboxd's blocked pages. The only things pulled from Letterboxd are the RSS feed and the public watchlist: read at `/letterboxd link` and on a recurring basis; `#welcome` says so. No scheduled history re-pull, and no web alternative to the zip.
 Chosen in the build: daily at 06:00 CT.

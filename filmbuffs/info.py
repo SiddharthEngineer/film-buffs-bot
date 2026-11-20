@@ -100,8 +100,12 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
         ])),
         ("📚 More", "\n".join([
             "• **Pings:** you're pinged when the weekly movie (or your group's movie) is "
-            "picked; **🔔 Pings** on the board in " + ch("watch_planning") + " turns it off "
-            "or on. Posts you follow notify you as your own Discord settings say.",
+            "picked. With Pings on you also get two reminders at 9 AM, only if you still need "
+            "them: to **nominate** three days before a vote closes (Thursday for the weekly "
+            "vote) and to **vote** on its last day if you haven't ranked your top 3 (all the "
+            "films, if there are fewer). Weekly ones are in " + ch("general") + ", a group's "
+            "in its #chat. **🔔 Pings** on the board in " + ch("watch_planning") + " turns "
+            "all of it off or on. Posts you follow notify you as your own Discord settings say.",
             "• **Ideas** for the server or the bot? Post them in " + ch("ideas") + "; the "
             "pinned list there tracks the ones being considered.",
             "• " + cmd("help") + " lists every command; " + ch("welcome") + " has the short "
