@@ -28,9 +28,9 @@ def test_welcome_page_has_buttons_and_notifications():
     labels = [b["label"] for row in page["_page_buttons"].values() for b in row]
     assert labels == ["Link Letterboxd", "Sync History", "Weekly Ping"]
     notif = next(t for t in page["sections"] if t.startswith("## 🔔 Notifications"))
-    for bit in ("Only @mentions", "Thursday morning", "Sunday morning", "Early Monday morning",
-                "Notification Settings", "All Messages"):
+    for bit in ("Only @mentions", "Thursday morning", "Sunday morning", "Early Monday morning"):
         assert bit in notif
+    assert len(notif) < 400 and "Notification Settings" not in notif   # short (owner)
     assert "Group Ping" not in "\n".join(page["sections"]) and "follow" not in notif
     assert setup_server.page_components(page["sections"], page["_page_buttons"]) <= 40
 
