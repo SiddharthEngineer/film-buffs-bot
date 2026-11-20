@@ -431,7 +431,7 @@ Owner request (2026-11-20); decisions in ROADMAP "Phase 25". 242 unit tests pass
 
 - **Live (2026-11-20):** deployed 20:00 UTC, no errors in the log. Nothing was sent at deploy (Thursday's weekly nominate time is past the catch-up window). First reminders: weekly vote **Sun Nov 22, 9 AM CT** in `#general`; OSU nominate **Fri Nov 27** and vote **Mon Nov 30**, 9 AM CT, in OSU's `#chat`; weekly nominate **Thu Nov 26**.
 
-## Phase 26: reminder cleanup, #watch-log placement, group #watch-log, OSU/Canton (built 2026-11-20)
+## Phase 26: reminder cleanup, #watch-log placement, group #watch-log, OSU/Canton ✅ (deployed and applied 2026-11-20; awaiting owner check)
 Owner request (2026-11-20). 244 unit tests pass. Bot v0.20.
 - **Reminders are deleted at the close:** each sent reminder's channel and message ID wait in `bot_meta` `reminder_messages:<grp>`; the first tick after that vote's close deletes them (a failed delete is retried next tick; an already-deleted one is fine).
 - **`#watch-log` moved** (`server.yaml`, key unchanged) from 📚 More into 🎬 Film Buffs, right after `#watch-planning`.
@@ -440,3 +440,4 @@ Owner request (2026-11-20). 244 unit tests pass. Bot v0.20.
 - **Text:** `/info` and README say group picks are announced in the group's `#watch-log`.
 
 - **setup_server.py channel order fix:** positions are one sequence per type group across the server; numbering each category from 0 collided with other categories (live: `#watch-log` landed before `#watch-planning`). Now any out-of-order managed category renumbers the whole group. Regression test in `tests/test_reminders.py`.
+- **Live (2026-11-20):** deployed (v0.20). `setup_server.py --apply`: OSU roles renamed to OSU/Canton and OSU/Canton Pings, category → 🏈 OSU/Canton, topics, the main `#watch-log` moved under `#watch-planning`, OSU/Canton's `#watch-log` created. The channel order only took after the two `setup_server.py` fixes above (it had been failing silently on the unknown `server-hub` channel). A fresh `--plan` shows no changes left. Bot restarted after the apply, no errors in the log.
