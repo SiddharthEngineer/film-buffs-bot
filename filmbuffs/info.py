@@ -108,7 +108,7 @@ def info_sections(ch: Ref, cmd: Ref, poll_minutes: float,
             "vote) and to **vote** on its last day if you haven't ranked your top 3 (all the "
             "films, if there are fewer). Weekly ones are in " + ch("general") + ", a group's "
             "in its #chat. **🔔 Pings** on the board in " + ch("watch_planning") + " (or "
-            "**Weekly Ping** / **Group Ping** in " + ch("welcome") + ") turns "
+            "**Weekly Ping** in " + ch("welcome") + " for the weekly pings) turns "
             "all of it off or on. Posts you follow notify you as your own Discord settings say.",
             "• **Ideas** for the server or the bot? Post them in " + ch("ideas") + "; the "
             "pinned list there tracks the ones being considered.",

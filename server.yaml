@@ -277,11 +277,11 @@ messages:
           - **Thursday morning:** a reminder to nominate, if you haven't yet.
           - **Sunday morning:** a reminder to vote, if you haven't yet.
           - **Early Monday morning:** the week's movie is picked.
-          - Any time someone @mentions you, or posts in a movie post you follow.
-          -# **Weekly Ping** turns the weekly pings on or off; **Group Ping** does the same for your private group.
+          - Any time someone @mentions you.
+          -# Want every reply in a movie post too? Open the post, click its 🔔 bell and pick **All Messages**.
+          -# **Weekly Ping** turns the weekly pings on or off. Your private group's pings are the **🔔 Pings** button in its #watch-planning.
         buttons:
           - {action: weekly_pings, label: "Weekly Ping", emoji: "🔔"}
-          - {action: group_pings, label: "Group Ping", emoji: "🔔"}
       - |
         ## 🤝 Be nice
         Disagree about movies, not about people.

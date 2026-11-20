@@ -1,4 +1,4 @@
-"""#welcome page buttons: Letterboxd link/sync, Weekly Ping, Group Ping."""
+"""#welcome page buttons: Letterboxd link/sync, Weekly Ping (no group buttons)."""
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,13 +24,14 @@ def test_welcome_page_has_buttons_and_notifications():
     page = _page(setup_server.load_config("server.yaml"))
     assert all(isinstance(t, str) for t in page["sections"])
     actions = [b["action"] for row in page["_page_buttons"].values() for b in row]
-    assert actions == ["letterboxd_link", "letterboxd_sync", "weekly_pings", "group_pings"]
+    assert actions == ["letterboxd_link", "letterboxd_sync", "weekly_pings"]
     labels = [b["label"] for row in page["_page_buttons"].values() for b in row]
-    assert labels == ["Link Letterboxd", "Sync History", "Weekly Ping", "Group Ping"]
+    assert labels == ["Link Letterboxd", "Sync History", "Weekly Ping"]
     notif = next(t for t in page["sections"] if t.startswith("## 🔔 Notifications"))
     for bit in ("Only @mentions", "Thursday morning", "Sunday morning", "Early Monday morning",
-                "Notification Settings"):
+                "Notification Settings", "All Messages"):
         assert bit in notif
+    assert "Group Ping" not in "\n".join(page["sections"]) and "follow" not in notif
     assert setup_server.page_components(page["sections"], page["_page_buttons"]) <= 40
 
 
@@ -124,32 +125,15 @@ def test_sync_refuses_while_one_is_running():
     assert inter.response.modal is None and "still running" in inter.response.sent[0][0]
 
 
-def test_ping_buttons(monkeypatch):
+def test_weekly_ping_button(monkeypatch):
     toggled = []
 
     async def toggle(inter, rid, why):
         toggled.append(rid)
     monkeypatch.setattr("filmbuffs.vote_ui.toggle_role", toggle)
-    g1 = SimpleNamespace(key="osu", name="OSU/Canton", role_id=1, ping_role_id=11)
-    g2 = SimpleNamespace(key="fam", name="Family", role_id=2, ping_role_id=22)
-
     inter, _ = _interaction()
     run(WelcomeButton("weekly_pings").callback(inter))
     assert toggled == [50]
-
-    inter, _ = _interaction(groups={"osu": g1})
-    run(WelcomeButton("group_pings").callback(inter))
-    assert "not in a private group" in inter.response.sent[0][0] and toggled == [50]
-
-    inter, _ = _interaction(roles=[1], groups={"osu": g1, "fam": g2})
-    run(WelcomeButton("group_pings").callback(inter))
-    assert toggled == [50, 11]
-
-    inter, _ = _interaction(roles=[1, 2], groups={"osu": g1, "fam": g2})
-    run(WelcomeButton("group_pings").callback(inter))
-    text, kw = inter.response.sent[0]
-    assert [b.item.label for b in kw["view"].children] == ["OSU/Canton Pings", "Family Pings"]
-    assert [b.item.custom_id for b in kw["view"].children] == ["pings:osu", "pings:fam"]
 
 
 def test_unknown_action_is_harmless():
@@ -157,4 +141,6 @@ def test_unknown_action_is_harmless():
     run(WelcomeButton("gone").callback(inter))
     assert "doesn't do anything" in inter.response.sent[0][0]
     assert set(welcome_ui.WELCOME_ACTIONS) == {"letterboxd_link", "letterboxd_sync",
-                                               "weekly_pings", "group_pings"}
+                                               "weekly_pings"}
+    run(WelcomeButton("group_pings").callback(inter))      # retired: never shows group names
+    assert "doesn't do anything" in inter.response.sent[1][0]

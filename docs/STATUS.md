@@ -1,6 +1,6 @@
 # Status (as of 2026-11-20)
 
-> **Welcome buttons (2026-11-20):** `#welcome` has 🔗 **Link Letterboxd** and 📦 **Sync History** (modals, no typing commands), 🔔 **Weekly Ping** and 🔔 **Group Ping**, and a 🔔 Notifications section. See "Welcome buttons" at the end.
+> **Welcome buttons (2026-11-20):** `#welcome` has 🔗 **Link Letterboxd** and 📦 **Sync History** (modals, no typing commands), 🔔 **Weekly Ping** (Group Ping removed: group pings stay on each group's board), and a 🔔 Notifications section. See "Welcome buttons" at the end.
 
 > **Button tweaks (2026-11-20):** the results button is now **🗳️ See Voting Results**; 📋 **Nominate** is blurple like Vote. See "Button tweaks" at the end.
 
@@ -492,3 +492,4 @@ Owner: nobody should have to run commands; put Letterboxd link/sync and the ping
 - **Not verified:** that followed forum posts still notify under "Only @mentions" (Discord's help center blocks automated readers), and the File Upload modal on phones (the docs don't mention client support). Owner to try both buttons on desktop and phone.
 
 - **Live (2026-11-20):** deployed v0.25 (21:58 UTC, clean start); `setup_server.py --apply` edited the `#welcome` page in place (1 change); a fresh plan shows none left. Clicks not yet tried by the owner.
+- **Follow-up (owner, 2026-11-20), v0.26:** no Group Ping on `#welcome`. The page looks the same to everyone, so it can't show each member only their own groups; the owner chose to keep group pings on each group's own board (🔔 Pings in its `#watch-planning`). `group_pings` is gone from `WELCOME_ACTIONS` (an old button would just say it does nothing). The owner thinks followed posts don't notify under "Only @mentions", so the list now ends with "Any time someone @mentions you", plus a tip: open a movie post, click its 🔔 bell, pick **All Messages** (that path is from memory; owner to check). 2,256 characters, 17 components.

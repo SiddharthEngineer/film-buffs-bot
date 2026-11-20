@@ -9,8 +9,9 @@ The running bot handles the clicks here (a DynamicItem, so they survive restarts
 - letterboxd_sync: a modal with a file upload for the export zip, then the same
   flow as /letterboxd sync (preview with Apply / Cancel).
 - weekly_pings: toggles @Weekly Pings (same as 🔔 Pings on the weekly board).
-- group_pings: toggles the ping role of the clicker's private group; with several
-  groups, a private reply with one button per group.
+
+Group pings stay on each group's own board (owner, 2026-11-20): #welcome is the same
+for everyone, so it shouldn't show group names.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ import discord
 
 log = logging.getLogger(__name__)
 
-WELCOME_ACTIONS = ("letterboxd_link", "letterboxd_sync", "weekly_pings", "group_pings")
+WELCOME_ACTIONS = ("letterboxd_link", "letterboxd_sync", "weekly_pings")
 
 
 def _cog(interaction: discord.Interaction):
@@ -100,22 +101,3 @@ class WelcomeButton(discord.ui.DynamicItem[discord.ui.Button],
         from .vote_ui import toggle_role
         await toggle_role(interaction, interaction.client.config.roles.get("weekly_ping"),
                           "Weekly Ping button")
-
-    async def _group_pings(self, interaction: discord.Interaction) -> None:
-        from .vote_ui import PingButton, in_group, toggle_role
-        groups = [g for g in interaction.client.config.groups.values()
-                  if in_group(interaction.client, interaction.user, g.key)]
-        if not groups:
-            await interaction.response.send_message(
-                "You're not in a private group, so there's nothing to turn on.", ephemeral=True)
-            return
-        if len(groups) == 1:
-            await toggle_role(interaction, groups[0].ping_role_id, "Group Ping button")
-            return
-        view = discord.ui.View(timeout=None)
-        for g in groups[:25]:
-            b = PingButton(g.key)
-            b.item.label = f"{g.name} Pings"[:80]
-            view.add_item(b)
-        await interaction.response.send_message("Which group's pings?", view=view,
-                                                ephemeral=True)
